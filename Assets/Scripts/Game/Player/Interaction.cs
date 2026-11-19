@@ -13,6 +13,7 @@ namespace Stratum.Game
         public VoxelWorld World;
         public Sky Sky;
         public bool InputEnabled = true;
+        public bool HideHeld;                          // backpack open or HUD hidden (F1)
         public System.Action<string> OpenStation;      // "workbench" / "furnace"
         public System.Action<string> Toast;
 
@@ -269,6 +270,7 @@ namespace Stratum.Game
             if (held.Item != _heldItem) { _heldItem = held.Item; SetHeld(); _swing = 0.5f; }
             _lightTimer -= dt;
             if (_lightTimer <= 0) { _lightTimer = 0.15f; _light = LightAt(P.EyePos); _heldBlockMat.SetVector("_LightOverride", new Vector4(_light.x, _light.y, 0, 1)); }
+            _heldMr.enabled = !HideHeld;
             if (_held.activeSelf)
             {
                 _swing = Mathf.Min(1, _swing + dt * 4.5f);

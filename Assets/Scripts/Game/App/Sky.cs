@@ -148,8 +148,8 @@ namespace Stratum.Game
             Sun.color = moon ? new Color(0.55f, 0.65f, 0.9f) : sunCol;
             Sun.intensity = moon ? Mathf.Clamp01((-elev - 0.02f) / 0.2f) * 0.22f : Mathf.Clamp01(elev / 0.08f) * 1.25f;
 
-            Color zenith = Grad(elev, new Color(0.012f, 0.018f, 0.045f), new Color(0.22f, 0.32f, 0.55f), new Color(0.24f, 0.46f, 0.86f));
-            Color horizon = Grad(elev, new Color(0.03f, 0.045f, 0.09f), new Color(0.95f, 0.52f, 0.32f), new Color(0.66f, 0.80f, 0.95f));
+            Color zenith = Grad(elev, new Color(0.018f, 0.026f, 0.065f), new Color(0.22f, 0.32f, 0.55f), new Color(0.24f, 0.46f, 0.86f));
+            Color horizon = Grad(elev, new Color(0.065f, 0.085f, 0.16f), new Color(0.95f, 0.52f, 0.32f), new Color(0.66f, 0.80f, 0.95f));
             Color glow = Grad(elev, Color.black, new Color(1.0f, 0.45f, 0.18f), new Color(0.35f, 0.3f, 0.2f));
             if (Underwater) { zenith = horizon = new Color(0.04f, 0.16f, 0.28f) * (0.25f + day * 0.75f); }
 

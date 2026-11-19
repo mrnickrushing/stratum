@@ -30,8 +30,22 @@ Shader "Stratum/Water"
             struct V
             {
                 float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 normalWS : TEXCOORD1;
-                float4 light : TEXCOORD2; float4 screen : TEXCOORD3; float fogCoord : TEXCOORD4;
+                float4 light : TEXCOORD2; float4 screen : TEXCOORD3;
             };
+
+            // Fog by true distance from the camera rather than depth: depth runs short toward the screen's sides,
+            // where the round edge of the loaded world would show through. 1 = clear, 0 = all fog.
+            float FogClear(float3 ws)
+            {
+            #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+                float3 d = ws - _WorldSpaceCameraPos;
+                // Height counts for less, so the ground below stays clear from high up; never less than the
+                // flat distance, so the edge stays hidden.
+                return saturate(length(float3(d.x, d.y * 0.4, d.z)) * unity_FogParams.z + unity_FogParams.w);
+            #else
+                return 1;
+            #endif
+            }
 
             V vert(A a)
             {
@@ -43,7 +57,6 @@ Shader "Stratum/Water"
                 o.normalWS = TransformObjectToWorldNormal(a.normalOS);
                 o.light = a.light;
                 o.screen = ComputeScreenPos(o.positionCS);
-                o.fogCoord = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
@@ -88,7 +101,9 @@ Shader "Stratum/Water"
                 float3 col = lerp(body, skyCol, front ? fresnel : 0.0) + sun.color * spec;
                 float alpha = saturate(lerp(0.55, 0.96, absorb) + fresnel * 0.4);
                 if (!front) { col = body * 1.2; alpha = 0.6; }
-                col = MixFog(col, i.fogCoord);
+                float clear = FogClear(i.positionWS);
+                col = lerp(unity_FogColor.rgb, col, clear);
+                alpha = lerp(1, alpha, clear);
                 return half4(col, alpha);
             }
             ENDHLSL

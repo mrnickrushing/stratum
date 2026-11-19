@@ -69,8 +69,21 @@ Shader "Stratum/Block"
                 float3 uv : TEXCOORD2;
                 float4 tint : TEXCOORD3;
                 float4 light : TEXCOORD4;
-                float fogCoord : TEXCOORD5;
             };
+
+            // Fog by true distance from the camera rather than depth: depth runs short toward the screen's sides,
+            // where the round edge of the loaded world would show through. 1 = clear, 0 = all fog.
+            float FogClear(float3 ws)
+            {
+            #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+                float3 d = ws - _WorldSpaceCameraPos;
+                // Height counts for less, so the ground below stays clear from high up; never less than the
+                // flat distance, so the edge stays hidden.
+                return saturate(length(float3(d.x, d.y * 0.4, d.z)) * unity_FogParams.z + unity_FogParams.w);
+            #else
+                return 1;
+            #endif
+            }
 
             Varyings vert(Attributes v)
             {
@@ -83,7 +96,6 @@ Shader "Stratum/Block"
                 o.uv = v.uv;
                 o.tint = v.tint;
                 o.light = _LightOverride.w > 0.5 ? float4(_LightOverride.x, _LightOverride.y, v.light.b, 1) : v.light;
-                o.fogCoord = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
@@ -120,7 +132,7 @@ Shader "Stratum/Block"
                 float3 col = albedo * (ambient * aoF + direct * (0.55 + 0.45 * aoF));
                 if ((flags & 16) != 0) col += albedo * 1.4;
                 if ((flags & 32) != 0) col = lerp(col, albedo * 2.2, tex.a);
-                col = MixFog(col, i.fogCoord);
+                col = lerp(unity_FogColor.rgb, col, FogClear(i.positionWS));
                 return half4(col, 1);
             }
             ENDHLSL
