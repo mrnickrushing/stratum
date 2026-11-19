@@ -27,3 +27,4 @@
 # Dedicated server build output
 Server/bin/
 Server/obj/
+!Server/Stratum.Server.csproj
