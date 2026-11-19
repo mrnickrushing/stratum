@@ -14,7 +14,7 @@ ENV STRATUM_DATA=/data \
     STRATUM_PORT=25600 \
     DOTNET_gcServer=0 \
     DOTNET_GCHeapHardLimitPercent=70
-VOLUME /data
+# The world lives in /data: mount a volume there (docker -v, or a Railway volume; Railway refuses VOLUME lines).
 EXPOSE 25600
 # The world is saved on SIGTERM (docker stop, a Railway redeploy), so give it a moment.
 STOPSIGNAL SIGTERM
