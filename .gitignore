@@ -23,3 +23,7 @@
 /ProjectSettings/Packages/com.unity.pipeline/
 .vscode/
 /Assets/Resources/PerformanceTestRun*
+
+# Dedicated server build output
+Server/bin/
+Server/obj/
