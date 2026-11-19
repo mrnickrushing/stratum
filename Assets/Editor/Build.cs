@@ -86,8 +86,12 @@ namespace Stratum.EditorTools
             };
             var report = BuildPipeline.BuildPlayer(opts);
             var sum = report.summary;
-            Debug.Log($"Build {target}: {sum.result}, {sum.totalSize / (1024 * 1024)} MB, {sum.totalErrors} errors, at {path}");
-            if (Application.isBatchMode) EditorApplication.Exit(sum.result == BuildResult.Succeeded ? 0 : 1);
+            // A build can report "Succeeded" with errors and no player written (a platform module installed while
+            // the Editor was open, for one), so check the file too.
+            bool ok = sum.result == BuildResult.Succeeded && sum.totalErrors == 0 && File.Exists(path);
+            Debug.Log($"Build {target}: {(ok ? "OK" : "FAILED")} ({sum.result}), {sum.totalSize / (1024 * 1024)} MB, {sum.totalErrors} errors, at {path}");
+            if (Application.isBatchMode) EditorApplication.Exit(ok ? 0 : 1);
+            else if (!ok) throw new System.Exception($"{target} build failed; see the Console");
         }
     }
 }
