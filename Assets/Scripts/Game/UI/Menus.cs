@@ -24,6 +24,7 @@ namespace Stratum.Game
         Button _modeBtn;
         Action _settingsBack;
         Image _shade;
+        readonly List<Texture2D> _thumbs = new List<Texture2D>();
 
         public bool AnyOpen => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _settings.activeSelf || _pause.activeSelf || _death.activeSelf || _loading.activeSelf;
         public bool PauseOpen => _pause.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowPause;
@@ -116,6 +117,8 @@ namespace Stratum.Game
         void FillWorlds()
         {
             foreach (Transform t in _worldList) Destroy(t.gameObject);
+            foreach (var t in _thumbs) Destroy(t);
+            _thumbs.Clear();
             var list = ListWorlds?.Invoke() ?? new List<WorldMeta>();
             if (list.Count == 0)
             {
@@ -126,11 +129,25 @@ namespace Stratum.Game
             {
                 var row = UIKit.Panel(_worldList, "World", new Color(0.15f, 0.16f, 0.2f, 0.95f), UIKit.RoundSmall);
                 row.rectTransform.sizeDelta = new Vector2(0, 110);
+                // The view from where the world was left (saved with it), else a plain tile.
+                var pic = new GameObject("Thumb", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+                pic.transform.SetParent(row.transform, false);
+                ((RectTransform)pic.transform).Place(0, 0.5f, 12, 0, 156, 88);
+                pic.color = new Color(0.22f, 0.24f, 0.28f, 1);
+                var thumbPath = m.Folder != null ? System.IO.Path.Combine(m.Folder, "thumb.jpg") : null;
+                if (thumbPath != null && System.IO.File.Exists(thumbPath))
+                {
+                    var tex = new Texture2D(2, 2, TextureFormat.RGB24, false);
+                    if (tex.LoadImage(System.IO.File.ReadAllBytes(thumbPath))) { pic.texture = tex; pic.color = Color.white; _thumbs.Add(tex); }
+                    else Destroy(tex);
+                }
                 var name = UIKit.Label(row.transform, m.name, 32, UIKit.Ink, TextAnchor.UpperLeft, FontStyle.Bold);
-                name.rectTransform.Place(0, 1, 26, -16, 560, 40);
+                name.rectTransform.Place(0, 1, 186, -12, 420, 40);
                 var when = new DateTime(Math.Max(m.lastPlayed, 1), DateTimeKind.Utc).ToLocalTime();
-                var info = UIKit.Label(row.transform, $"{(m.creative ? "Creative" : "Survival")}  ·  day {m.day}  ·  {Math.Round(m.minutesPlayed)} min played  ·  last played {when:d MMM yyyy, HH:mm}", 20, UIKit.Dim, TextAnchor.UpperLeft);
-                info.rectTransform.Place(0, 1, 26, -62, 640, 30);
+                var info = UIKit.Label(row.transform, $"{(m.creative ? "Creative" : "Survival")}  ·  day {m.day}  ·  {Math.Round(m.minutesPlayed)} min played", 20, UIKit.Dim, TextAnchor.UpperLeft);
+                info.rectTransform.Place(0, 1, 186, -54, 420, 26);
+                var last = UIKit.Label(row.transform, $"Last played {when:d MMM yyyy, HH:mm}", 18, UIKit.Dim * 0.85f, TextAnchor.UpperLeft);
+                last.rectTransform.Place(0, 1, 186, -80, 420, 24);
                 var mm = m;
                 var play = UIKit.Button(row.transform, "Play", () => Play?.Invoke(mm), 26, true);
                 ((RectTransform)play.transform).Place(1, 0.5f, -20, 0, 150, 64);
@@ -266,7 +283,8 @@ namespace Stratum.Game
             HideAll();
             g.SetActive(true);
             _shade.gameObject.SetActive(shade);
-            _shade.color = new Color(0, 0, 0, g == _main ? 0.15f : 0.5f);
+            // UI blends in linear light, where 0.5 black only darkens the screen by about a quarter.
+            _shade.color = g == _main ? new Color(0, 0, 0, 0.25f) : g == _death ? new Color(0.18f, 0.01f, 0.01f, 0.88f) : new Color(0, 0, 0, 0.72f);
         }
 
         public void ShowMain() => Show(_main, true);

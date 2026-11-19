@@ -14,6 +14,7 @@ namespace Stratum.Game
         public Sky Sky;
         public bool InputEnabled = true;
         public bool HideHeld;                          // backpack open or HUD hidden (F1)
+        public Renderer HeldRenderer => _heldMr;
         public System.Action<string> OpenStation;      // "workbench" / "furnace"
         public System.Action<string> Toast;
 

@@ -12,7 +12,7 @@ namespace Stratum.Game
         public static readonly Color Ink = new Color(0.93f, 0.90f, 0.85f);
         public static readonly Color Dim = new Color(0.66f, 0.64f, 0.60f);
         public static readonly Color Accent = new Color(0.96f, 0.71f, 0.29f);
-        public static readonly Color PanelCol = new Color(0.07f, 0.08f, 0.10f, 0.88f);
+        public static readonly Color PanelCol = new Color(0.07f, 0.08f, 0.10f, 0.95f);
         public static readonly Color Slot = new Color(0.16f, 0.17f, 0.20f, 0.92f);
         public static readonly Color Good = new Color(0.55f, 0.85f, 0.45f);
         public static readonly Color Bad = new Color(0.95f, 0.42f, 0.38f);

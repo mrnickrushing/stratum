@@ -411,8 +411,39 @@ namespace Stratum.Game
                 _meta.lastPlayed = DateTime.UtcNow.Ticks;
                 WorldStore.Save(_meta);
                 _world.SaveAll();
+                if (_state == State.Playing || _state == State.Paused) SaveThumbnail();
             }
             catch (Exception e) { Debug.LogWarning("save failed: " + e.Message); }
+        }
+
+        // The world list shows each world as it was last seen: the camera's view without the HUD or the hand.
+        void SaveThumbnail()
+        {
+            if (_cam == null || _meta?.Folder == null) return;
+            const int W = 384, H = 216;
+            var rt = RenderTexture.GetTemporary(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            var held = _act != null ? _act.HeldRenderer : null;
+            bool heldOn = held != null && held.enabled;
+            if (held != null) held.enabled = false;
+            var prev = RenderTexture.active;
+            try
+            {
+                var req = new UniversalRenderPipeline.SingleCameraRequest { destination = rt };
+                if (!RenderPipeline.SupportsRenderRequest(_cam, req)) return;
+                RenderPipeline.SubmitRenderRequest(_cam, req);
+                RenderTexture.active = rt;
+                var tex = new Texture2D(W, H, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+                tex.Apply();
+                File.WriteAllBytes(Path.Combine(_meta.Folder, "thumb.jpg"), tex.EncodeToJPG(88));
+                Destroy(tex);
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                if (held != null) held.enabled = heldOn;
+            }
         }
 
         // Alt-tabbing away opens the pause menu (the game keeps running in the background otherwise).
