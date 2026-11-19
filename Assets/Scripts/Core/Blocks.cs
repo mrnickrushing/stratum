@@ -6,6 +6,7 @@ namespace Stratum.Core
     public enum Shape : byte { Cube, Cross, Torch, Liquid, Boxes }
     public enum Sound : byte { Stone, Dirt, Grass, Sand, Wood, Leaves, Glass, Snow, Metal, Cloth }
     public enum Tool : byte { None, Pickaxe, Axe, Shovel, Sword, Hoe, Shears }
+    public enum Connect : byte { None, Fence, Wall, Pane }
 
     // Texture layers used by block faces. BlockTextures (Game) paints one layer per entry, in this order.
     public enum Tex : byte
@@ -22,6 +23,7 @@ namespace Stratum.Core
         ChestFront, ChestSide, ChestTop, BedHead, BedFoot, BedSide, BedEnd,
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
+        DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
         Count
     }
 
@@ -53,6 +55,14 @@ namespace Stratum.Core
         public string Bonus;             // an item it sometimes drops as well
         public float BonusChance;
         public bool Container;           // holds things (chests, lost satchels)
+        public Connect Connect;          // fences, walls and panes reach out to their neighbours
+        public bool Tall;                // collides up to 1.5 blocks high (fences, walls, closed gates)
+        public bool Climb;               // ladders
+        public bool FlatIcon;            // shown in the hand and the pack as a flat picture
+        public byte Fluid;               // 1 water, 2 lava
+        public byte Level;               // fluids: 0 a source, then 1, 2... further from it
+        public byte Pair;                // slabs: the whole block two of them make; doors: unused
+        public bool Opens;               // doors, trapdoors, gates: right-click opens and closes
 
         public Tex Face(int face)        // 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z
         {
@@ -90,7 +100,11 @@ namespace Stratum.Core
             PinePlanks, Cobble, MossyCobble, StoneBricks, Glass, CoalOre, CopperOre, IronOre, GoldOre, SunstoneOre,
             Sunstone, Torch, TallGrass, RedFlower, YellowFlower, BlueFlower, DeadBush, Fern, Workbench, Furnace,
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
-            Chest, Bed, Satchel, Lava, Obsidian;
+            Chest, Bed, Satchel, Lava, Obsidian,
+            OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign;
+        public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
+        public const int WaterReach = 7, LavaReach = 3;
+        public static readonly List<byte> Slabs = new List<byte>(), Stairs = new List<byte>();
         public static readonly byte[] Wool = new byte[8];
         public static readonly string[] WoolColours = { "white", "grey", "black", "brown", "red", "yellow", "green", "blue" };
 
@@ -234,7 +248,163 @@ namespace Stratum.Core
             b.Replaceable = true; b.Creative = false; Palette.Remove(b.Id); Lava = b.Id;
             b = Rock("obsidian", "Obsidian", Tex.Obsidian, 18, 4); Obsidian = b.Id;
 
+            // ---------------------------------------------------------------- 0.2: building
+            // Slabs: a bottom and a top half; a second slab on the first makes the whole block.
+            foreach (var (key, name, tex, full) in new[] {
+                ("oak", "Oak", Tex.OakPlanks, OakPlanks), ("birch", "Birch", Tex.BirchPlanks, BirchPlanks), ("pine", "Pine", Tex.PinePlanks, PinePlanks),
+                ("cobble", "Cobblestone", Tex.Cobble, Cobble), ("stone", "Stone", Tex.Stone, Stone), ("stone_brick", "Stone Brick", Tex.StoneBricks, StoneBricks) })
+            {
+                var whole = Defs[full];
+                for (int top = 0; top < 2; top++)
+                {
+                    b = Add(key + (top == 0 ? "_slab" : "_slab_top"), name + " Slab", tex);
+                    b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 15; b.Variant = top; b.Pair = full;
+                    b.Hardness = whole.Hardness; b.Tool = whole.Tool; b.TierNeeded = whole.TierNeeded; b.Sound = whole.Sound;
+                    b.Boxes = new[] { top == 0 ? Box.Px(0, 0, 0, 16, 8, 16) : Box.Px(0, 8, 0, 16, 16, 16) };
+                    if (top == 0) { Slabs.Add(b.Id); b.BaseId = b.Id; }
+                    else { b.BaseId = (byte)(b.Id - 1); b.DropItem = key + "_slab"; b.Creative = false; Palette.Remove(b.Id); }
+                }
+            }
+            // Stairs: a bottom half and a raised back half; they climb toward where the player was looking.
+            foreach (var (key, name, tex, full) in new[] {
+                ("oak", "Oak", Tex.OakPlanks, OakPlanks), ("birch", "Birch", Tex.BirchPlanks, BirchPlanks), ("pine", "Pine", Tex.PinePlanks, PinePlanks),
+                ("cobble", "Cobblestone", Tex.Cobble, Cobble), ("stone_brick", "Stone Brick", Tex.StoneBricks, StoneBricks) })
+            {
+                var whole = Defs[full];
+                Stairs.Add(Facings(key + "_stairs", name + " Stairs", 4, (d, f) =>
+                {
+                    d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 15; d.Top = d.Side = d.Bottom = tex;
+                    d.Hardness = whole.Hardness; d.Tool = whole.Tool; d.TierNeeded = whole.TierNeeded; d.Sound = whole.Sound;
+                    d.Boxes = new[] { Box.Px(0, 0, 0, 16, 8, 16), Box.Px(0, 8, 8, 16, 16, 16) };
+                }));
+            }
+            // A door is two blocks (lower, upper); id = door + facing*4 + open*2 + upper. Closed it stands on the side
+            // nearest the player who placed it; open it swings to the left edge.
+            OakDoor = Facings("oak_door", "Oak Door", 16, (d, i) =>
+            {
+                bool open = (i / 2) % 2 == 1, upper = i % 2 == 1;
+                d.Variant = i % 4; d.Opens = true;
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Hardness = 3; d.Tool = Tool.Axe; d.Sound = Sound.Wood;
+                d.Side = upper ? Tex.DoorUpper : Tex.DoorLower; d.Top = d.Bottom = Tex.OakPlanks; d.FlatIcon = true;
+                d.Boxes = new[] { open ? Box.Px(0, 0, 0, 3, 16, 16) : Box.Px(0, 0, 0, 16, 16, 3) };
+            }, facingOf: i => i / 4);
+            Trapdoor = Facings("trapdoor", "Trapdoor", 8, (d, i) =>
+            {
+                bool open = i % 2 == 1;
+                d.Variant = i % 2; d.Opens = true;
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Hardness = 3; d.Tool = Tool.Axe; d.Sound = Sound.Wood;
+                d.Top = d.Bottom = d.Side = Tex.Trapdoor;
+                d.Boxes = new[] { open ? Box.Px(0, 0, 13, 16, 16, 16) : Box.Px(0, 0, 0, 16, 3, 16) };
+            }, facingOf: i => i / 2);
+            // A ladder hangs on the wall at the facing side of its cell.
+            Ladder = Facings("ladder", "Ladder", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Climb = true; d.FlatIcon = true;
+                d.Hardness = 0.4f; d.Tool = Tool.Axe; d.Sound = Sound.Wood; d.Top = d.Bottom = d.Side = Tex.Ladder;
+                d.Boxes = new[] { Box.Px(0, 0, 14, 16, 16, 16) };
+            });
+            b = Add("oak_fence", "Oak Fence", Tex.OakPlanks); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Connect = Connect.Fence; b.Tall = true;
+            b.Hardness = 2; b.Tool = Tool.Axe; b.Sound = Sound.Wood; b.Boxes = ConnectBoxes(Connect.Fence, 0); OakFence = b.Id;
+            FenceGate = Facings("oak_fence_gate", "Oak Fence Gate", 8, (d, i) =>
+            {
+                bool open = i % 2 == 1;
+                d.Variant = i % 2; d.Opens = true; d.Tall = !open;
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Hardness = 2; d.Tool = Tool.Axe; d.Sound = Sound.Wood;
+                d.Top = d.Bottom = d.Side = Tex.OakPlanks;
+                d.Boxes = open
+                    ? new[] { Box.Px(0, 5, 7, 2, 16, 9), Box.Px(14, 5, 7, 16, 16, 9), Box.Px(0, 6, 9, 2, 15, 15), Box.Px(14, 6, 9, 16, 15, 15) }
+                    : new[] { Box.Px(0, 5, 7, 2, 16, 9), Box.Px(14, 5, 7, 16, 16, 9), Box.Px(2, 6, 7, 14, 9, 9), Box.Px(2, 12, 7, 14, 15, 9), Box.Px(7, 9, 7, 9, 12, 9) };
+            }, facingOf: i => i / 2);
+            b = Rock("cobble_wall", "Cobblestone Wall", Tex.Cobble, 2, 1); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Connect = Connect.Wall; b.Tall = true;
+            b.Boxes = ConnectBoxes(Connect.Wall, 0); CobbleWall = b.Id;
+            b = Add("glass_pane", "Glass Pane", Tex.Glass); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Cutout = true; b.Connect = Connect.Pane;
+            b.Hardness = 0.3f; b.Sound = Sound.Glass; b.DropItem = ""; b.Boxes = ConnectBoxes(Connect.Pane, 0); GlassPane = b.Id;
+            b = Rock("iron_bars", "Iron Bars", Tex.IronBars, 3, 1, Sound.Metal); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Cutout = true; b.Connect = Connect.Pane;
+            b.Boxes = ConnectBoxes(Connect.Pane, 0); IronBars = b.Id;
+            // Signs: standing on the ground facing the player, or hung on a wall.
+            Sign = Facings("sign", "Sign", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 1; d.Tool = Tool.Axe; d.Sound = Sound.Wood; d.FlatIcon = true;
+                d.Top = d.Bottom = d.Side = Tex.OakPlanks;
+                d.Boxes = new[] { Box.Px(7, 0, 7, 9, 8, 9), Box.Px(0, 8, 7, 16, 16, 9) };
+            });
+            WallSign = Facings("wall_sign", "Sign", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 1; d.Tool = Tool.Axe; d.Sound = Sound.Wood; d.DropItem = "sign";
+                d.Top = d.Bottom = d.Side = Tex.OakPlanks;
+                d.Boxes = new[] { Box.Px(0, 4, 14, 16, 12, 16) };
+            });
+            Defs[WallSign].Creative = false; Palette.Remove(WallSign);
+            // Flowing water and lava, by how far they are from their source.
+            Defs[Water].Fluid = 1; WaterAt[0] = Water;
+            Defs[Lava].Fluid = 2; LavaAt[0] = Lava;
+            for (int l = 1; l <= WaterReach; l++)
+            {
+                b = Add("water_" + l, "Water", Tex.Water); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 2; b.Hardness = -1;
+                b.Replaceable = true; b.Creative = false; b.Fluid = 1; b.Level = (byte)l; b.BaseId = Water; Palette.Remove(b.Id); WaterAt[l] = b.Id;
+            }
+            for (int l = 1; l <= LavaReach; l++)
+            {
+                b = Add("lava_" + l, "Lava", Tex.Lava); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 1; b.Emit = 15; b.Hardness = -1;
+                b.Replaceable = true; b.Creative = false; b.Fluid = 2; b.Level = (byte)l; b.BaseId = Lava; Palette.Remove(b.Id); LavaAt[l] = b.Id;
+            }
+
             Palette.Remove(Water);
+        }
+
+        public static bool IsWater(byte id) => Defs[id] != null && Defs[id].Fluid == 1;
+        public static bool IsLava(byte id) => Defs[id] != null && Defs[id].Fluid == 2;
+        public static bool IsFluid(byte id) => Defs[id] != null && Defs[id].Fluid != 0;
+
+        // ------------------------------------------------------------------ connecting shapes
+
+        static readonly Box[][][] _connect = new Box[4][][];
+
+        // The pieces of a fence, wall or pane joined toward the sides in `mask` (1 +Z, 2 +X, 4 -Z, 8 -X).
+        public static Box[] ConnectBoxes(Connect kind, int mask)
+        {
+            int k = (int)kind;
+            if (_connect[k] == null) _connect[k] = new Box[16][];
+            var cached = _connect[k][mask & 15];
+            if (cached != null) return cached;
+            var list = new List<Box>();
+            Box post, arm1, arm2 = default; bool two = false;
+            switch (kind)
+            {
+                case Connect.Fence: post = Box.Px(6, 0, 6, 10, 16, 10); arm1 = Box.Px(7, 6, 10, 9, 9, 16); arm2 = Box.Px(7, 12, 10, 9, 15, 16); two = true; break;
+                case Connect.Wall: post = Box.Px(4, 0, 4, 12, 16, 12); arm1 = Box.Px(5, 0, 12, 11, 13, 16); break;
+                default: post = Box.Px(7, 0, 7, 9, 16, 9); arm1 = Box.Px(7, 0, 9, 9, 16, 16); break;
+            }
+            list.Add(post);
+            for (int dir = 0; dir < 4; dir++)
+            {
+                if ((mask & (1 << dir)) == 0) continue;
+                list.Add(arm1.Turn(dir));
+                if (two) list.Add(arm2.Turn(dir));
+            }
+            return _connect[k][mask & 15] = list.ToArray();
+        }
+
+        static readonly int[] DX = { 0, 1, 0, -1 }, DZ = { 1, 0, -1, 0 };
+
+        // Does a fence, wall or pane reach toward this neighbour?
+        public static bool Joins(BlockDef self, byte other)
+        {
+            if (other == 0) return false;
+            var o = Get(other);
+            if (o.Connect == self.Connect) return true;
+            if (self.Connect == Connect.Fence && o.BaseId == FenceGate) return true;
+            if (self.Connect == Connect.Pane && o.Connect == Connect.Pane) return true;
+            return o.Shape == Shape.Cube && o.Solid && o.Opaque;
+        }
+
+        // The shape of the block at a position: its own boxes, or for joining blocks the ones that fit its neighbours.
+        public static Box[] ShapeAt(Func<int, int, int, byte> get, int x, int y, int z, BlockDef d)
+        {
+            if (d.Connect == Connect.None) return d.Boxes;
+            int mask = 0;
+            for (int dir = 0; dir < 4; dir++) if (Joins(d, get(x + DX[dir], y, z + DZ[dir]))) mask |= 1 << dir;
+            return ConnectBoxes(d.Connect, mask);
         }
 
         // A family of blocks sharing one item: `count` ids; the first is the item and the rest drop it. Their boxes

@@ -248,6 +248,7 @@ namespace Stratum.Server
                     case Net.Msg.CloseBox: p.HasBox = false; break;
                     case Net.Msg.Sleep: p.Flags = (byte)(r.Bool() ? p.Flags | Net.Asleep : p.Flags & ~Net.Asleep); CheckSleep(); break;
                     case Net.Msg.Drop: Drop(p, r); break;
+                    case Net.Msg.SignText: SignText(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
             }
@@ -307,6 +308,11 @@ namespace Stratum.Server
                 .Str(name).Str(res.Token ?? "")
                 .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty);
             p.Conn.Send(w);
+            foreach (var kv in _boxes.Signs)
+            {
+                var (sx, sy, sz) = Containers.Unkey(kv.Key);
+                p.Conn.Send(new Packet(Net.Msg.Sign).I32(sx).I32(sy).I32(sz).Str(kv.Value));
+            }
             foreach (var o in _players.Values)
                 if (o.Joined && o != p)
                 {
@@ -398,7 +404,7 @@ namespace Stratum.Server
             string why = dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2) ? $"out of reach ({Math.Sqrt(dx * dx + dy * dy + dz * dz):0.0} m)"
                        : Blocks.Defs[id] == null ? $"no block {id}"
                        : cur != old ? $"it was {Blocks.Get(cur).Name}, not {Blocks.Get(old).Name}"
-                       : !_cfg.Creative && Blocks.Get(cur).Hardness < 0 ? "unbreakable"
+                       : !_cfg.Creative && Blocks.Get(cur).Hardness < 0 && !(Blocks.Get(cur).Fluid != 0 && Blocks.Get(cur).Level == 0 && id == 0) ? "unbreakable"
                        : id != 0 && cur != 0 && !Blocks.Get(cur).Replaceable ? "something is in the way"
                        : null;
             if (why != null)
@@ -409,7 +415,8 @@ namespace Stratum.Server
             }
             World.SetRaw(x, y, z, id);
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
-            if (id == 0) World.Water.Wake(x, y, z);
+            World.Water.Wake(x, y, z);
+            if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
                 foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
         }
@@ -546,6 +553,18 @@ namespace Stratum.Server
             World.SetRaw(sx, sy, sz, Blocks.Satchel);
             Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
+        }
+
+        void SignText(Player p, Reader r)
+        {
+            int x = r.I32(), y = r.I32(), z = r.I32(); string text = Containers.CleanSign(r.Str());
+            if (++p.Edits > 40) return;
+            float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
+            if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
+            var d = Blocks.Get(World.Get(x, y, z));
+            if (d.BaseId != Blocks.Sign && d.BaseId != Blocks.WallSign) return;
+            _boxes.SetSign(x, y, z, text);
+            Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str(text));
         }
 
         static Stack[] Merge(Stack[] a, Stack[] b)

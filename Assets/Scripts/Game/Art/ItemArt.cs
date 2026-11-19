@@ -149,6 +149,48 @@ namespace Stratum.Game
             }
             switch (id)
             {
+                case "bucket": case "water_bucket": case "lava_bucket": case "milk_bucket":
+                {
+                    // A pail seen a little from above: tapered sides, a rim, the handle, and what's in it.
+                    var body = new[] { new Vector2(22, 70), new Vector2(74, 70), new Vector2(66, 16), new Vector2(30, 16) };
+                    c.Poly(body, (x, y) => { float k = Mathf.Abs(x - 48) / 26f; return Color.Lerp(Hex(0xb8bcc4), Hex(0x6e7280), k * 0.8f + (70 - y) / 200f); });
+                    for (int b = 0; b < 2; b++) c.Line(new Vector2(25 + b, 48 - b * 22), new Vector2(71 - b, 48 - b * 22), 3, (t, ss) => Hex(0x5a5e68));
+                    c.Line(new Vector2(20, 70), new Vector2(76, 70), 6, (t, ss) => Hex(0xd4d8de));
+                    Color fill = id == "water_bucket" ? Hex(0x3a6ad0) : id == "lava_bucket" ? Hex(0xff8a20) : id == "milk_bucket" ? Hex(0xf4f2ea) : Hex(0x2a2c32);
+                    var top = new[] { new Vector2(24, 72), new Vector2(72, 72), new Vector2(66, 78), new Vector2(30, 78) };
+                    c.Poly(top, (x, y) => id == "bucket" ? Hex(0x34363e) : Color.Lerp(fill, Color.white, Mathf.PerlinNoise(x * 0.2f, y * 0.3f) * 0.3f));
+                    for (int i = 0; i < 24; i++)
+                    {
+                        float a0 = i / 24f * Mathf.PI, a1 = (i + 1) / 24f * Mathf.PI;
+                        c.Line(new Vector2(48 - Mathf.Cos(a0) * 28, 72 + Mathf.Sin(a0) * 18), new Vector2(48 - Mathf.Cos(a1) * 28, 72 + Mathf.Sin(a1) * 18), 3, (t, ss) => Hex(0x8a8e98));
+                    }
+                    break;
+                }
+                case "oak_door":
+                {
+                    c.Poly(new[] { new Vector2(28, 6), new Vector2(68, 6), new Vector2(68, 90), new Vector2(28, 90) }, (x, y) =>
+                    {
+                        bool frame = x < 33 || x > 63 || y < 11 || y > 85 || y > 46 && y < 51;
+                        bool glass = y > 56 && y < 80 && x > 37 && x < 59 && Mathf.Abs(x - 48) > 1.5f && Mathf.Abs(y - 68) > 1.5f;
+                        if (glass) return new Color(0.75f, 0.86f, 0.92f, 0.85f);
+                        float g = Mathf.PerlinNoise(x * 0.5f, y * 0.06f);
+                        return frame ? Color.Lerp(Hex(0x5e4126), Hex(0x6e4c2c), g) : Color.Lerp(Hex(0x9a7244), Hex(0xb08a56), g) * ((x - 28) % 10 == 0 ? 0.7f : 1);
+                    });
+                    c.Disc(new Vector2(60, 46), 2.5f, (x, y) => Hex(0x3a3a40));
+                    break;
+                }
+                case "sign":
+                    c.Line(new Vector2(48, 6), new Vector2(48, 48), 8, (t, ss) => Color.Lerp(Hex(0x6e4c2c), Hex(0x8a6038), (ss + 1) / 2));
+                    c.Poly(new[] { new Vector2(12, 44), new Vector2(84, 44), new Vector2(84, 88), new Vector2(12, 88) }, (x, y) =>
+                    {
+                        bool edge = x < 16 || x > 80 || y < 48 || y > 84;
+                        float g = Mathf.PerlinNoise(x * 0.06f, y * 0.5f);
+                        Color col = edge ? Hex(0x7a5634) : Color.Lerp(Hex(0xa27a48), Hex(0xb88e58), g);
+                        // Lines of writing.
+                        if (!edge && (y == 74 || y == 64 || y == 54) && x > 22 && x < 74 && Mathf.PerlinNoise(x * 0.4f, y) > 0.3f) col = Hex(0x3a2614);
+                        return col;
+                    });
+                    break;
                 case "stick":
                     c.Line(new Vector2(22, 18), new Vector2(74, 78), 9, (t, s) => { var h = Handle(t, s); h.a = 1; return h; });
                     break;

@@ -19,6 +19,9 @@ namespace Stratum.Game
         public Vector3 Velocity;
         public bool OnGround { get; private set; }
         public bool InWater { get; private set; }
+        public bool InLava { get; private set; }
+        public bool OnLadder { get; private set; }
+        public float Burning;                                   // seconds left on fire
         public bool HeadInWater { get; private set; }
         public bool Sneaking { get; private set; }
         public bool Sprinting { get; private set; }
@@ -40,7 +43,8 @@ namespace Stratum.Game
         float _lastSpace = -1;
         float _stepDist;
         float _bob, _eye = Eye, _fov;
-        float _regen, _drown, _sinceHurt = 10, _starve;
+        float _regen, _drown, _sinceHurt = 10, _starve, _lavaHurt, _burnHurt;
+        bool _hitWall;
         Vector3 _lastFeet;
         bool _wasInWater;
 
@@ -108,8 +112,10 @@ namespace Stratum.Game
             Sneaking = wantSneak;
 
             int fx = Mathf.FloorToInt(Feet.x), fz = Mathf.FloorToInt(Feet.z);
-            InWater = World.Get(fx, Mathf.FloorToInt(Feet.y + 0.4f), fz) == Blocks.Water;
-            HeadInWater = World.Get(Mathf.FloorToInt(EyePos.x), Mathf.FloorToInt(EyePos.y), Mathf.FloorToInt(EyePos.z)) == Blocks.Water;
+            InWater = Blocks.IsWater(World.Get(fx, Mathf.FloorToInt(Feet.y + 0.4f), fz));
+            InLava = Blocks.IsLava(World.Get(fx, Mathf.FloorToInt(Feet.y + 0.4f), fz)) || Blocks.IsLava(World.Get(fx, Mathf.FloorToInt(Feet.y + 1.2f), fz));
+            HeadInWater = Blocks.IsWater(World.Get(Mathf.FloorToInt(EyePos.x), Mathf.FloorToInt(EyePos.y), Mathf.FloorToInt(EyePos.z)));
+            OnLadder = Blocks.Get(World.Get(fx, Mathf.FloorToInt(Feet.y + 0.1f), fz)).Climb || Blocks.Get(World.Get(fx, Mathf.FloorToInt(Feet.y + 1.0f), fz)).Climb;
             if (InWater && !_wasInWater && Velocity.y < -4) Sfx.I?.Play("splash", 0.7f);
             _wasInWater = InWater;
 
@@ -121,9 +127,9 @@ namespace Stratum.Game
                 Velocity = Vector3.Lerp(Velocity, target, 1 - Mathf.Exp(-dt * 10));
                 if (OnGround && down) Flying = false;
             }
-            else if (InWater)
+            else if (InWater || InLava)
             {
-                float sp = Walk * 0.55f;
+                float sp = Walk * (InLava ? 0.3f : 0.55f);
                 var target = wish * sp;
                 Velocity.x = Mathf.Lerp(Velocity.x, target.x, 1 - Mathf.Exp(-dt * 6));
                 Velocity.z = Mathf.Lerp(Velocity.z, target.z, 1 - Mathf.Exp(-dt * 6));
@@ -142,9 +148,18 @@ namespace Stratum.Game
                 Velocity.y -= Gravity * dt;
                 if (Velocity.y < -60) Velocity.y = -60;
                 if (jump && OnGround) { Velocity.y = JumpSpeed; Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
+                // Ladders: walk into them or jump to climb, sneak to hold on, otherwise slide down slowly.
+                if (OnLadder)
+                {
+                    _fallStart = Feet.y;
+                    if (jump || move.sqrMagnitude > 0.01f && _hitWall) Velocity.y = 2.6f;
+                    else if (Sneaking) Velocity.y = 0;
+                    else Velocity.y = Mathf.Max(Velocity.y, -2.6f);
+                }
             }
 
             bool wasGround = OnGround;
+            _hitWall = false;
             MoveAll(Velocity * dt);
             if (!wasGround && OnGround) Land();
             if (OnGround || Flying) _fallStart = Feet.y;
@@ -211,6 +226,16 @@ namespace Stratum.Game
             else Air = Mathf.Min(MaxAir, Air + dt * 4);
             if (Feet.y < -20) Damage(4);
 
+            // Lava burns hard and sets you alight; water puts the fire out.
+            if (InLava) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
+            else _lavaHurt = 0;
+            if (InWater) Burning = 0;
+            if (Burning > 0)
+            {
+                Burning -= dt;
+                if ((_burnHurt -= dt) <= 0) { _burnHurt = 1; Damage(1, false); }
+            }
+
             // Hunger: moving, swimming, fighting and healing all use it up; a full stomach heals, an empty one hurts.
             var moved = Feet - _lastFeet; moved.y = 0; _lastFeet = Feet;
             float dist = Mathf.Min(moved.magnitude, 2);
@@ -276,7 +301,7 @@ namespace Stratum.Game
         public void Respawn(Vector3 at)
         {
             Health = MaxHealth; Air = MaxAir; Velocity = Vector3.zero; Feet = at; _fallStart = at.y; Flying = false;
-            Food = 20; Saturation = 5; Exhaustion = 0; _lastFeet = at; Asleep = false;
+            Food = 20; Saturation = 5; Exhaustion = 0; _lastFeet = at; Asleep = false; Burning = 0;
         }
 
         // ------------------------------------------------------------------ collision
@@ -341,6 +366,7 @@ namespace Stratum.Game
                     }
                 }
                 if (axis == 1 && d < 0) OnGround = true;
+                if (axis != 1) _hitWall = true;
                 Velocity[axis] = 0;
             }
             Feet = next;

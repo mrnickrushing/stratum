@@ -322,6 +322,12 @@ namespace Stratum.Game
                 case Net.Msg.Refuse:
                     LeaveServer(r.Str());
                     break;
+                case Net.Msg.Sign:
+                {
+                    var at = new Vector3Int(r.I32(), r.I32(), r.I32());
+                    _link?.SignChanged?.Invoke(at, r.Str());
+                    break;
+                }
                 case Net.Msg.Mobs:
                     (_link as RemoteLink)?.Received(r);
                     break;

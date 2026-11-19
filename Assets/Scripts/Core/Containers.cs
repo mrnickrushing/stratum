@@ -9,9 +9,36 @@ namespace Stratum.Core
     public sealed class Containers
     {
         public const int ChestSlots = 27;
-        const int Version = 1;
+        public const int SignChars = 90;
+        const int Version = 2;
         readonly Dictionary<long, Stack[]> _boxes = new Dictionary<long, Stack[]>();
+        // What's written on each sign (kept in the same file).
+        public readonly Dictionary<long, string> Signs = new Dictionary<long, string>();
         public bool Dirty;
+
+        public static (int x, int y, int z) Unkey(long k)
+        {
+            int x = (int)(k >> 38), z = (int)((k >> 12) & 0x3FFFFFF), y = (int)(k & 0xFFF);
+            x = (x << 6) >> 6; z = (z << 6) >> 6;               // sign-extend the 26-bit fields
+            return (x, y, z);
+        }
+
+        public static string CleanSign(string t)
+        {
+            if (t == null) return "";
+            var lines = t.Replace("\r", "").Split('\n');
+            var keep = new List<string>();
+            for (int i = 0; i < lines.Length && i < 4; i++) keep.Add(lines[i].Length > 24 ? lines[i].Substring(0, 24) : lines[i]);
+            var s = string.Join("\n", keep);
+            return s.Length > SignChars ? s.Substring(0, SignChars) : s;
+        }
+
+        public void SetSign(int x, int y, int z, string text)
+        {
+            text = CleanSign(text);
+            if (text.Trim().Length == 0) Signs.Remove(Key(x, y, z)); else Signs[Key(x, y, z)] = text;
+            Dirty = true;
+        }
 
         public static long Key(int x, int y, int z) => ((long)(x & 0x3FFFFFF) << 38) | ((long)(z & 0x3FFFFFF) << 12) | (long)(y & 0xFFF);
 
@@ -67,8 +94,9 @@ namespace Stratum.Core
             _boxes.Clear();
             if (!File.Exists(file)) return;
             using var r = new BinaryReader(File.OpenRead(file));
+            Signs.Clear();
             int ver = r.ReadInt32();
-            if (ver != Version) throw new InvalidDataException("containers file version " + ver);
+            if (ver != 1 && ver != Version) throw new InvalidDataException("containers file version " + ver);
             int n = r.ReadInt32();
             for (int i = 0; i < n; i++)
             {
@@ -81,6 +109,11 @@ namespace Stratum.Core
                     if (item.Length > 0 && count > 0 && Items.Get(item) != null) a[j] = new Stack(item, count) { Wear = wear };
                 }
                 _boxes[k] = a;
+            }
+            if (ver >= 2)
+            {
+                int ns = r.ReadInt32();
+                for (int i = 0; i < ns; i++) { long k = r.ReadInt64(); Signs[k] = CleanSign(r.ReadString()); }
             }
         }
 
@@ -105,6 +138,8 @@ namespace Stratum.Core
                         w.Write((ushort)Math.Clamp(s.Wear, 0, 0xFFFF));
                     }
                 }
+                w.Write(Signs.Count);
+                foreach (var kv in Signs) { w.Write(kv.Key); w.Write(kv.Value); }
             }
             if (File.Exists(file)) File.Delete(file);
             File.Move(tmp, file);
@@ -127,7 +162,7 @@ namespace Stratum.Core
                                 int cx = x + dx, cy = y + dy * sy, cz = z + dz;
                                 if (cy < 1 || cy >= Chunk.Height - 1) continue;
                                 var here = Blocks.Get(get(cx, cy, cz));
-                                if (!(here.Id == 0 || here.Replaceable && here.Id != Blocks.Water)) continue;
+                                if (!(here.Id == 0 || here.Replaceable && here.Fluid == 0)) continue;
                                 if (!Blocks.Get(get(cx, cy - 1, cz)).Solid) continue;
                                 return (cx, cy, cz);
                             }

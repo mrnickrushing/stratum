@@ -103,6 +103,35 @@ namespace Stratum.Game
             return log.ToString();
         }
 
+        // A row of the building blocks in front of the player, a pool of water and one of lava left to flow.
+        public static string DevShowcase()
+        {
+            var g = I; var w = g._world; var f = g._player.Feet;
+            int x0 = Mathf.FloorToInt(f.x) - 6, y = Mathf.FloorToInt(f.y), z0 = Mathf.FloorToInt(f.z) + 5;
+            g._player.Yaw = 0; g._player.Pitch = 12;
+            for (int dz = -1; dz <= 8; dz++) for (int dx = -1; dx <= 14; dx++) { w.Set(x0 + dx, y - 1, z0 + dz, Blocks.Grass); for (int h = 0; h < 5; h++) w.Set(x0 + dx, y + h, z0 + dz, 0); }
+            void P(int dx, int dz, byte id, int h = 0) => w.Set(x0 + dx, y + h, z0 + dz, id);
+            P(0, 0, Blocks.Slabs[0]); P(1, 0, (byte)(Blocks.Slabs[3] + 1)); P(2, 0, Blocks.Slabs[5]);
+            P(3, 0, (byte)(Blocks.Stairs[0] + 2)); P(4, 0, (byte)(Blocks.Stairs[3] + 2)); P(5, 0, (byte)(Blocks.Stairs[4] + 2));
+            P(7, 0, (byte)(Blocks.OakDoor + 2 * 4)); P(7, 0, (byte)(Blocks.OakDoor + 2 * 4 + 1), 1);
+            P(8, 0, (byte)(Blocks.OakDoor + 2 * 4 + 2)); P(8, 0, (byte)(Blocks.OakDoor + 2 * 4 + 3), 1);
+            P(10, 0, (byte)(Blocks.Trapdoor + 4)); P(11, 0, (byte)(Blocks.Trapdoor + 5));
+            for (int i = 0; i < 4; i++) P(i, 3, Blocks.OakFence);
+            P(4, 3, (byte)(Blocks.FenceGate + 0)); P(5, 3, Blocks.OakFence); P(5, 4, Blocks.OakFence);
+            for (int i = 7; i < 10; i++) P(i, 3, Blocks.CobbleWall);
+            for (int i = 11; i < 14; i++) { P(i, 3, Blocks.GlassPane); P(i, 3, Blocks.IronBars, 1); }
+            P(13, 0, Blocks.Stone); P(13, 0, Blocks.Stone, 1); P(13, 0, Blocks.Stone, 2);
+            P(13, -1, (byte)(Blocks.Ladder + 0)); P(13, -1, (byte)(Blocks.Ladder + 0), 1); P(13, -1, (byte)(Blocks.Ladder + 0), 2);
+            P(6, 1, (byte)(Blocks.Sign + 2));
+            g._link.SetSign(new Vector3Int(x0 + 6, y, z0 + 1), "Welcome to\nStratum!");
+            // Water and lava on a raised shelf, to spill off.
+            for (int dx = 0; dx < 3; dx++) for (int dz = 6; dz < 8; dz++) P(dx, dz, Blocks.Cobble);
+            P(1, 7, Blocks.Water, 1);
+            for (int dx = 10; dx < 13; dx++) for (int dz = 6; dz < 8; dz++) P(dx, dz, Blocks.Cobble);
+            P(11, 7, Blocks.Lava, 1);
+            return $"built at {x0} {y} {z0}";
+        }
+
         public static string DevAfterSleep() => $"time {I._sky.Time01:0.00} day {I._sky.Day} asleep {I._player.Asleep} at {I._player.Feet}";
 
         // Fight: a cow in front, hit it with the sword until it dies.

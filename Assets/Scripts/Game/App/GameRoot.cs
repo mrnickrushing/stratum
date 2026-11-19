@@ -27,7 +27,7 @@ namespace Stratum.Game
         WorldMeta _meta;
         float _orbit, _autosave, _loadTime;
         Vector3 _titleFocus;
-        bool _hudHidden;
+        bool _hudHidden, _signWasOpen;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
@@ -333,6 +333,14 @@ namespace Stratum.Game
             TickSurvival(kb);
             if (_player.Asleep) return;
 
+            // Writing on a sign.
+            if (_hud.SignOpen)
+            {
+                _player.InputEnabled = false; _act.InputEnabled = false;
+                if (kb != null && kb.escapeKey.wasPressedThisFrame) { _hud.CloseSign(); SetCursor(true); }
+                return;
+            }
+            if (_signWasOpen) { _signWasOpen = false; SetCursor(true); }
             // Typing in chat: the keys are for the line, not for walking.
             if (_hud.ChatOpen)
             {

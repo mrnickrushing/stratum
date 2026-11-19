@@ -34,7 +34,7 @@ namespace Stratum.Game
             foreach (var (pid, off) in parts)
             {
                 var d = Blocks.Get(pid);
-                var boxes = d.Shape == Shape.Boxes && d.Boxes != null ? d.Boxes : new[] { new Core.Box(0, 0, 0, 1, 1, 1) };
+                var boxes = d.Shape == Shape.Boxes && d.Boxes != null ? (d.Connect != Connect.None ? Blocks.ConnectBoxes(d.Connect, 2 | 8) : d.Boxes) : new[] { new Core.Box(0, 0, 0, 1, 1, 1) };
                 foreach (var bx in boxes)
                     for (int f = 0; f < 6; f++)
                     {
@@ -84,8 +84,8 @@ namespace Stratum.Game
 
         public static bool IsFlat(byte id)
         {
-            var s = Blocks.Get(id).Shape;
-            return s == Shape.Cross || s == Shape.Torch;
+            var d = Blocks.Get(id);
+            return d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.FlatIcon;
         }
     }
 
@@ -140,6 +140,7 @@ namespace Stratum.Game
             foreach (var item in Items.Order)
             {
                 if (item.Block == 0) continue;
+                if (Blocks.Get(item.Block).FlatIcon) { _icons[item.Id] = item.Id == "ladder" ? Flat(Tex.Ladder) : ItemArt.Paint(item); continue; }
                 if (BlockMesh.IsFlat(item.Block)) { _icons[item.Id] = Flat(Blocks.Get(item.Block).Top); continue; }
                 mf.sharedMesh = BlockMesh.Cube(item.Block);
                 cam.Render();

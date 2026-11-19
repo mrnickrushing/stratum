@@ -57,7 +57,7 @@ namespace Stratum.Server
                 Meta.sx = s.x; Meta.sy = s.y; Meta.sz = s.z;
                 SaveMeta();
             }
-            Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); });
+            Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); }) { Loaded = IsLoaded };
 
             int n = Math.Clamp(Environment.ProcessorCount - 1, 1, 6);
             _workers = new Thread[n];

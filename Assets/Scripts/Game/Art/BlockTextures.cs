@@ -117,6 +117,11 @@ namespace Stratum.Game
                 case Tex.WoolBlue: Wool(p, Hex(0x34509e)); return 2f;
                 case Tex.Lava: Lava(p); return 1.5f;
                 case Tex.Obsidian: Obsidian(p); return 2.5f;
+                case Tex.DoorLower: Door(p, false); return 2.5f;
+                case Tex.DoorUpper: Door(p, true); return 2.5f;
+                case Tex.Trapdoor: Trapdoor(p); return 2.5f;
+                case Tex.Ladder: Ladder(p); return 2f;
+                case Tex.IronBars: Bars(p); return 2f;
             }
             Rock(p, Color.magenta, Color.black, 0, false);
             return 1;
@@ -497,6 +502,89 @@ namespace Stratum.Game
                 }
         }
 
+        // Vertical oak boards in a frame; the upper half has a four-pane window (see-through).
+        static void Door(Paint p, bool upper)
+        {
+            Color oak = Hex(0xa27a48), dark = Hex(0x5e4126);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    int board = x / 16;
+                    float grain = p.Streak(y + board * 17, x, 2, 12, 3);
+                    Color c = Paint.Mul(oak, (0.86f + p.Hash(board, 3) * 0.2f) * (0.85f + grain * 0.3f));
+                    float h = 0.5f + grain * 0.2f;
+                    if (x % 16 == 0) { c = Paint.Mul(oak, 0.5f); h = 0.05f; }
+                    bool frame = x < 5 || x > 58 || (upper ? y > 58 : y < 5) || (!upper && y > 59);
+                    if (frame) { c = Paint.Mul(dark, 0.9f + grain * 0.2f); h = 0.9f; }
+                    if (!upper)
+                    {
+                        // A diagonal brace and a crossbar.
+                        float diag = Mathf.Abs((x - 5) - (y - 5) * 54f / 50f);
+                        if (y > 5 && y < 56 && diag < 3.2f && !frame) { c = Paint.Mul(dark, 1.1f); h = 0.8f; }
+                        if (y >= 54 && y <= 58) { c = Paint.Mul(dark, 1.05f); h = 0.85f; }
+                        // The latch.
+                        if (x >= 50 && x <= 55 && y >= 58 && y <= 63) { c = Hex(0x3a3a40); h = 1; }
+                    }
+                    else
+                    {
+                        bool glass = x >= 10 && x <= 53 && y >= 10 && y <= 53;
+                        bool bar = Mathf.Abs(x - 31.5f) < 2.5f || Mathf.Abs(y - 31.5f) < 2.5f;
+                        if (glass && !bar) { c = new Color(0.75f, 0.85f, 0.9f, 0); h = 0; }
+                        else if (glass && bar) { c = Paint.Mul(dark, 1.1f); h = 0.8f; }
+                        if (y >= 5 && y <= 9 && x > 5 && x < 58) { c = Paint.Mul(dark, 1.05f); h = 0.85f; }
+                    }
+                    c.a = c.a == 0 ? 0 : 1;
+                    p.Set(x, y, c, h);
+                }
+        }
+
+        static void Trapdoor(Paint p)
+        {
+            Color oak = Hex(0x9a7244), dark = Hex(0x5a3e24);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float grain = p.Streak(x, y, 2, 12, 3);
+                    Color c = Paint.Mul(oak, 0.85f + grain * 0.3f); float h = 0.5f;
+                    bool frame = x < 6 || y < 6 || x > 57 || y > 57 || Mathf.Abs(x - 31.5f) < 3 || Mathf.Abs(y - 31.5f) < 3;
+                    if (frame) { c = Paint.Mul(dark, 0.9f + grain * 0.25f); h = 0.9f; }
+                    else if ((x % 26 > 8 && x % 26 < 22) && (y % 26 > 8 && y % 26 < 22)) { c = new Color(0, 0, 0, 0); h = 0; }
+                    p.Set(x, y, c, h);
+                }
+        }
+
+        static void Ladder(Paint p)
+        {
+            Color wood = Hex(0x9c7446);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool rail = x >= 6 && x <= 13 || x >= 50 && x <= 57;
+                    bool rung = y % 16 >= 5 && y % 16 <= 9 && x > 8 && x < 55;
+                    if (!rail && !rung) { p.Set(x, y, new Color(0, 0, 0, 0), 0); continue; }
+                    float grain = rail ? p.Streak(y, x, 2, 12, 3) : p.Streak(x, y, 2, 12, 3);
+                    float edge = rail ? Mathf.Min(x - (x < 32 ? 6 : 50), (x < 32 ? 13 : 57) - x) : Mathf.Min(y % 16 - 5, 9 - y % 16);
+                    Color c = Paint.Mul(wood, (0.75f + grain * 0.3f) * (edge < 1 ? 0.7f : 1)); c.a = 1;
+                    p.Set(x, y, c, rail ? 0.9f : 0.7f);
+                }
+        }
+
+        static void Bars(Paint p)
+        {
+            Color iron = Hex(0x8a8e96);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    int bx = x % 16;
+                    bool bar = bx >= 6 && bx <= 10;
+                    bool band = y >= 2 && y <= 6 || y >= 57 && y <= 61;
+                    if (!bar && !band) { p.Set(x, y, new Color(0, 0, 0, 0), 0); continue; }
+                    float round = bar ? 1 - Mathf.Abs(bx - 8) / 3f : 1 - Mathf.Abs((y < 32 ? 4 : 59) - y) / 3f;
+                    Color c = Paint.Mul(iron, 0.6f + round * 0.55f + p.Fbm(x, y, 8, 2) * 0.1f); c.a = 1;
+                    p.Set(x, y, c, 0.5f + round * 0.5f);
+                }
+        }
+
         static void Frame(Paint p, Color col, int w)
         {
             for (int y = 0; y < 64; y++)
@@ -855,9 +943,9 @@ namespace Stratum.Game
                     float n = p.Fbm(x, y, 4, 4);
                     p.Cells(x, y, 5, out float f1, out float f2, out _);
                     float vein = Mathf.Clamp01(1 - (f2 - f1) / 6f);
-                    float heat = Mathf.Clamp01(n * 0.9f + vein * 0.7f - 0.15f);
-                    var c = heat < 0.35f ? Color.Lerp(Hex(0x3a1206), Hex(0x8a2a08), heat / 0.35f)
-                                         : Color.Lerp(Hex(0xd84a0c), Hex(0xffd860), (heat - 0.35f) / 0.65f);
+                    float heat = Mathf.Pow(Mathf.Clamp01(n * 0.9f + vein * 0.7f - 0.15f), 1.5f);
+                    var c = heat < 0.35f ? Color.Lerp(Hex(0x5a1404), Hex(0xa8320a), heat / 0.35f)
+                                         : Color.Lerp(Hex(0xd8500e), Hex(0xffb83a), (heat - 0.35f) / 0.65f);
                     c.a = 1;
                     p.Set(x, y, c, 1 - heat);
                 }

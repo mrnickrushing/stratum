@@ -72,7 +72,7 @@ namespace Stratum.Game
             w.BlockMaterial = block; w.WaterMaterial = water;
             w.ViewDistance = viewDistance;
             if (saveDir != null) Directory.CreateDirectory(Path.Combine(saveDir, "chunks"));
-            w._waterSim = new Water(w.Get, w.SetWater);
+            w._waterSim = new Water(w.Get, w.SetWater) { Loaded = w.IsReady };
             w.StartWorkers();
             return w;
         }
@@ -412,7 +412,7 @@ namespace Stratum.Game
                 }
             Changed?.Invoke(x, y, z, old, id);
             if (!_fromServer) Edited?.Invoke(x, y, z, old, id);
-            if (id == 0 && !Remote) _waterSim.Wake(x, y, z);
+            if (!Remote) _waterSim.Wake(x, y, z);
             return true;
         }
 

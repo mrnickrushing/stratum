@@ -20,6 +20,8 @@ namespace Stratum.Game
         public abstract void CloseBox();
         public abstract void Sleep(bool on);
         public abstract void Drop(Vector3 at, Stack[] stacks);   // into a satchel on the ground
+        public abstract void SetSign(Vector3Int at, string text);
+        public Action<Vector3Int, string> SignChanged;
         public virtual void Tick(float dt) { }
         public virtual void Save() { }
         public virtual int Difficulty => 2;
@@ -62,6 +64,7 @@ namespace Stratum.Game
             // Breaking a chest or opening a satchel hands over what was in it.
             world.Changed += (x, y, z, old, id) =>
             {
+                if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
                 foreach (var s in Boxes.Remove(x, y, z)) if (!s.Empty) Gave?.Invoke(s.Item, s.Count, s.Wear);
             };
@@ -121,6 +124,18 @@ namespace Stratum.Game
             foreach (var s in stacks) if (!s.Empty) all.Add(s);
             Boxes.Put(x, y, z, all.ToArray());
             _world.Set(x, y, z, Blocks.Satchel);
+        }
+
+        public override void SetSign(Vector3Int at, string text)
+        {
+            Boxes.SetSign(at.x, at.y, at.z, text);
+            SignChanged?.Invoke(at, Containers.CleanSign(text));
+        }
+
+        // Tell the sign drawer about every sign in the world (once, on loading).
+        public void ShowSigns()
+        {
+            foreach (var kv in Boxes.Signs) { var (x, y, z) = Containers.Unkey(kv.Key); SignChanged?.Invoke(new Vector3Int(x, y, z), kv.Value); }
         }
 
         public override void Save()

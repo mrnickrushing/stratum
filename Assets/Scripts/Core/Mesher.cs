@@ -237,7 +237,7 @@ namespace Stratum.Core
                         switch ((Shape)ShapeOf[id])
                         {
                             case Shape.Cube: Cube(c, id, x, y, z, rx, rz); break;
-                            case Shape.Liquid: if (id == Blocks.Water) Water(id, x, y, z, rx, rz); else Lava(id, x, y, z, rx, rz); break;
+                            case Shape.Liquid: if (Blocks.Defs[id].Fluid == 1) Water(id, x, y, z, rx, rz); else Lava(id, x, y, z, rx, rz); break;
                             case Shape.Boxes: Boxes(c, id, x, y, z, rx, rz); break;
                             case Shape.Cross: Cross(c, id, x, y, z, rx, rz); break;
                             case Shape.Torch: Torch(id, x, y, z, rx, rz); break;
@@ -324,30 +324,80 @@ namespace Stratum.Core
             }
         }
 
-        void Water(byte id, int x, int y, int z, int rx, int rz)
+        // How high a fluid stands in its cell: full under more of itself, a source a little under the top, and
+        // lower the further a flow is from its source. -1 if the cell holds a different fluid or none.
+        float FluidH(int fluid, int rx, int y, int rz)
         {
-            bool covered = B(rx, y + 1, rz) == id;
-            float topH = covered ? 1f : 0.875f;
+            var d = Blocks.Defs[B(rx, y, rz)];
+            if (d == null || d.Fluid != fluid) return -1;
+            var above = Blocks.Defs[B(rx, y + 1, rz)];
+            if (above != null && above.Fluid == fluid) return 1;
+            int reach = fluid == 1 ? Blocks.WaterReach : Blocks.LavaReach;
+            return 0.875f * (reach + 1 - d.Level) / (reach + 1);
+        }
+
+        // The surface at a corner: the mean of the cells that share it, so flows slope smoothly.
+        float CornerH(int fluid, int rx, int y, int rz, int cx, int cz)
+        {
+            float sum = 0; int n = 0;
+            for (int dz = cz - 1; dz <= cz; dz++)
+                for (int dx = cx - 1; dx <= cx; dx++)
+                {
+                    float h = FluidH(fluid, rx + dx, y, rz + dz);
+                    if (h >= 1) return 1;
+                    if (h >= 0) { sum += h; n++; }
+                }
+            return n > 0 ? sum / n : 0.875f;
+        }
+
+        void Water(byte id, int x, int y, int z, int rx, int rz) => Liquid(id, 1, x, y, z, rx, rz);
+        void Lava(byte id, int x, int y, int z, int rx, int rz) => Liquid(id, 2, x, y, z, rx, rz);
+
+        // Water goes in the see-through pass; lava is opaque, glowing and drawn with the solid blocks.
+        void Liquid(byte id, int fluid, int x, int y, int z, int rx, int rz)
+        {
+            bool lava = fluid == 2;
+            Span<float> corner = stackalloc float[4];
+            corner[0] = CornerH(fluid, rx, y, rz, 0, 0); corner[1] = CornerH(fluid, rx, y, rz, 1, 0);
+            corner[2] = CornerH(fluid, rx, y, rz, 1, 1); corner[3] = CornerH(fluid, rx, y, rz, 0, 1);
+            bool covered = FluidH(fluid, rx, y, rz) >= 1;
+            uint tint = lava ? 0xFFFFFF | ((uint)Flag.Glow << 24) : 0xFFFFFF;
             for (int f = 0; f < 6; f++)
             {
                 int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
                 if (ny < 0) continue;
                 byte nb = B(nx, ny, nz);
-                if (nb == id || Opaque[nb]) continue;
-                if (nb == Blocks.Ice && f == 2) continue;
+                var nd = Blocks.Defs[nb];
+                if (nd != null && nd.Fluid == fluid) continue;
+                if (Opaque[nb]) continue;
+                if (f == 2 && covered) continue;
+                if (!lava && nb == Blocks.Ice && f == 2) continue;
                 Grow();
-                int sk = SkyAt(nx, ny, nz), lt = LitAt(nx, ny, nz);
-                if (f == 2 && !covered) { sk = SkyAt(rx, y + 1, rz); lt = LitAt(rx, y + 1, rz); }
-                uint light = Pack(sk, lt, 3);
+                uint light;
+                if (lava) light = Pack(15, 15, 3);
+                else
+                {
+                    int sk = SkyAt(nx, ny, nz), lt = LitAt(nx, ny, nz);
+                    if (f == 2) { sk = SkyAt(rx, y + 1, rz); lt = LitAt(rx, y + 1, rz); }
+                    light = Pack(sk, lt, 3);
+                }
                 int baseV = _vn;
                 for (int k = 0; k < 4; k++)
                 {
+                    int cx = C[f, k, 0], cz = C[f, k, 2];
+                    float h = C[f, k, 1] == 1 ? corner[cx == 0 ? (cz == 0 ? 0 : 3) : (cz == 0 ? 1 : 2)] : 0;
                     ref var v = ref _v[_vn++];
-                    v.X = x + C[f, k, 0]; v.Y = y + (C[f, k, 1] == 1 ? topH : 0); v.Z = z + C[f, k, 2];
+                    v.X = x + cx; v.Y = y + h; v.Z = z + cz;
                     v.NX = N[f, 0]; v.NY = N[f, 1]; v.NZ = N[f, 2];
                     v.Light = light;
-                    v.U = f == 3 ? UVBottom[k, 0] : UV[k, 0]; v.V = f == 3 ? UVBottom[k, 1] : UV[k, 1];
-                    v.Layer = (float)Tex.Water; v.Tint = 0xFFFFFF;
+                    v.U = f == 3 ? UVBottom[k, 0] : UV[k, 0]; v.V = f == 3 ? UVBottom[k, 1] : (f == 2 ? UV[k, 1] : UV[k, 1] * Math.Max(h, 0.05f));
+                    v.Layer = lava ? (float)Tex.Lava : (float)Tex.Water; v.Tint = tint;
+                }
+                if (lava)
+                {
+                    _is[_isn++] = baseV; _is[_isn++] = baseV + 1; _is[_isn++] = baseV + 2;
+                    _is[_isn++] = baseV; _is[_isn++] = baseV + 2; _is[_isn++] = baseV + 3;
+                    continue;
                 }
                 _iw[_iwn++] = baseV; _iw[_iwn++] = baseV + 1; _iw[_iwn++] = baseV + 2;
                 _iw[_iwn++] = baseV; _iw[_iwn++] = baseV + 2; _iw[_iwn++] = baseV + 3;
@@ -360,35 +410,6 @@ namespace Stratum.Core
             }
         }
 
-        // Lava: drawn like water's shape but opaque and glowing, with the solid blocks.
-        void Lava(byte id, int x, int y, int z, int rx, int rz)
-        {
-            bool covered = B(rx, y + 1, rz) == id;
-            float topH = covered ? 1f : 0.875f;
-            uint tint = 0xFFFFFF | ((uint)Flag.Glow << 24);
-            for (int f = 0; f < 6; f++)
-            {
-                int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
-                if (ny < 0) continue;
-                byte nb = B(nx, ny, nz);
-                if (nb == id || Opaque[nb]) continue;
-                Grow();
-                uint light = Pack(15, 15, 3);
-                int baseV = _vn;
-                for (int k = 0; k < 4; k++)
-                {
-                    ref var v = ref _v[_vn++];
-                    v.X = x + C[f, k, 0]; v.Y = y + (C[f, k, 1] == 1 ? topH : 0); v.Z = z + C[f, k, 2];
-                    v.NX = N[f, 0]; v.NY = N[f, 1]; v.NZ = N[f, 2];
-                    v.Light = light;
-                    v.U = f == 3 ? UVBottom[k, 0] : UV[k, 0]; v.V = f == 3 ? UVBottom[k, 1] : UV[k, 1];
-                    v.Layer = (float)Tex.Lava; v.Tint = tint;
-                }
-                _is[_isn++] = baseV; _is[_isn++] = baseV + 1; _is[_isn++] = baseV + 2;
-                _is[_isn++] = baseV; _is[_isn++] = baseV + 2; _is[_isn++] = baseV + 3;
-            }
-        }
-
         // Blocks made of a few boxes (chests, beds, slabs, doors...). Each box face takes the part of the block's
         // texture it covers, so the pixels line up with whole blocks beside it. A face on the cell's edge is
         // hidden by an opaque neighbour and lit by the light there; inner faces take the cell's own light.
@@ -396,7 +417,8 @@ namespace Stratum.Core
         {
             var d = Blocks.Defs[id];
             if (d.Boxes == null) return;
-            int turns = d.Facing;
+            var shape = d.Connect == Connect.None ? d.Boxes : Blocks.ConnectBoxes(d.Connect, JoinMask(d, rx, y, rz));
+            int turns = d.Connect == Connect.None ? d.Facing : 0;
             int ownSky = SkyAt(rx, y, rz), ownLit = LitAt(rx, y, rz);
             // A non-opaque block's own cell is lit like the air around it (it may have been dimmed by itself).
             for (int f = 0; f < 6; f++)
@@ -404,7 +426,7 @@ namespace Stratum.Core
                 int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
                 ownSky = Math.Max(ownSky, SkyAt(nx, ny, nz) - 1); ownLit = Math.Max(ownLit, LitAt(nx, ny, nz) - 1);
             }
-            foreach (var b in d.Boxes)
+            foreach (var b in shape)
             {
                 for (int f = 0; f < 6; f++)
                 {
@@ -453,6 +475,16 @@ namespace Stratum.Core
                     _is[_isn++] = baseV; _is[_isn++] = baseV + 2; _is[_isn++] = baseV + 3;
                 }
             }
+        }
+
+        int JoinMask(BlockDef d, int rx, int y, int rz)
+        {
+            int m = 0;
+            if (Blocks.Joins(d, B(rx, y, rz + 1))) m |= 1;
+            if (Blocks.Joins(d, B(rx + 1, y, rz))) m |= 2;
+            if (Blocks.Joins(d, B(rx, y, rz - 1))) m |= 4;
+            if (Blocks.Joins(d, B(rx - 1, y, rz))) m |= 8;
+            return m;
         }
 
         void Cross(Chunk c, byte id, int x, int y, int z, int rx, int rz)

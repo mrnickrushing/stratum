@@ -406,7 +406,7 @@ namespace Stratum.Core
             for (int dy = 0; dy <= 3; dy++)
             {
                 byte b = _get(x, y - 1 - dy, z);
-                if (b == Blocks.Water || b == Blocks.Lava) return m.Kind == MobKind.Chicken && b == Blocks.Water;
+                if (Blocks.IsFluid(b)) return m.Kind == MobKind.Chicken && Blocks.IsWater(b);
                 if (Blocks.Get(b).Solid) return true;
             }
             return false;
@@ -433,8 +433,8 @@ namespace Stratum.Core
             var d = m.Def;
             int cx = (int)Math.Floor(m.X), cz = (int)Math.Floor(m.Z);
             byte at = _get(cx, (int)Math.Floor(m.Y + 0.3f), cz);
-            m.InWater = at == Blocks.Water;
-            m.InLava = at == Blocks.Lava;
+            m.InWater = Blocks.IsWater(at);
+            m.InLava = Blocks.IsLava(at);
             float g = m.InWater || m.InLava ? 8 : d.Floats && m.VY < 0 ? 12 : 26;
             m.VY -= g * dt;
             if (m.InWater || m.InLava) { m.VY = Math.Max(m.VY, -2.5f); m.VX *= 1 - dt * 2; m.VZ *= 1 - dt * 2; }
@@ -560,7 +560,7 @@ namespace Stratum.Core
                 byte b = _get(x, y, z);
                 if (!Blocks.Get(b).Solid) continue;
                 byte a1 = _get(x, y + 1, z), a2 = _get(x, y + 2, z);
-                if (Blocks.Get(a1).Solid || Blocks.Get(a2).Solid || a1 == Blocks.Water || a1 == Blocks.Lava) continue;
+                if (Blocks.Get(a1).Solid || Blocks.Get(a2).Solid || Blocks.IsFluid(a1)) continue;
                 floor = b;
                 return y + 1;
             }

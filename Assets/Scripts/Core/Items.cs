@@ -20,6 +20,7 @@ namespace Stratum.Core
         public int ArmourSlot = -1;  // 0 head, 1 body, 2 legs, 3 feet
         public int Armour;           // protection points (20 in all stops 80% of a hit)
         public bool Ranged;          // the bow
+        public bool Drink;           // milk: drunk whatever your hunger, gives the bucket back
     }
 
     public struct Stack
@@ -97,6 +98,10 @@ namespace Stratum.Core
             Food("roast_chicken", "Roast Chicken", 6, 7.2f);
             Food("berries", "Wild Berries", 2, 0.4f);
 
+            Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
+            Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
+            Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
+            Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1 });
             Add(new ItemDef { Id = "hide", Name = "Hide" });
             Add(new ItemDef { Id = "feather", Name = "Feather" });
             Add(new ItemDef { Id = "bone", Name = "Bone" });
@@ -145,6 +150,21 @@ namespace Stratum.Core
             R("chest", 1, "workbench", ("@planks", 8));
             R("bed", 1, "workbench", ("white_wool", 3), ("@planks", 3));
             R("white_wool", 1, null, ("thread", 4));
+            // Building.
+            foreach (var m in new[] { ("oak", "oak_planks"), ("birch", "birch_planks"), ("pine", "pine_planks"), ("cobble", "cobble"), ("stone", "stone"), ("stone_brick", "stone_bricks") })
+                R(m.Item1 + "_slab", 6, "workbench", (m.Item2, 3));
+            foreach (var m in new[] { ("oak", "oak_planks"), ("birch", "birch_planks"), ("pine", "pine_planks"), ("cobble", "cobble"), ("stone_brick", "stone_bricks") })
+                R(m.Item1 + "_stairs", 4, "workbench", (m.Item2, 6));
+            R("oak_door", 3, "workbench", ("@planks", 6));
+            R("trapdoor", 2, "workbench", ("@planks", 6));
+            R("ladder", 3, "workbench", ("stick", 7));
+            R("oak_fence", 3, "workbench", ("@planks", 4), ("stick", 2));
+            R("oak_fence_gate", 1, "workbench", ("stick", 4), ("@planks", 2));
+            R("cobble_wall", 6, "workbench", ("cobble", 6));
+            R("glass_pane", 16, "workbench", ("glass", 6));
+            R("iron_bars", 16, "workbench", ("iron_ingot", 6));
+            R("sign", 3, "workbench", ("@planks", 6), ("stick", 1));
+            R("bucket", 1, "workbench", ("iron_ingot", 3));
             R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
             R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));
             R("blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1));

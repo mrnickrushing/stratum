@@ -12,6 +12,7 @@ namespace Stratum.Game
     {
         Link _link;
         Creatures _creatures;
+        SignView _signs;
         int _difficulty = 2;
         bool _hasBed; Vector3Int _bed;
         float _sleptFor;
@@ -24,6 +25,16 @@ namespace Stratum.Game
             _player.Difficulty = _difficulty;
             _player.Toast = s => _hud?.Toast(s);
             _creatures = Creatures.Create(_world, _cam.transform);
+            _signs = SignView.Create(_world);
+            link.SignChanged = (at, text) => _signs.Set(at, text);
+            _act.EditSign = at =>
+            {
+                _hud.EditSign(at, _signs.TextAt(at), text => link.SetSign(at, text));
+                _signWasOpen = true;
+                _player.InputEnabled = false; _act.InputEnabled = false;
+                SetCursor(false);
+            };
+            if (link is LocalLink ll) ll.ShowSigns();
             _act.Link = link; _act.Creatures = _creatures;
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
@@ -56,6 +67,8 @@ namespace Stratum.Game
         void TeardownSurvival()
         {
             if (_creatures != null) Destroy(_creatures.gameObject);
+            if (_signs != null) Destroy(_signs.gameObject);
+            _signs = null;
             _creatures = null; _link = null;
         }
 
@@ -287,6 +300,7 @@ namespace Stratum.Game
         public override void CloseBox() => Send(new Packet(Net.Msg.CloseBox));
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
         public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));
+        public override void SetSign(Vector3Int at, string text) => Send(new Packet(Net.Msg.SignText).I32(at.x).I32(at.y).I32(at.z).Str(Containers.CleanSign(text)));
 
         // The creatures near us, as the server last saw them.
         public void Received(Reader r)

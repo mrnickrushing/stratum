@@ -74,6 +74,8 @@ namespace Stratum.Game
             _clips["chest_open"] = Creak(0.45f, true);
             _clips["chest_close"] = Creak(0.3f, false);
             _clips["sizzle"] = Hiss(0.9f);
+            _clips["door_open"] = Creak(0.35f, true);
+            _clips["door_close"] = Thud(0.18f, 180, 0.9f);
             // A small set of calls, reused (a new clip every chirp would pile up in memory).
             _birds = new AudioClip[8]; for (int i = 0; i < _birds.Length; i++) _birds[i] = Bird();
             _crickets = new AudioClip[3]; for (int i = 0; i < _crickets.Length; i++) _crickets[i] = Cricket();
