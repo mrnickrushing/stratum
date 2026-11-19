@@ -140,6 +140,12 @@ namespace Stratum.Game
                     var head = new[] { new Vector2(56, 70), new Vector2(52, 86), new Vector2(66, 92), new Vector2(84, 84), new Vector2(88, 66), new Vector2(78, 58), new Vector2(68, 60) };
                     c.Poly(head, (x, y) => Mat(id, Mathf.Clamp01((y - 58) / 34f * 0.6f + (x - 52) / 36f * 0.5f)));
                 }
+                else if (item.Tool == Tool.Hoe)
+                {
+                    // A flat blade turned down at the end of the handle.
+                    var head = new[] { new Vector2(60, 72), new Vector2(64, 86), new Vector2(84, 88), new Vector2(88, 80), new Vector2(84, 62), new Vector2(76, 62), new Vector2(76, 76), new Vector2(68, 74) };
+                    c.Poly(head, (x, y) => Mat(id, Mathf.Clamp01((y - 62) / 30f * 0.5f + (x - 60) / 30f * 0.5f)));
+                }
                 else
                 {
                     var blade = new[] { new Vector2(64, 62), new Vector2(60, 76), new Vector2(66, 88), new Vector2(78, 90), new Vector2(88, 82), new Vector2(86, 70), new Vector2(76, 64) };
@@ -190,6 +196,41 @@ namespace Stratum.Game
                         if (!edge && (y == 74 || y == 64 || y == 54) && x > 22 && x < 74 && Mathf.PerlinNoise(x * 0.4f, y) > 0.3f) col = Hex(0x3a2614);
                         return col;
                     });
+                    break;
+                case "seeds":
+                    for (int i = 0; i < 9; i++)
+                    {
+                        var at = new Vector2(30 + (i % 3) * 16 + (i / 3 % 2) * 6, 28 + (i / 3) * 16);
+                        c.Disc(at, 5.5f, (x, y) => Color.Lerp(Hex(0x4e7a2a), Hex(0xa8c060), Mathf.Clamp01((y - at.y + 5) / 10f)), 7.5f);
+                    }
+                    break;
+                case "wheat":
+                    for (int k = -1; k <= 1; k++)
+                    {
+                        var foot = new Vector2(48 + k * 4, 8); var head = new Vector2(48 + k * 18, 70);
+                        c.Line(foot, head, 3, (t, ss) => Hex(0xc8a848));
+                        for (int g = 0; g < 7; g++)
+                        {
+                            var at = Vector2.Lerp(head, head + (head - foot).normalized * 22, g / 6f);
+                            c.Disc(at + new Vector2(g % 2 == 0 ? -3 : 3, 0), 4f, (x, y) => Color.Lerp(Hex(0xb08a2e), Hex(0xf0d27a), Mathf.Clamp01((y - at.y + 4) / 8f)), 5.5f);
+                        }
+                    }
+                    break;
+                case "bone_meal":
+                    c.Disc(new Vector2(48, 40), 30, (x, y) => Color.Lerp(Hex(0xc8c4b4), Hex(0xfaf8f0), Mathf.PerlinNoise(x * 0.3f, y * 0.3f) * 0.6f + (y - 10) / 120f), 20);
+                    break;
+                case "paper":
+                    c.Poly(new[] { new Vector2(22, 12), new Vector2(70, 12), new Vector2(78, 84), new Vector2(28, 86) }, (x, y) =>
+                        (y % 12 == 0 && x > 30 && x < 70) ? Hex(0xb8c4d0) : Color.Lerp(Hex(0xe8e4d8), Hex(0xfbfaf4), Mathf.PerlinNoise(x * 0.1f, y * 0.1f)));
+                    break;
+                case "book":
+                    c.Poly(new[] { new Vector2(20, 14), new Vector2(70, 10), new Vector2(76, 82), new Vector2(26, 86) }, (x, y) =>
+                    {
+                        if (x > 66) return Hex(0xf0ead8);
+                        bool spine = x < 30;
+                        return Color.Lerp(spine ? Hex(0x5a2a18) : Hex(0x7a3820), Hex(0x9a5030), Mathf.PerlinNoise(x * 0.2f, y * 0.2f) * 0.5f);
+                    });
+                    c.Line(new Vector2(36, 60), new Vector2(60, 58), 3, (t, ss) => Hex(0xd0a040));
                     break;
                 case "stick":
                     c.Line(new Vector2(22, 18), new Vector2(74, 78), 9, (t, s) => { var h = Handle(t, s); h.a = 1; return h; });

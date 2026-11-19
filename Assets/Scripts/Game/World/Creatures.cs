@@ -8,7 +8,7 @@ namespace Stratum.Game
     // A creature as the game draws it: from the local simulation (single player) or the server's updates.
     public struct MobState
     {
-        public int Id; public MobKind Kind; public Vector3 Pos; public float Yaw, Pitch; public byte Flags; public float Health;
+        public int Id; public MobKind Kind; public Vector3 Pos; public float Yaw, Pitch; public byte Flags; public float Health; public byte More;
     }
 
     // Draws every creature as a blocky model built from boxes (no art files), lit by the world's own light where it
@@ -200,6 +200,16 @@ namespace Stratum.Game
             }
             if (s.Kind == MobKind.EmberImp) m.Body.localPosition = new Vector3(0, m.Body.localPosition.y, 0) + Vector3.up * (Mathf.Sin(Time.time * 3 + s.Id) * 0.06f);
             if (m.Wool != null) { bool shorn = (s.Flags & Mob.FSheared) != 0; m.Wool.SetActive(!shorn); m.Shorn.SetActive(shorn); }
+
+            // Young ones are small; ones looking for a mate give off little pink sparks.
+            float scale = (s.More & Mob.MBaby) != 0 ? 0.55f : 1;
+            if (Mathf.Abs(m.Root.localScale.x - scale) > 0.001f) m.Root.localScale = Vector3.one * scale;
+            if ((s.More & Mob.MLove) != 0 && Random.value < dt * 4)
+            {
+                var ep = new ParticleSystem.EmitParams { position = v.Pos + new Vector3(Random.Range(-0.3f, 0.3f), def.Height + 0.2f, Random.Range(-0.3f, 0.3f)),
+                    startColor = new Color(1f, 0.35f, 0.55f), startSize = 0.16f, startLifetime = 1.1f, velocity = new Vector3(0, 0.6f, 0) };
+                _fire.Emit(ep, 1);
+            }
 
             v.Hurt = Mathf.Max(0, v.Hurt - dt);
             bool burning = (s.Flags & Mob.FBurning) != 0;

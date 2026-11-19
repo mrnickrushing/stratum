@@ -473,6 +473,15 @@ namespace Stratum.Core
                     }
                     else if (ground == Blocks.SnowyGrass && r < 0.04f) plant = Blocks.Fern;
                     else if (ground == Blocks.Sand && biome == Biome.Desert && r < 0.012f) plant = Blocks.DeadBush;
+                    // Sugar cane by the water's edge.
+                    if ((ground == Blocks.Grass || ground == Blocks.Sand) && h == Chunk.SeaLevel && x > 0 && x < 15 && z > 0 && z < 15
+                        && Noise.Hash01(bx + x, 17, bz + z, Seed) < 0.1f
+                        && (ch.Get(x + 1, h, z) == Blocks.Water || ch.Get(x - 1, h, z) == Blocks.Water || ch.Get(x, h, z + 1) == Blocks.Water || ch.Get(x, h, z - 1) == Blocks.Water))
+                    {
+                        int tall = 1 + (int)(Noise.Hash01(bx + x, 19, bz + z, Seed) * 3);
+                        for (int i = 1; i <= tall && h + i < Chunk.Height; i++) ch.Set(x, h + i, z, Blocks.SugarCane);
+                        continue;
+                    }
                     if (plant != 0) ch.Set(x, h + 1, z, plant);
                 }
         }

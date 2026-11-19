@@ -132,6 +132,35 @@ namespace Stratum.Game
             return $"built at {x0} {y} {z0}";
         }
 
+        // A little farm: water channel, farmland with every wheat stage, saplings, cane, hay; two cows fed wheat.
+        public static string DevFarm()
+        {
+            var g = I; var w = g._world; var f = g._player.Feet;
+            int x0 = Mathf.FloorToInt(f.x) - 5, y = Mathf.FloorToInt(f.y), z0 = Mathf.FloorToInt(f.z) + 4;
+            g._player.Yaw = 0; g._player.Pitch = 25;
+            for (int dz = -1; dz <= 9; dz++) for (int dx = -2; dx <= 12; dx++) { w.Set(x0 + dx, y - 1, z0 + dz, Blocks.Grass); w.Set(x0 + dx, y - 2, z0 + dz, Blocks.Dirt); for (int h = 0; h < 8; h++) w.Set(x0 + dx, y + h, z0 + dz, 0); }
+            for (int dx = 0; dx < 9; dx++)
+            {
+                w.Set(x0 + dx, y - 1, z0 + 2, Blocks.Water);
+                for (int r = 0; r < 2; r++)
+                {
+                    w.Set(x0 + dx, y - 1, z0 + r * 3 + 1 - (r == 0 ? 0 : 0), Blocks.FarmlandWet);
+                    w.Set(x0 + dx, y, z0 + r * 3 + 1, (byte)(Blocks.Wheat + Mathf.Min(3, dx / 2)));
+                }
+            }
+            w.Set(x0 + 10, y, z0 + 1, Blocks.SaplingOak); w.Set(x0 + 11, y, z0 + 3, Blocks.SaplingBirch); w.Set(x0 + 10, y, z0 + 5, Blocks.SaplingPine);
+            w.Set(x0 + 9, y - 1, z0 + 2, Blocks.Sand);
+            for (int h = 0; h < 3; h++) w.Set(x0 + 9, y + h, z0 + 2, Blocks.SugarCane);
+            w.Set(x0 - 1, y, z0 + 1, Blocks.HayBale); w.Set(x0 - 1, y + 1, z0 + 1, Blocks.HayBale); w.Set(x0 - 1, y, z0 + 2, Blocks.HayBale);
+            // Two cows in love beside each other.
+            if (g._link is LocalLink ll)
+            {
+                var a = ll.Sim.Spawn(MobKind.Cow, x0 + 4, y, z0 + 7.5f); var b = ll.Sim.Spawn(MobKind.Cow, x0 + 6, y, z0 + 7.5f);
+                ll.Sim.Use(a.Id, "wheat", a.X, a.Z); ll.Sim.Use(b.Id, "wheat", b.X, b.Z);
+            }
+            return $"farm at {x0} {y} {z0}";
+        }
+
         public static string DevAfterSleep() => $"time {I._sky.Time01:0.00} day {I._sky.Day} asleep {I._player.Asleep} at {I._player.Feet}";
 
         // Fight: a cow in front, hit it with the sword until it dies.

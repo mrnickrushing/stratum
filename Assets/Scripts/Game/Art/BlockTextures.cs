@@ -122,6 +122,18 @@ namespace Stratum.Game
                 case Tex.Trapdoor: Trapdoor(p); return 2.5f;
                 case Tex.Ladder: Ladder(p); return 2f;
                 case Tex.IronBars: Bars(p); return 2f;
+                case Tex.FarmlandDry: Farmland(p, false); return 2.5f;
+                case Tex.FarmlandWet: Farmland(p, true); return 2.5f;
+                case Tex.Wheat0: Wheat(p, 0); return 1f;
+                case Tex.Wheat1: Wheat(p, 1); return 1f;
+                case Tex.Wheat2: Wheat(p, 2); return 1f;
+                case Tex.Wheat3: Wheat(p, 3); return 1f;
+                case Tex.SaplingOak: Sapling(p, Hex(0x4f8a2e), Hex(0x6a4a2a), false); return 1f;
+                case Tex.SaplingBirch: Sapling(p, Hex(0x7aa84a), Hex(0xd8d4c8), false); return 1f;
+                case Tex.SaplingPine: Sapling(p, Hex(0x2f5a36), Hex(0x5a3e24), true); return 1f;
+                case Tex.SugarCane: Cane(p); return 1f;
+                case Tex.HayTop: Hay(p, true); return 2f;
+                case Tex.HaySide: Hay(p, false); return 2f;
             }
             Rock(p, Color.magenta, Color.black, 0, false);
             return 1;
@@ -675,6 +687,110 @@ namespace Stratum.Game
                     }
                 }
             }
+        }
+
+        // Tilled soil in ridges; wet soil is darker.
+        static void Farmland(Paint p, bool wet)
+        {
+            Color a = wet ? Hex(0x4a3220) : Hex(0x7a5a3a), b = wet ? Hex(0x2e1e12) : Hex(0x5a4028);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 6, 3);
+                    float ridge = 0.5f + 0.5f * Mathf.Cos((y % 16) / 16f * Mathf.PI * 2);
+                    Color c = Color.Lerp(b, a, n * 0.6f + ridge * 0.4f);
+                    if (x < 2 || x > 61 || y < 2 || y > 61) c = Paint.Mul(c, 0.8f);
+                    c.a = 1;
+                    p.Set(x, y, c, ridge * 0.7f + n * 0.3f);
+                }
+        }
+
+        // Wheat from green shoots to golden ears.
+        static void Wheat(Paint p, int stage)
+        {
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.Set(x, y, new Color(0, 0, 0, 0), 0);
+            float height = new[] { 0.3f, 0.55f, 0.8f, 0.98f }[stage];
+            Color stem = stage == 3 ? Hex(0xb89a40) : stage == 2 ? Hex(0x8aa83a) : Hex(0x5a9a2e);
+            Color ear = stage == 3 ? Hex(0xe2bc5a) : Hex(0x9ab848);
+            int count = 9;
+            for (int k = 0; k < count; k++)
+            {
+                float bx = 4 + k * 56f / (count - 1) + (p.Hash(k, 1) - 0.5f) * 4, lean = (p.Hash(k, 2) - 0.5f) * 0.25f;
+                float h = (0.8f + p.Hash(k, 3) * 0.2f) * height * 64;
+                for (int y = 0; y < h; y++)
+                {
+                    float t = y / h, cx = bx + lean * y;
+                    bool head = stage >= 2 && t > 0.62f;
+                    float ww = head ? 2.4f * (1 - (t - 0.62f) * 1.6f) + 0.6f : 1.0f;
+                    for (int x = Mathf.FloorToInt(cx - ww); x <= Mathf.CeilToInt(cx + ww); x++)
+                    {
+                        if (x < 0 || x > 63 || Mathf.Abs(x - cx) > ww) continue;
+                        var c = head ? Paint.Mul(ear, 0.75f + 0.35f * (((y + x) & 2) == 0 ? 1 : 0.6f)) : Paint.Mul(stem, 0.7f + t * 0.4f);
+                        c.a = 1; p.Set(x, y, c, t);
+                    }
+                }
+                // A leaf off each stalk.
+                if (stage < 3)
+                    for (int i = 0; i < 10; i++)
+                    {
+                        int lx = Mathf.RoundToInt(bx + (k % 2 == 0 ? i : -i) * 0.9f), ly = Mathf.RoundToInt(h * 0.3f + i * 0.6f);
+                        if (lx >= 0 && lx < 64 && ly < 64) { var c = Paint.Mul(Hex(0x5a9a2e), 0.8f); c.a = 1; p.Set(lx, ly, c, 0.3f); }
+                    }
+            }
+        }
+
+        static void Sapling(Paint p, Color leaf, Color bark, bool pine)
+        {
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.Set(x, y, new Color(0, 0, 0, 0), 0);
+            for (int y = 0; y < 34; y++)
+                for (int x = 30; x <= 33; x++) { var c = Paint.Mul(bark, 0.8f + (x - 30) * 0.08f); c.a = 1; p.Set(x, y, c, 0.5f); }
+            for (int y = 14; y < 62; y++)
+                for (int x = 4; x < 60; x++)
+                {
+                    float dx = x - 32f, dy = y - 38f;
+                    bool inside = pine ? Mathf.Abs(dx) < (62 - y) * 0.48f && (y % 8) < 6 : dx * dx / 520f + dy * dy / 380f < 1;
+                    if (!inside) continue;
+                    float n = p.Fbm(x, y, 8, 3);
+                    if (!pine && n < 0.32f) continue;
+                    var c = Paint.Mul(leaf, 0.6f + n * 0.6f); c.a = 1;
+                    p.Set(x, y, c, n);
+                }
+        }
+
+        static void Cane(Paint p)
+        {
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.Set(x, y, new Color(0, 0, 0, 0), 0);
+            Color stalk = Hex(0x8ec060);
+            foreach (int bx in new[] { 12, 30, 48 })
+                for (int y = 0; y < 64; y++)
+                    for (int x = bx - 3; x <= bx + 3; x++)
+                    {
+                        bool node = (y + bx) % 20 < 2;
+                        float r = 1 - Mathf.Abs(x - bx) / 3.5f;
+                        var c = Paint.Mul(node ? Hex(0xc8d890) : stalk, 0.6f + r * 0.5f); c.a = 1;
+                        p.Set(x, y, c, r);
+                    }
+            for (int i = 0; i < 3; i++)
+                for (int t = 0; t < 14; t++)
+                {
+                    int x = 14 + i * 18 + t, y = 40 - i * 12 + t / 2;
+                    if (x < 64 && y < 64) { var c = Hex(0x6aa040); c.a = 1; p.Set(x, y, c, 0.4f); }
+                }
+        }
+
+        static void Hay(Paint p, bool top)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float s = top ? p.Streak(x, y, 4, 16, 3) : p.Streak(y, x, 2, 16, 3);
+                    Color c = Color.Lerp(Hex(0xa08428), Hex(0xe0c460), s);
+                    float h = s;
+                    if (!top && (Mathf.Abs(y - 16) < 2 || Mathf.Abs(y - 47) < 2)) { c = Hex(0x8a3a22); h = 0.9f; }   // red twine
+                    if (top && (Mathf.Abs(x - 16) < 2 || Mathf.Abs(x - 47) < 2)) { c = Hex(0x8a3a22); h = 0.9f; }
+                    c.a = 1;
+                    p.Set(x, y, c, h);
+                }
         }
 
         static void Fern(Paint p)

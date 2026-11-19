@@ -34,6 +34,12 @@ namespace Stratum.Core
         public bool Stuck;
         public bool Angry;                    // neutral creatures that were hit
         public float Phase;                   // bosses: what they're doing
+        public float Baby;                    // seconds until grown (0: grown up)
+        public float Love, BreedCool;         // fed: looking for a mate; resting after
+        public bool Kept;                     // fed or born here: stays when no one is about, saved with the world
+
+        public const byte MBaby = 1, MLove = 2;
+        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0));
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
 
@@ -46,6 +52,7 @@ namespace Stratum.Core
     public struct Seen
     {
         public int Id; public float X, Y, Z; public bool Sneaking, Creative, Alive, Sleeping;
+        public string Held;
     }
 
     // Every creature in a world: where they wander, who they chase and hit, when they appear and leave. One copy
@@ -180,12 +187,35 @@ namespace Stratum.Core
             a.Pitch = (float)(-Math.Atan2(a.VY, h) * 180 / Math.PI);
         }
 
-        // A player uses an item on a creature (shears on a sheep). Returns what they get, or null.
+        // What each animal eats (and follows): the food that breeds them.
+        public static string FoodOf(MobKind k) => k switch
+        {
+            MobKind.Cow => "wheat", MobKind.Sheep => "wheat", MobKind.Pig => "berries", MobKind.Chicken => "seeds", _ => null
+        };
+
+        public const float GrowUp = 1200, LoveFor = 30, BreedRest = 300;
+
+        // Would feeding this creature that item do anything? (The player only spends the food if so.)
+        public bool WouldEat(int id, string item)
+        {
+            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || item == null || FoodOf(m.Kind) != item) return false;
+            return m.Baby > 0 || m.Love <= 0 && m.BreedCool <= 0;
+        }
+
+        // A player uses an item on a creature (shears on a sheep, food). Returns what they get, or null.
         public (string item, int count)? Use(int id, string item, float px, float pz)
         {
             if (!_byId.TryGetValue(id, out var m) || m.Dead > 0) return null;
             float dx = m.X - px, dz = m.Z - pz;
             if (dx * dx + dz * dz > 36) return null;
+            if (item != null && item == FoodOf(m.Kind))
+            {
+                m.Kept = true;
+                if (m.Baby > 0) m.Baby = Math.Max(0, m.Baby - GrowUp * 0.1f);
+                else if (m.Love <= 0 && m.BreedCool <= 0) m.Love = LoveFor;
+                Sound?.Invoke(m, "eat");
+                return null;
+            }
             if (item == "shears" && m.Kind == MobKind.Sheep && !m.Sheared)
             {
                 m.Sheared = true; m.Regrow = 240 + Rand() * 240;
@@ -195,9 +225,25 @@ namespace Stratum.Core
             return null;
         }
 
+        public void SaveFile(string path)
+        {
+            var tmp = path + ".tmp";
+            using (var w = new System.IO.BinaryWriter(System.IO.File.Create(tmp))) Write(w);
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            System.IO.File.Move(tmp, path);
+        }
+
+        public void LoadFile(string path)
+        {
+            if (!System.IO.File.Exists(path)) return;
+            using var r = new System.IO.BinaryReader(System.IO.File.OpenRead(path));
+            Read(r);
+        }
+
         public List<(string item, int count)> Loot(Mob m)
         {
             var l = new List<(string, int)>();
+            if (m.Baby > 0) return l;
             foreach (var (item, min, max, chance) in m.Def.Drops)
             {
                 if (Rand() > chance) continue;
@@ -231,6 +277,9 @@ namespace Stratum.Core
                 m.Hurt = Math.Max(0, m.Hurt - dt);
                 m.Cool = Math.Max(0, m.Cool - dt);
                 if (m.Sheared && (m.Regrow -= dt) <= 0) m.Sheared = false;
+                if (m.Baby > 0) m.Baby = Math.Max(0, m.Baby - dt);
+                if (m.BreedCool > 0) m.BreedCool = Math.Max(0, m.BreedCool - dt);
+                if (m.Love > 0) { m.Love = Math.Max(0, m.Love - dt); Mate(m); }
                 Think(m, dt, players);
                 Physics(m, dt);
                 Hazards(m, dt);
@@ -243,11 +292,98 @@ namespace Stratum.Core
             }
         }
 
+        bool Lure(Mob m, List<Seen> players, out float x, out float z)
+        {
+            x = z = 0;
+            if (m.Love > 0)
+            {
+                float best = 8 * 8;
+                foreach (var o in All)
+                {
+                    if (o == m || o.Kind != m.Kind || o.Love <= 0 || o.Baby > 0 || o.Dead > 0) continue;
+                    float dx = o.X - m.X, dz = o.Z - m.Z, d2 = dx * dx + dz * dz;
+                    if (d2 < best) { best = d2; x = o.X; z = o.Z; }
+                }
+                if (best < 8 * 8) return true;
+            }
+            string food = FoodOf(m.Kind);
+            if (food != null)
+            {
+                float best = 10 * 10; bool any = false;
+                foreach (var p in players)
+                {
+                    if (!p.Alive || p.Held != food) continue;
+                    float d2 = Dist2(m, p);
+                    if (d2 < best) { best = d2; x = p.X; z = p.Z; any = true; }
+                }
+                if (any) return true;
+            }
+            if (m.Baby > 0)
+            {
+                // Young ones keep near a grown one.
+                float best = 16 * 16, near = 3 * 3; bool any = false;
+                foreach (var o in All)
+                {
+                    if (o == m || o.Kind != m.Kind || o.Baby > 0 || o.Dead > 0) continue;
+                    float dx = o.X - m.X, dz = o.Z - m.Z, d2 = dx * dx + dz * dz;
+                    if (d2 < best) { best = d2; x = o.X; z = o.Z; any = true; }
+                }
+                if (any && best > near) return true;
+            }
+            return false;
+        }
+
         static float Dist2(Mob m, in Seen p) { float dx = m.X - p.X, dz = m.Z - p.Z, dy = m.Y - p.Y; return dx * dx + dy * dy + dz * dz; }
+
+        // Two of a kind in love near each other make a baby.
+        void Mate(Mob m)
+        {
+            foreach (var o in All)
+            {
+                if (o == m || o.Kind != m.Kind || o.Love <= 0 || o.Dead > 0 || o.Baby > 0) continue;
+                float dx = o.X - m.X, dz = o.Z - m.Z, d2 = dx * dx + dz * dz;
+                if (d2 > 1.6f * 1.6f) continue;
+                m.Love = o.Love = 0; m.BreedCool = o.BreedCool = BreedRest;
+                var b = Spawn(m.Kind, (m.X + o.X) / 2, Math.Max(m.Y, o.Y), (m.Z + o.Z) / 2);
+                b.Baby = GrowUp; b.Kept = true; b.Yaw = m.Yaw;
+                Sound?.Invoke(b, "say");
+                Born?.Invoke(b);
+                return;
+            }
+        }
+        public event Action<Mob> Born;
+
+        // The animals worth keeping between visits: anything fed or born to a player.
+        public void Write(System.IO.BinaryWriter w)
+        {
+            w.Write(1);
+            int n = 0; foreach (var m in All) if (m.Kept && m.Dead <= 0) n++;
+            w.Write(n);
+            foreach (var m in All)
+            {
+                if (!m.Kept || m.Dead > 0) continue;
+                w.Write((byte)m.Kind); w.Write(m.X); w.Write(m.Y); w.Write(m.Z); w.Write(m.Yaw); w.Write(m.Health);
+                w.Write(m.Baby); w.Write(m.BreedCool); w.Write(m.Sheared); w.Write(m.Regrow);
+            }
+        }
+
+        public void Read(System.IO.BinaryReader r)
+        {
+            if (r.ReadInt32() != 1) return;
+            int n = r.ReadInt32();
+            for (int i = 0; i < n; i++)
+            {
+                var k = (MobKind)r.ReadByte();
+                float x = r.ReadSingle(), y = r.ReadSingle(), z = r.ReadSingle();
+                var m = Spawn(k, x, y + 0.05f, z);
+                m.Yaw = r.ReadSingle(); m.Health = r.ReadSingle(); m.Baby = r.ReadSingle(); m.BreedCool = r.ReadSingle();
+                m.Sheared = r.ReadBoolean(); m.Regrow = r.ReadSingle(); m.Kept = true;
+            }
+        }
 
         bool Despawn(Mob m, List<Seen> players)
         {
-            if (m.Def.Boss || m.Kind == MobKind.Villager) return false;
+            if (m.Def.Boss || m.Kind == MobKind.Villager || m.Kept) return false;
             float best = float.MaxValue;
             foreach (var p in players) best = Math.Min(best, Dist2(m, p));
             if (players.Count == 0) return false;
@@ -339,6 +475,14 @@ namespace Stratum.Core
                 wx = m.X - m.FromX; wz = m.Z - m.FromZ;
                 speed *= 1.9f;
                 jumpy = true;
+            }
+            else if (!d.Hostile && Lure(m, players, out float lx, out float lz))
+            {
+                // Following someone holding its food, or looking for a mate; stops close by.
+                wx = lx - m.X; wz = lz - m.Z;
+                if (wx * wx + wz * wz < (m.Love > 0 ? 0.6f : 4f)) { wx = 0; wz = 0; m.Yaw = LerpAngle(m.Yaw, (float)(Math.Atan2(lx - m.X, lz - m.Z) * 180 / Math.PI), Math.Min(1, dt * 4)); }
+                speed *= m.Love > 0 ? 0.8f : 0.9f;
+                m.HasGoal = false;
             }
             else
             {

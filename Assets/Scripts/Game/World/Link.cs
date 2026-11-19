@@ -21,6 +21,7 @@ namespace Stratum.Game
         public abstract void Sleep(bool on);
         public abstract void Drop(Vector3 at, Stack[] stacks);   // into a satchel on the ground
         public abstract void SetSign(Vector3Int at, string text);
+        public abstract void Fertilize(Vector3Int at);           // bone meal
         public Action<Vector3Int, string> SignChanged;
         public virtual void Tick(float dt) { }
         public virtual void Save() { }
@@ -41,7 +42,7 @@ namespace Stratum.Game
         readonly VoxelWorld _world;
         readonly Player _player;
         readonly Sky _sky;
-        readonly string _file;
+        readonly string _file, _mobFile;
         readonly int _difficulty;
         public readonly MobSim Sim;
         public readonly Containers Boxes = new Containers();
@@ -58,6 +59,8 @@ namespace Stratum.Game
             if (_file != null) try { Boxes.Load(_file); } catch (Exception e) { Debug.LogWarning("containers unreadable: " + e.Message); }
             Sim = new MobSim(world.Get, seed ^ Environment.TickCount) { Difficulty = difficulty, BiomeAt = world.Gen.BiomeAt };
             Sim.Loaded = (x, z) => world.IsReady(x, z);
+            _mobFile = folder != null ? Path.Combine(folder, "creatures.bin") : null;
+            if (_mobFile != null) try { Sim.LoadFile(_mobFile); } catch (Exception e) { Debug.LogWarning("creatures unreadable: " + e.Message); }
             Sim.HitPlayer += (id, dmg, fx, fz, from) => Hurt?.Invoke(dmg, new Vector3(fx, _player.Feet.y, fz), from.Kind);
             Sim.Died += (m, killer) => { if (killer > 0) foreach (var (item, n) in Sim.Loot(m)) Gave?.Invoke(item, n, 0); };
             Sim.Sound += (m, what) => MobSound?.Invoke(m.Kind, what, new Vector3(m.X, m.Y, m.Z));
@@ -73,12 +76,12 @@ namespace Stratum.Game
         public override void Tick(float dt)
         {
             _seen.Clear();
-            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep });
+            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item });
             Sim.Time01 = _sky.Time01;
             Sim.Tick(dt, _seen);
             Mobs.Clear();
             foreach (var m in Sim.All)
-                Mobs.Add(new MobState { Id = m.Id, Kind = m.Kind, Pos = new Vector3(m.X, m.Y, m.Z), Yaw = m.Yaw, Pitch = m.Pitch, Flags = m.Flags, Health = m.Health / m.Def.Health });
+                Mobs.Add(new MobState { Id = m.Id, Kind = m.Kind, Pos = new Vector3(m.X, m.Y, m.Z), Yaw = m.Yaw, Pitch = m.Pitch, Flags = m.Flags, Health = m.Health / m.Def.Health, More = m.More });
             // Asleep at night: after a moment the night passes.
             if (_player.Asleep)
             {
@@ -138,8 +141,11 @@ namespace Stratum.Game
             foreach (var kv in Boxes.Signs) { var (x, y, z) = Containers.Unkey(kv.Key); SignChanged?.Invoke(new Vector3Int(x, y, z), kv.Value); }
         }
 
+        public override void Fertilize(Vector3Int at) => _world.Growth?.BoneMeal(at.x, at.y, at.z);
+
         public override void Save()
         {
+            if (_mobFile != null) try { Sim.SaveFile(_mobFile); } catch (Exception e) { Debug.LogWarning("could not save creatures: " + e.Message); }
             if (_file == null || !Boxes.Dirty) return;
             try { Boxes.Save(_file); } catch (Exception e) { Debug.LogWarning("could not save containers: " + e.Message); }
         }

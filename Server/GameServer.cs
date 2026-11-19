@@ -64,6 +64,8 @@ namespace Stratum.Server
         readonly Containers _boxes = new Containers();
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
+        readonly List<(float, float)> _near = new List<(float, float)>();
+        string MobFile => System.IO.Path.Combine(_cfg.Dir, "creatures.bin");
         string BoxFile => System.IO.Path.Combine(_cfg.Dir, "containers.bin");
         readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
         readonly Dictionary<long, List<Player>> _waiters = new Dictionary<long, List<Player>>();
@@ -87,6 +89,7 @@ namespace Stratum.Server
             catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
+            try { _mobs.LoadFile(MobFile); } catch (Exception e) { Log.Warn("creatures.bin unreadable: " + e.Message); }
             _mobs.HitPlayer += (id, dmg, fx, fz, from) =>
             {
                 if (_players.TryGetValue(id, out var p) && p.Joined) p.Conn.Send(new Packet(Net.Msg.Hurt).F32(dmg).F32(fx).F32(fz).U8((byte)from.Kind));
@@ -169,6 +172,8 @@ namespace Stratum.Server
                     foreach (var ch in made) Serve(ch);
 
                     World.Water.Tick(dt);
+                    _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
+                    World.Growth.Tick(dt, _near);
                     TickMobs(dt);
                     if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); }
                     World.Meta.time += dt / 1200.0;     // Sky.DayLength
@@ -205,6 +210,7 @@ namespace Stratum.Server
         {
             World.Maintain(Needed, false);
             World.SaveMeta();
+            try { _mobs.SaveFile(MobFile); } catch (Exception e) { Log.Warn("could not save creatures: " + e.Message); }
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
             foreach (var p in _players.Values) if (p.Joined) SavePlayer(p);
         }
@@ -249,6 +255,7 @@ namespace Stratum.Server
                     case Net.Msg.Sleep: p.Flags = (byte)(r.Bool() ? p.Flags | Net.Asleep : p.Flags & ~Net.Asleep); CheckSleep(); break;
                     case Net.Msg.Drop: Drop(p, r); break;
                     case Net.Msg.SignText: SignText(p, r); break;
+                    case Net.Msg.Fertilize: Fertilize(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
             }
@@ -455,7 +462,7 @@ namespace Stratum.Server
         {
             _seen.Clear();
             foreach (var p in _players.Values)
-                if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep });
+                if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep, Held = p.Held });
             _mobs.Time01 = (float)World.Meta.time;
             _mobs.Tick(dt, _seen);
         }
@@ -475,7 +482,7 @@ namespace Stratum.Server
                     if (!Near(m, p, 96) || k++ >= 400) continue;
                     pk.I32(m.Id).U8((byte)m.Kind).F32(m.X).F32(m.Y).F32(m.Z)
                       .U8((byte)((int)Math.Round(m.Yaw / 360f * 256) & 255)).U8((byte)(sbyte)Math.Clamp((int)m.Pitch, -90, 90)).U8(m.Flags)
-                      .U8((byte)Math.Clamp((int)Math.Ceiling(m.Health / m.Def.Health * 255), 0, 255));
+                      .U8((byte)Math.Clamp((int)Math.Ceiling(m.Health / m.Def.Health * 255), 0, 255)).U8(m.More);
                 }
                 p.Conn.Send(pk);
             }
@@ -553,6 +560,15 @@ namespace Stratum.Server
             World.SetRaw(sx, sy, sz, Blocks.Satchel);
             Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
+        }
+
+        void Fertilize(Player p, Reader r)
+        {
+            int x = r.I32(), y = r.I32(), z = r.I32();
+            if (++p.Edits > 40) return;
+            float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
+            if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
+            World.Growth.BoneMeal(x, y, z);
         }
 
         void SignText(Player p, Reader r)

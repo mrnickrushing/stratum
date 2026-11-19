@@ -300,6 +300,7 @@ namespace Stratum.Game
         public override void CloseBox() => Send(new Packet(Net.Msg.CloseBox));
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
         public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));
+        public override void Fertilize(Vector3Int at) => Send(new Packet(Net.Msg.Fertilize).I32(at.x).I32(at.y).I32(at.z));
         public override void SetSign(Vector3Int at, string text) => Send(new Packet(Net.Msg.SignText).I32(at.x).I32(at.y).I32(at.z).Str(Containers.CleanSign(text)));
 
         // The creatures near us, as the server last saw them.
@@ -312,9 +313,9 @@ namespace Stratum.Game
                 int id = r.I32(); var kind = (MobKind)r.U8();
                 var pos = new Vector3(r.F32(), r.F32(), r.F32());
                 float yaw = r.U8() / 256f * 360f, pitch = (sbyte)r.U8();
-                byte flags = r.U8(); float health = r.U8() / 255f;
+                byte flags = r.U8(); float health = r.U8() / 255f; byte more = r.U8();
                 if (kind >= MobKind.Count) continue;
-                Mobs.Add(new MobState { Id = id, Kind = kind, Pos = pos, Yaw = yaw, Pitch = pitch, Flags = flags, Health = health });
+                Mobs.Add(new MobState { Id = id, Kind = kind, Pos = pos, Yaw = yaw, Pitch = pitch, Flags = flags, Health = health, More = more });
             }
         }
     }

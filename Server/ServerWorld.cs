@@ -29,6 +29,7 @@ namespace Stratum.Server
         public readonly Info Meta;
         public readonly WorldGen Gen;
         public readonly Water Water;
+        public readonly Growth Growth;
 
         readonly Dictionary<long, Chunk> _chunks = new Dictionary<long, Chunk>();
         readonly Dictionary<long, byte[]> _packed = new Dictionary<long, byte[]>();    // compressed copies to send
@@ -58,6 +59,7 @@ namespace Stratum.Server
                 SaveMeta();
             }
             Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); }) { Loaded = IsLoaded };
+            Growth = new Growth(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }, (uint)Meta.seed ^ 0x5eed) { Loaded = IsLoaded };
 
             int n = Math.Clamp(Environment.ProcessorCount - 1, 1, 6);
             _workers = new Thread[n];

@@ -216,6 +216,20 @@ namespace Stratum.Game
             }
             if (mouse.leftButton.wasPressedThisFrame && !HasTarget) { _swing = 0; Sfx.I?.Play("swish", 0.3f); }
 
+            // Feeding an animal its food (to breed it, or help a young one grow).
+            if (heldDef != null && rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var fed)
+                && MobSim.FoodOf(fed.Kind) == heldDef.Id)
+            {
+                bool baby = (fed.More & Mob.MBaby) != 0, love = (fed.More & Mob.MLove) != 0;
+                if (baby || !love)
+                {
+                    Link?.UseMob(TargetMob, heldDef.Id);
+                    if (!P.Creative) P.Inv.UseHeld();
+                    _swing = 0;
+                }
+                return;
+            }
+
             // An empty bucket scoops up a source of water or lava, or milks a cow.
             if (heldDef != null && heldDef.Id == "bucket" && mouse.rightButton.wasPressedThisFrame)
             {
@@ -356,6 +370,9 @@ namespace Stratum.Game
             else if (def.TierNeeded > 0) Toast?.Invoke("Needs a better pickaxe");
             var bonus = Mining.Bonus(def, _rng);
             if (bonus != null && P.Inv.Add(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            var bonus2 = Mining.Bonus2(def, _rng);
+            if (bonus2 != null && P.Inv.Add(bonus2, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            Unsupported(p);
             if (held != null && held.Durability > 0 && def.Hardness > 0 && P.Inv.WearHeld())
             {
                 Sfx.I?.Play("break_tool", 0.8f);
@@ -382,6 +399,30 @@ namespace Stratum.Game
                 if (tdef.BaseId == Blocks.Sign || tdef.BaseId == Blocks.WallSign) { EditSign?.Invoke(Target); return; }
             }
             if (item == null) return;
+            if (item.Tool == Tool.Hoe)
+            {
+                // Grass or dirt with nothing on top turns to farmland.
+                bool open = World.Get(Target.x, Target.y + 1, Target.z) == 0;
+                if ((target == Blocks.Grass || target == Blocks.Dirt || target == Blocks.SnowyGrass) && TargetNormal.y >= 0 && open)
+                {
+                    World.Set(Target.x, Target.y, Target.z, Blocks.Farmland);
+                    Sfx.I?.Block("step", Blocks.Dirt, 0.9f);
+                    if (!P.Creative) P.Inv.WearHeld();
+                    _swing = 0;
+                }
+                return;
+            }
+            if (item.Id == "bone_meal")
+            {
+                bool works = tdef.BaseId == Blocks.Wheat && tdef.Variant < Blocks.WheatStages - 1 || tdef.Grows == 2 || target == Blocks.Grass && World.Get(Target.x, Target.y + 1, Target.z) == 0;
+                if (!works) return;
+                Link?.Fertilize(Target);
+                if (!P.Creative) P.Inv.UseHeld();
+                Sfx.I?.Play("pickup", 0.4f, 0.7f);
+                Burst(Target, Blocks.Get(Blocks.OakLeaves));
+                _swing = 0;
+                return;
+            }
             if (item.Id == "water_bucket" || item.Id == "lava_bucket")
             {
                 var spot = tdef.Replaceable && target != 0 ? Target : Target + TargetNormal;
@@ -416,11 +457,7 @@ namespace Stratum.Game
             if (at.y < 1 || at.y >= Chunk.Height) return;
             if (def.Solid && P.Overlaps(at.x, at.y, at.z)) return;
             byte below = World.Get(at.x, at.y - 1, at.z);
-            if (def.Shape == Shape.Cross)
-            {
-                bool soil = below == Blocks.Grass || below == Blocks.Dirt || below == Blocks.SnowyGrass || (id == Blocks.DeadBush && below == Blocks.Sand);
-                if (!soil) return;
-            }
+            if (def.Shape == Shape.Cross && !CanStand(id, at)) return;
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
             int f = DirOf(look);
             if (id == Blocks.Bed)
@@ -470,6 +507,50 @@ namespace Stratum.Game
             if (!World.Set(at.x, at.y, at.z, place)) return;
             Placed(id);
             if (id == Blocks.Sign) EditSign?.Invoke(at);
+        }
+
+        // Can this plant live here? Seeds want farmland; sugar cane wants water beside its ground (or more cane).
+        bool CanStand(byte id, Vector3Int at)
+        {
+            byte below = World.Get(at.x, at.y - 1, at.z);
+            var bd = Blocks.Get(below);
+            if (id == Blocks.Wheat) return bd.BaseId == Blocks.Farmland;
+            if (id == Blocks.SugarCane)
+            {
+                if (below == Blocks.SugarCane) return true;
+                if (below != Blocks.Grass && below != Blocks.Dirt && below != Blocks.Sand) return false;
+                for (int i = 0; i < 4; i++) if (Blocks.IsWater(World.Get(at.x + Dir4[i].x, at.y - 1, at.z + Dir4[i].z))) return true;
+                return false;
+            }
+            if (id == Blocks.DeadBush) return below == Blocks.Sand;
+            return below == Blocks.Grass || below == Blocks.Dirt || below == Blocks.SnowyGrass || bd.BaseId == Blocks.Farmland;
+        }
+
+        // Things that stand on a block go when it does (plants, torches, signs, doors, ladders on their wall).
+        void Unsupported(Vector3Int p)
+        {
+            for (int guard = 0; guard < 64; guard++)
+            {
+                var up = p + Vector3Int.up;
+                byte id = World.Get(up.x, up.y, up.z);
+                var d = Blocks.Get(id);
+                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0;
+                if (id == 0 || !needs) return;
+                if (d.BaseId == Blocks.OakDoor) World.Set(up.x, up.y + 1, up.z, 0);
+                World.Set(up.x, up.y, up.z, 0);
+                GiveDrop(d);
+                if (id != Blocks.SugarCane) return;
+                p = up;                      // a column of cane comes down together
+            }
+        }
+
+        void GiveDrop(BlockDef d)
+        {
+            if (P.Creative) return;
+            var (item, n) = Mining.Drop(d);
+            if (item != null && n > 0) P.Inv.Add(item, n);
+            var b2 = Mining.Bonus2(d, _rng);
+            if (b2 != null) P.Inv.Add(b2, 1);
         }
 
         void Place(Vector3Int at, byte block, byte item)

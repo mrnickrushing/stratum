@@ -98,6 +98,13 @@ namespace Stratum.Core
             Food("roast_chicken", "Roast Chicken", 6, 7.2f);
             Food("berries", "Wild Berries", 2, 0.4f);
 
+            Add(new ItemDef { Id = "seeds", Name = "Wheat Seeds", Block = Blocks.Wheat });
+            Add(new ItemDef { Id = "wheat", Name = "Wheat" });
+            Add(new ItemDef { Id = "bone_meal", Name = "Bone Meal" });
+            Add(new ItemDef { Id = "paper", Name = "Paper" });
+            Add(new ItemDef { Id = "book", Name = "Book" });
+            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400) })
+                Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
@@ -165,6 +172,17 @@ namespace Stratum.Core
             R("iron_bars", 16, "workbench", ("iron_ingot", 6));
             R("sign", 3, "workbench", ("@planks", 6), ("stick", 1));
             R("bucket", 1, "workbench", ("iron_ingot", 3));
+            // Farming.
+            R("bread", 1, "workbench", ("wheat", 3));
+            R("hay_bale", 1, "workbench", ("wheat", 9));
+            R("wheat", 9, null, ("hay_bale", 1));
+            R("bone_meal", 3, null, ("bone", 1));
+            R("paper", 3, "workbench", ("sugar_cane", 3));
+            R("book", 1, "workbench", ("paper", 3), ("hide", 1));
+            R("wood_hoe", 1, "workbench", ("@planks", 2), ("stick", 2));
+            R("stone_hoe", 1, "workbench", ("cobble", 2), ("stick", 2));
+            R("copper_hoe", 1, "workbench", ("copper_ingot", 2), ("stick", 2));
+            R("iron_hoe", 1, "workbench", ("iron_ingot", 2), ("stick", 2));
             R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
             R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));
             R("blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1));
@@ -354,6 +372,7 @@ namespace Stratum.Core
 
         // Something extra a block sometimes gives (an apple from oak leaves).
         public static string Bonus(BlockDef b, Random r) => b.Bonus != null && r.NextDouble() < b.BonusChance ? b.Bonus : null;
+        public static string Bonus2(BlockDef b, Random r) => b.Bonus2 != null && r.NextDouble() < b.Bonus2Chance ? b.Bonus2 : null;
 
         public static (string item, int count) Drop(BlockDef b)
         {

@@ -24,6 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
+        FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
 
@@ -63,6 +64,9 @@ namespace Stratum.Core
         public byte Level;               // fluids: 0 a source, then 1, 2... further from it
         public byte Pair;                // slabs: the whole block two of them make; doors: unused
         public bool Opens;               // doors, trapdoors, gates: right-click opens and closes
+        public string Bonus2;            // a second thing it sometimes drops
+        public float Bonus2Chance;
+        public byte Grows;               // 1 wheat, 2 sapling, 3 sugar cane: grows by itself over time
 
         public Tex Face(int face)        // 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z
         {
@@ -101,7 +105,9 @@ namespace Stratum.Core
             Sunstone, Torch, TallGrass, RedFlower, YellowFlower, BlueFlower, DeadBush, Fern, Workbench, Furnace,
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
-            OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign;
+            OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
+            Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
+        public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;
         public static readonly List<byte> Slabs = new List<byte>(), Stairs = new List<byte>();
@@ -348,6 +354,33 @@ namespace Stratum.Core
                 b = Add("lava_" + l, "Lava", Tex.Lava); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 1; b.Emit = 15; b.Hardness = -1;
                 b.Replaceable = true; b.Creative = false; b.Fluid = 2; b.Level = (byte)l; b.BaseId = Lava; Palette.Remove(b.Id); LavaAt[l] = b.Id;
             }
+
+            // ---------------------------------------------------------------- 0.2: farming
+            for (int wet = 0; wet < 2; wet++)
+            {
+                b = Add(wet == 0 ? "farmland" : "farmland_wet", "Farmland", wet == 0 ? Tex.FarmlandDry : Tex.FarmlandWet, Tex.Dirt, Tex.Dirt);
+                b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 15; b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Dirt; b.DropItem = "dirt";
+                b.Boxes = new[] { Box.Px(0, 0, 0, 16, 15, 16) }; b.Variant = wet; b.Creative = false; Palette.Remove(b.Id);
+                if (wet == 0) Farmland = b.Id; else { FarmlandWet = b.Id; b.BaseId = Farmland; }
+            }
+            for (int st = 0; st < WheatStages; st++)
+            {
+                b = Plant("wheat_" + st, "Wheat", (Tex)((int)Tex.Wheat0 + st)); b.Replaceable = false; b.Sway = st > 0; b.Grows = 1; b.Variant = st;
+                b.Creative = false; Palette.Remove(b.Id);
+                if (st < WheatStages - 1) b.DropItem = "seeds";
+                else { b.DropItem = "wheat"; b.Bonus = "seeds"; b.BonusChance = 1; b.Bonus2 = "seeds"; b.Bonus2Chance = 0.5f; }
+                if (st == 0) Wheat = b.Id; else b.BaseId = Wheat;
+            }
+            SaplingOak = Plant("oak_sapling", "Oak Sapling", Tex.SaplingOak).Id;
+            SaplingBirch = Plant("birch_sapling", "Birch Sapling", Tex.SaplingBirch).Id;
+            SaplingPine = Plant("pine_sapling", "Pine Sapling", Tex.SaplingPine).Id;
+            foreach (var sp in new[] { SaplingOak, SaplingBirch, SaplingPine }) { Defs[sp].Replaceable = false; Defs[sp].Grows = 2; }
+            b = Plant("sugar_cane", "Sugar Cane", Tex.SugarCane); b.Replaceable = false; b.Sway = false; b.Grows = 3; SugarCane = b.Id;
+            b = Add("hay_bale", "Hay Bale", Tex.HayTop, Tex.HaySide, Tex.HayTop); b.Hardness = 0.5f; b.Sound = Sound.Grass; HayBale = b.Id;
+            Defs[TallGrass].Bonus = "seeds"; Defs[TallGrass].BonusChance = 0.125f; Defs[TallGrass].Bonus2 = "berries"; Defs[TallGrass].Bonus2Chance = 0.05f;
+            Defs[OakLeaves].Bonus2 = "oak_sapling"; Defs[OakLeaves].Bonus2Chance = 0.05f;
+            Defs[BirchLeaves].Bonus2 = "birch_sapling"; Defs[BirchLeaves].Bonus2Chance = 0.05f;
+            Defs[PineNeedles].Bonus2 = "pine_sapling"; Defs[PineNeedles].Bonus2Chance = 0.05f;
 
             Palette.Remove(Water);
         }
