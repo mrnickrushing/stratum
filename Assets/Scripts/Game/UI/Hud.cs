@@ -114,8 +114,8 @@ namespace Stratum.Game
         {
             float dt = Time.unscaledDeltaTime;
             _root.gameObject.SetActive(true);
-            bool show = !Hidden;
-            foreach (Transform t in _root) if (t.gameObject != _inv) t.gameObject.SetActive(show || t == _hurt.transform);
+            bool show = !Hidden && !InventoryOpen;
+            foreach (Transform t in _root) if (t.gameObject != _inv) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform);
 
             // Hotbar
             for (int i = 0; i < 9; i++) _hot[i].Show(P.Inv.Slots[i]);

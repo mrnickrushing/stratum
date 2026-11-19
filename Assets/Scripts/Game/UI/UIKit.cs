@@ -124,12 +124,12 @@ namespace Stratum.Game
 
         public static Button Button(Transform parent, string text, Action onClick, int size = 30, bool primary = false)
         {
-            var img = Panel(parent, "Button " + text, primary ? Accent : new Color(0.20f, 0.21f, 0.25f, 0.95f));
+            var img = Panel(parent, "Button " + text, primary ? new Color(Accent.r / 0.9f, Accent.g / 0.9f, Accent.b / 0.9f) : new Color(0.22f, 0.23f, 0.28f, 0.95f));
             var b = img.gameObject.AddComponent<Button>();
             var cb = b.colors;
-            cb.normalColor = Color.white; cb.highlightedColor = new Color(1.18f, 1.18f, 1.18f); cb.pressedColor = new Color(0.8f, 0.8f, 0.8f);
-            cb.selectedColor = Color.white; cb.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.6f); cb.fadeDuration = 0.08f;
-            cb.colorMultiplier = 1.4f;
+            cb.normalColor = new Color(0.9f, 0.9f, 0.9f); cb.highlightedColor = Color.white; cb.pressedColor = new Color(0.72f, 0.72f, 0.72f);
+            cb.selectedColor = new Color(0.9f, 0.9f, 0.9f); cb.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.6f); cb.fadeDuration = 0.08f;
+            cb.colorMultiplier = 1f;
             b.colors = cb;
             b.onClick.AddListener(() => { Sfx.I?.Play("click", 0.5f); onClick?.Invoke(); });
             var l = Label(img.transform, text, size, primary ? new Color(0.12f, 0.08f, 0.04f) : Ink, TextAnchor.MiddleCenter, FontStyle.Bold);

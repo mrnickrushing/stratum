@@ -50,6 +50,9 @@ Shader "Stratum/Sky"
                     float star = step(0.9965, s) * tw * smoothstep(-0.05, 0.25, up);
                     col += star * _Night * float3(0.9, 0.95, 1.0);
                 }
+                // At and below the horizon the sky turns into the fog colour, so the fogged far edge of the world
+                // meets it without a seam (seen from high up, the world ends below the horizon).
+                col = lerp(col, unity_FogColor.rgb, smoothstep(0.10, -0.02, up));
                 return half4(col, 1);
             }
             ENDHLSL

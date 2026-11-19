@@ -8,6 +8,9 @@ namespace Stratum.Game
     public sealed class Sky : MonoBehaviour
     {
         public const float DayLength = 1200f;   // seconds for a full day
+        // How bright block light (torches, lamps) is next to its source, in the same units as daylight.
+        public static float TorchStrength = 4f;
+
         public float Time01 = 0.3f;             // 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset
         public bool Frozen;
         public Light Sun { get; private set; }
@@ -159,7 +162,7 @@ namespace Stratum.Game
             Shader.SetGlobalVector(SunDir, sunDir);
             Shader.SetGlobalFloat(Night, night);
             Shader.SetGlobalColor(SkyAmbient, ambient);
-            Shader.SetGlobalColor(TorchColor, new Color(1.0f, 0.72f, 0.42f) * 1.15f);
+            Shader.SetGlobalColor(TorchColor, new Color(1.0f, 0.70f, 0.40f) * TorchStrength);
             Shader.SetGlobalFloat(Wind, 1f);
             Shader.SetGlobalColor(CloudLit, Color.Lerp(new Color(0.08f, 0.09f, 0.13f), Color.Lerp(new Color(1f, 0.72f, 0.55f), Color.white, sunUp), day));
             Shader.SetGlobalColor(CloudShade, Color.Lerp(new Color(0.04f, 0.05f, 0.08f), new Color(0.62f, 0.66f, 0.74f), day));
@@ -175,8 +178,11 @@ namespace Stratum.Game
             }
             else
             {
-                RenderSettings.fogStartDistance = ViewDistanceMeters * 0.55f;
-                RenderSettings.fogEndDistance = ViewDistanceMeters * 0.98f;
+                // Fully fogged a chunk and a half inside the loaded edge (fog runs on depth, so the screen's
+                // sides see a little further), so the world never visibly ends.
+                float end = Mathf.Max(40, ViewDistanceMeters - 24);
+                RenderSettings.fogStartDistance = end * 0.42f;
+                RenderSettings.fogEndDistance = end;
             }
             if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f;
 

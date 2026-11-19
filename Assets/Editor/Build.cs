@@ -57,6 +57,12 @@ namespace Stratum.EditorTools
                 list.InsertArrayElementAtIndex(list.arraySize);
                 list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = sh;
             }
+            // Fog is switched on from code (the scene has none), so "automatic" stripping would drop the fog
+            // variants from every shader and builds would draw no fog. Keep linear fog only.
+            so.FindProperty("m_FogStripping").intValue = 1;
+            so.FindProperty("m_FogKeepLinear").boolValue = true;
+            so.FindProperty("m_FogKeepExp").boolValue = false;
+            so.FindProperty("m_FogKeepExp2").boolValue = false;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

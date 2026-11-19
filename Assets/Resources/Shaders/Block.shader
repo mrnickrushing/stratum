@@ -7,7 +7,7 @@ Shader "Stratum/Block"
 {
     Properties
     {
-        _LightOverride ("Light override (sky, block, on)", Vector) = (0, 0, 0, 0)
+        _LightOverride ("Light override (sky, block, -, on)", Vector) = (0, 0, 0, 0)
     }
     SubShader
     {
@@ -82,7 +82,7 @@ Shader "Stratum/Block"
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
                 o.uv = v.uv;
                 o.tint = v.tint;
-                o.light = _LightOverride.z > 0.5 ? float4(_LightOverride.x, _LightOverride.y, v.light.b, 1) : v.light;
+                o.light = _LightOverride.w > 0.5 ? float4(_LightOverride.x, _LightOverride.y, v.light.b, 1) : v.light;
                 o.fogCoord = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
@@ -109,7 +109,7 @@ Shader "Stratum/Block"
                 float faceShade = plant ? 0.85 : (n.y > 0.5 ? 1.0 : (n.y < -0.5 ? 0.55 : (abs(n.x) > 0.5 ? 0.82 : 0.72)));
                 float aoF = lerp(0.38, 1.0, ao);
 
-                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + 0.012;
+                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + float3(0.026, 0.030, 0.038) * faceShade;
 
                 float4 shadowCoord = TransformWorldToShadowCoord(i.positionWS);
                 Light sun = GetMainLight(shadowCoord);

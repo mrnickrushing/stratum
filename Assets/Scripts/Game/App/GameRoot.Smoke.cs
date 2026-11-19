@@ -44,9 +44,17 @@ namespace Stratum.Game
 
         IEnumerator Fps(string label, float seconds)
         {
-            int frames = 0; float worst = 0, start = Time.realtimeSinceStartup;
-            while (Time.realtimeSinceStartup - start < seconds) { frames++; worst = Mathf.Max(worst, Time.unscaledDeltaTime); yield return null; }
-            SmokeNote($"fps {label}: avg {frames / seconds:0.0}, worst frame {worst * 1000:0} ms, chunks {_world?.LoadedChunks}, jobs {_world?.PendingJobs}");
+            for (int k = 0; k < 5; k++) yield return null;   // let the screenshot's own hitch pass
+            int frames = 0, worstAt = 0; float worst = 0, start = Time.realtimeSinceStartup;
+            int gc0 = GC.CollectionCount(0), gc2 = GC.CollectionCount(GC.MaxGeneration);
+            while (Time.realtimeSinceStartup - start < seconds)
+            {
+                frames++;
+                if (Time.unscaledDeltaTime > worst) { worst = Time.unscaledDeltaTime; worstAt = frames; }
+                yield return null;
+            }
+            SmokeNote($"fps {label}: avg {frames / seconds:0.0}, worst frame {worst * 1000:0} ms (frame {worstAt} of {frames}), " +
+                      $"GCs {GC.CollectionCount(0) - gc0}/{GC.CollectionCount(GC.MaxGeneration) - gc2}, chunks {_world?.LoadedChunks}, jobs {_world?.PendingJobs}");
         }
 
         IEnumerator Smoke()
@@ -88,7 +96,7 @@ namespace Stratum.Game
             yield return Shot("5_vista2");
             yield return Fps("flying", 5);
 
-            _sky.Time01 = 0.21f;
+            _sky.Time01 = 0.262f;
             yield return Wait(2);
             yield return Shot("6_dawn");
             _sky.Time01 = 0.02f;
@@ -121,7 +129,9 @@ namespace Stratum.Game
                     }
                 }
             _sky.Time01 = 0.45f;
-            yield return Wait(4);
+            yield return Wait(3);
+            for (float w = 0; w < 60 && _world.PendingJobs > 0; w += Time.unscaledDeltaTime) yield return null;
+            yield return Wait(2);
             if (found) yield return Shot("8_cave");
 
             Save();
@@ -132,7 +142,7 @@ namespace Stratum.Game
         void Finish()
         {
             File.WriteAllLines(Path.Combine(_smokeDir, "smoke.txt"), _smokeLog);
-            if (_meta != null && _meta.name == "Smoke Test") { var m = _meta; Teardown(); WorldStore.Delete(m); }
+            if (_meta != null && _meta.name == "Smoke Test") { var m = _meta; ToTitle(); WorldStore.Delete(m); }
             Application.Quit();
         }
     }

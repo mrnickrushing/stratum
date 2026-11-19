@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Stratum.Core;
 using UnityEngine;
 
@@ -19,6 +20,9 @@ namespace Stratum.Game
         public float Daylight = 1, Depth;    // set by the game: 0 surface, 1 deep underground
         public bool InGame;
         System.Random _r = new System.Random(5);
+        AudioClip[] _birds, _crickets;
+        AudioClip _tuneClip;
+        Task<float[]> _tuneJob;
 
         public static Sfx Create()
         {
@@ -47,6 +51,9 @@ namespace Stratum.Game
             _clips["splash"] = Splash();
             _clips["break_tool"] = Chime(new[] { 300f, 210f }, 0.3f);
             _clips["levelup"] = Chime(new[] { 523f, 659f, 784f }, 0.6f);
+            // A small set of calls, reused (a new clip every chirp would pile up in memory).
+            _birds = new AudioClip[8]; for (int i = 0; i < _birds.Length; i++) _birds[i] = Bird();
+            _crickets = new AudioClip[3]; for (int i = 0; i < _crickets.Length; i++) _crickets[i] = Cricket();
             _wind = Loop(Wind(), 0.0f);
             _cave = Loop(CaveDrone(), 0.0f);
             _music = gameObject.AddComponent<AudioSource>(); _music.playOnAwake = false;
@@ -81,15 +88,28 @@ namespace Stratum.Game
             _cave.volume = Mathf.MoveTowards(_cave.volume, InGame ? 0.22f * Depth * Master : 0, dt * 0.2f);
             if (InGame && surface > 0.5f)
             {
-                if (Daylight > 0.5f && (_birdTimer -= dt) < 0) { _birdTimer = 3 + (float)_r.NextDouble() * 9; PlayClip(Bird(), 0.16f); }
-                if (Daylight < 0.3f && (_cricketTimer -= dt) < 0) { _cricketTimer = 1.5f + (float)_r.NextDouble() * 3; PlayClip(Cricket(), 0.08f); }
+                if (Daylight > 0.5f && (_birdTimer -= dt) < 0) { _birdTimer = 3 + (float)_r.NextDouble() * 9; PlayClip(_birds[_r.Next(_birds.Length)], 0.16f); }
+                if (Daylight < 0.3f && (_cricketTimer -= dt) < 0) { _cricketTimer = 1.5f + (float)_r.NextDouble() * 3; PlayClip(_crickets[_r.Next(_crickets.Length)], 0.08f); }
             }
-            if ((_musicTimer -= dt) < 0 && Music > 0.01f && !_music.isPlaying)
+            // A new phrase is written on a worker thread (about a million samples), then played.
+            if (_tuneJob == null && (_musicTimer -= dt) < 0 && Music > 0.01f && !_music.isPlaying)
             {
                 _musicTimer = 150 + (float)_r.NextDouble() * 180;
-                _music.clip = Tune();
-                _music.volume = 0.32f * Music * Master;
-                _music.Play();
+                int seed = _r.Next();
+                _tuneJob = Task.Run(() => TuneData(new System.Random(seed)));
+            }
+            if (_tuneJob != null && _tuneJob.IsCompleted)
+            {
+                var job = _tuneJob; _tuneJob = null;
+                if (job.Status == TaskStatus.RanToCompletion)
+                {
+                    _music.Stop();
+                    if (_tuneClip != null) Destroy(_tuneClip);
+                    _tuneClip = Make("tune", job.Result);
+                    _music.clip = _tuneClip;
+                    _music.volume = 0.32f * Music * Master;
+                    _music.Play();
+                }
             }
             _music.volume = 0.32f * Music * Master;
         }
@@ -290,7 +310,7 @@ namespace Stratum.Game
         }
 
         // A short pentatonic phrase on a soft plucked voice with a long tail.
-        AudioClip Tune()
+        static float[] TuneData(System.Random _r)
         {
             float[] scale = { 0, 2, 4, 7, 9, 12, 14, 16, 19 };
             float root = 220f * Mathf.Pow(2, _r.Next(-3, 3) / 12f);
@@ -310,7 +330,7 @@ namespace Stratum.Game
             for (int i = delay; i < n; i++) d[i] += d[i - delay] * 0.32f;
             float peak = 0.001f; foreach (var v in d) peak = Mathf.Max(peak, Mathf.Abs(v));
             for (int i = 0; i < n; i++) d[i] = d[i] / peak * 0.7f;
-            return Make("tune", d);
+            return d;
         }
 
         static void Pluck(float[] d, int start, float hz, float vol)
