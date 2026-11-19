@@ -13,6 +13,7 @@ namespace Stratum.Game
         Link _link;
         Creatures _creatures;
         SignView _signs;
+        WeatherFx _weatherFx;
         int _difficulty = 2;
         bool _hasBed; Vector3Int _bed;
         float _sleptFor;
@@ -26,6 +27,7 @@ namespace Stratum.Game
             _player.Toast = s => _hud?.Toast(s);
             _creatures = Creatures.Create(_world, _cam.transform);
             _signs = SignView.Create(_world);
+            _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
             link.SignChanged = (at, text) => _signs.Set(at, text);
             _act.EditSign = at =>
             {
@@ -68,6 +70,8 @@ namespace Stratum.Game
         {
             if (_creatures != null) Destroy(_creatures.gameObject);
             if (_signs != null) Destroy(_signs.gameObject);
+            if (_weatherFx != null) Destroy(_weatherFx.gameObject);
+            _sky.Weather = 0;
             _signs = null;
             _creatures = null; _link = null;
         }
@@ -92,6 +96,7 @@ namespace Stratum.Game
         void Give(string item, int count, int wear)
         {
             if (_player == null || Items.Get(item) == null || count <= 0) return;
+            if (item == "xp") { _player.AddXp(count); return; }
             int left = count;
             if (wear > 0)
             {
@@ -196,6 +201,9 @@ namespace Stratum.Game
             var all = new List<Core.Stack>();
             for (int i = 0; i < Inventory.Size; i++)
                 if (!_player.Inv.Slots[i].Empty) { all.Add(_player.Inv.Slots[i]); _player.Inv.Slots[i] = Core.Stack.None; }
+            int xp = Xp.Dropped(_player.XpLevel);
+            if (xp > 0) all.Add(new Core.Stack("xp", xp));
+            _player.XpLevel = 0; _player.XpPoints = 0;
             if (all.Count > 0) _link.Drop(_player.Feet + Vector3.up * 0.5f, all.ToArray());
         }
 
@@ -228,7 +236,7 @@ namespace Stratum.Game
             {
                 case "/help":
                 case "/?":
-                    _hud.AddChat("", "Commands: /spawn  /home  /tp <name>  /list  /day  /night (single player)");
+                    _hud.AddChat("", "Commands: /spawn  /home  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night (single player)");
                     return true;
                 case "/spawn":
                     Teleport(Online ? GroundAt(_netSpawn) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz), "Back at the spawn");
@@ -252,6 +260,13 @@ namespace Stratum.Game
                         return true;
                     }
                     _hud.AddChat("", $"Nobody called \"{arg}\" is online.");
+                    return true;
+                case "/weather":
+                    if (Online) return false;
+                    int w = WeatherSim.Parse(arg.ToLowerInvariant());
+                    if (w < 0 || !(_link is LocalLink wl)) { _hud.AddChat("", "/weather clear, /weather rain or /weather thunder"); return true; }
+                    wl.Weather.Set(w, w == 0 ? 900 : 480);
+                    _hud.AddChat("", w == 0 ? "The weather clears." : w == 2 ? "A thunderstorm rolls in." : "It starts to rain.");
                     return true;
                 case "/day":
                 case "/night":

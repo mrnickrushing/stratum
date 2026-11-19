@@ -29,6 +29,8 @@ namespace Stratum.Game
         public float food = 20, saturation = 5;
         public int difficulty = 2;
         public bool hasBed;
+        public int xpLevel, xpPoints;
+        public int weather; public float weatherLeft = 900;
         public int bx, by, bz;
         public double minutesPlayed;
         [NonSerialized] public string Folder;

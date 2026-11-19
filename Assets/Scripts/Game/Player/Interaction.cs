@@ -274,7 +274,7 @@ namespace Stratum.Game
                     {
                         var dir = P.Cam.transform.forward;
                         var from = P.Cam.transform.position + dir * 0.4f;
-                        Link?.Shoot(from, dir * (14 + 40 * power) + P.Velocity * 0.5f, 1.5f + 7.5f * power * power);
+                        Link?.Shoot(from, dir * (14 + 40 * power) + P.Velocity * 0.5f, (1.5f + 7.5f * power * power) * (1 + 0.25f * heldDef.Ench('w')));
                         Sfx.I?.Play("bow", 0.7f, 0.9f + power * 0.3f);
                         if (!P.Creative) { P.Inv.Take("arrow", 1); if (P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Bow broke"); } }
                         _swing = 0.3f;
@@ -328,7 +328,7 @@ namespace Stratum.Game
         static bool IsUsable(byte id)
         {
             var d = Blocks.Get(id);
-            return id == Blocks.Workbench || d.BaseId == Blocks.Furnace || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -360,6 +360,8 @@ namespace Stratum.Game
             if (Mining.Drops(def, held))
             {
                 var (item, n) = Mining.Drop(def);
+                n = Mining.Bounty(def, held, _rng, n);
+                if (!P.Creative) P.AddXp(Mining.XpFor(def, _rng));
                 if (item != null)
                 {
                     int left = P.Inv.Add(item, n);
@@ -392,6 +394,8 @@ namespace Stratum.Game
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
                 if (tdef.BaseId == Blocks.Furnace) { OpenStation?.Invoke("furnace"); return; }
+                if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
+                if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }
                 if (tdef.BaseId == Blocks.Chest) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }

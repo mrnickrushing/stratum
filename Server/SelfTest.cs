@@ -64,7 +64,7 @@ namespace Stratum.Server
             return null;
         }
 
-        public float Food; public bool HasBed; public int BX;
+        public float Food; public bool HasBed; public int BX, XpLevel;
 
         public bool Welcome()
         {
@@ -75,7 +75,7 @@ namespace Stratum.Server
             HasPos = r.Bool(); X = r.F32(); Y = r.F32(); Z = r.F32(); r.F32(); r.F32(); r.F32(); r.U8();
             Slots = r.Stacks();
             Name = r.Str(); Token = r.Str();
-            Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); r.U8();
+            Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); r.U8(); XpLevel = r.I32(); r.I32();
             return true;
         }
 
@@ -192,7 +192,7 @@ namespace Stratum.Server
                     Check(b.Wait(Net.Msg.Moved, r => r.I32() == a.Id && Math.Abs(r.F32() - ax) < 0.01f) != null, "Bea sees Ada move");
 
                     var inv = new Stack[Inventory.Size]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
-                    a.Send(new Packet(Net.Msg.Keep).F32(17).F32(12).F32(3).U8(3).Stacks(inv).Bool(true).I32(px).I32(py).I32(pz));
+                    a.Send(new Packet(Net.Msg.Keep).F32(17).F32(12).F32(3).U8(3).Stacks(inv).Bool(true).I32(px).I32(py).I32(pz).I32(7).I32(3));
 
                     using (var c = new Bot(port)) { c.Create("ada", "another-pass"); Check(c.Refused()?.Contains("already an account") == true, "nobody can make a second account called ada"); }
                     using (var c = new Bot(port)) { c.Login("Bea", "wrong-password"); Check(c.Refused() == "Wrong password.", "a wrong password is refused"); }
@@ -218,6 +218,7 @@ namespace Stratum.Server
                     Check(w && a.Slots.Length == Inventory.Size && a.Slots[0].Item == "cobble" && a.Slots[0].Count == 5 && a.Slots[3].Count == 12,
                           "and her backpack came back");
                     Check(w && Math.Abs(a.Food - 12) < 0.01f && a.HasBed && a.BX == px, "and so do her hunger and her bed");
+                    Check(a.XpLevel == 7, "and her experience level");
                     a.Want(new[] { (px >> 4, pz >> 4) });
                     a.Wait(Net.Msg.Chunk, null, 15000);
                     Check(a.BlockAt(px, py, pz) == Blocks.Stone, "and the stone she placed is still there");

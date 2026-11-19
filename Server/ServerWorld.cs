@@ -22,6 +22,8 @@ namespace Stratum.Server
             public int sz { get; set; }
             public double time { get; set; } = 0.3;
             public int day { get; set; } = 1;
+            public int weather { get; set; }
+            public float weatherLeft { get; set; } = 900;
             public long created { get; set; }
         }
 
@@ -197,6 +199,8 @@ namespace Stratum.Server
         public float food { get; set; } = 20;
         public float saturation { get; set; } = 5;
         public bool hasBed { get; set; }
+        public int xpLevel { get; set; }
+        public int xpPoints { get; set; }
         public int bx { get; set; }
         public int by { get; set; }
         public int bz { get; set; }

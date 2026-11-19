@@ -21,6 +21,9 @@ namespace Stratum.Game
         public float ViewDistanceMeters = 160;
         public bool Underwater;
         public int Day = 1;
+        public int Weather;                     // WeatherSim state
+        public float Rain { get; private set; } // 0..1, eased toward the weather
+        public float Flash;                     // lightning: 1 at the strike, fading
 
         static readonly int SkyAmbient = Shader.PropertyToID("_SkyAmbient"), TorchColor = Shader.PropertyToID("_TorchColor"),
             SkyZenith = Shader.PropertyToID("_SkyZenith"), SkyHorizon = Shader.PropertyToID("_SkyHorizon"),
@@ -120,6 +123,9 @@ namespace Stratum.Game
 
         void Update()
         {
+            float wantRain = Weather == 0 ? 0 : Weather == 2 ? 1 : 0.75f;
+            Rain = Mathf.MoveTowards(Rain, wantRain, UnityEngine.Time.deltaTime / 12f);
+            Flash = Mathf.Max(0, Flash - UnityEngine.Time.deltaTime * 3.5f);
             if (!Frozen)
             {
                 Time01 += UnityEngine.Time.deltaTime / DayLength;
@@ -153,7 +159,17 @@ namespace Stratum.Game
             Color glow = Grad(elev, Color.black, new Color(1.0f, 0.45f, 0.18f), new Color(0.35f, 0.3f, 0.2f));
             if (Underwater) { zenith = horizon = new Color(0.04f, 0.16f, 0.28f) * (0.25f + day * 0.75f); }
 
+            // Grey skies in rain, darker in a storm; lightning lights everything for a moment.
+            float overcast = Rain * (Weather == 2 ? 1 : 0.8f);
+            Color grey = new Color(0.36f, 0.39f, 0.44f) * (0.15f + day * 0.85f) * (Weather == 2 ? 0.6f : 1);
+            zenith = Color.Lerp(zenith, grey * 0.9f, overcast * 0.85f);
+            horizon = Color.Lerp(horizon, grey * 1.1f, overcast * 0.85f);
+            glow *= 1 - overcast;
+            Sun.intensity *= 1 - overcast * 0.75f;
             Color ambient = Color.Lerp(new Color(0.05f, 0.07f, 0.14f), new Color(0.62f, 0.68f, 0.78f), day);
+            ambient *= 1 - overcast * 0.35f;
+            ambient += new Color(0.9f, 0.92f, 1f) * Flash * 0.9f;
+            zenith += new Color(0.5f, 0.52f, 0.6f) * Flash; horizon += new Color(0.5f, 0.52f, 0.6f) * Flash;
             ambient = Color.Lerp(ambient, new Color(0.75f, 0.55f, 0.45f), Mathf.Clamp01(1 - Mathf.Abs(elev - 0.05f) / 0.15f) * 0.35f);
 
             Shader.SetGlobalColor(SkyZenith, zenith);
@@ -166,7 +182,7 @@ namespace Stratum.Game
             Shader.SetGlobalFloat(Wind, 1f);
             Shader.SetGlobalColor(CloudLit, Color.Lerp(new Color(0.08f, 0.09f, 0.13f), Color.Lerp(new Color(1f, 0.72f, 0.55f), Color.white, sunUp), day));
             Shader.SetGlobalColor(CloudShade, Color.Lerp(new Color(0.04f, 0.05f, 0.08f), new Color(0.62f, 0.66f, 0.74f), day));
-            Shader.SetGlobalFloat(CloudCover, 0.52f);
+            Shader.SetGlobalFloat(CloudCover, Mathf.Lerp(0.52f, 0.95f, overcast));
             RenderSettings.ambientLight = ambient;
 
             // Fog fades the far edge of the loaded world into the horizon.
@@ -181,10 +197,10 @@ namespace Stratum.Game
                 // Fully fogged a chunk and a half inside the loaded edge (fog runs on depth, so the screen's
                 // sides see a little further), so the world never visibly ends.
                 float end = Mathf.Max(40, ViewDistanceMeters - 24);
-                RenderSettings.fogStartDistance = end * 0.42f;
-                RenderSettings.fogEndDistance = end;
+                RenderSettings.fogStartDistance = end * Mathf.Lerp(0.42f, 0.1f, overcast);
+                RenderSettings.fogEndDistance = end * Mathf.Lerp(1, 0.75f, overcast);
             }
-            if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f;
+            if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f - overcast * (Weather == 2 ? 0.75f : 0.5f) + Flash * 0.8f;
 
             var cam = Camera.main;
             if (cam != null && _cloudPlane != null)

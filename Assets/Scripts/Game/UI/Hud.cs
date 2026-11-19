@@ -92,17 +92,21 @@ namespace Stratum.Game
             // Health and air above the hotbar
             float bw = (9 * (S + G) + 14) / 2 - 10;
             _healthBack = UIKit.Panel(_root, "HealthBack", new Color(0.05f, 0.05f, 0.06f, 0.7f), UIKit.RoundSmall);
-            _healthBack.rectTransform.Place(0.5f, 0, -bw / 2 - 5, 18 + S + 24, bw, 18);
+            _healthBack.rectTransform.Place(0.5f, 0, -bw / 2 - 5, 18 + S + 40, bw, 18);
             _health = UIKit.Panel(_healthBack.transform, "Health", new Color(0.86f, 0.22f, 0.2f), UIKit.RoundSmall);
             _health.rectTransform.anchorMin = Vector2.zero; _health.rectTransform.anchorMax = new Vector2(1, 1); _health.rectTransform.offsetMin = new Vector2(3, 3); _health.rectTransform.offsetMax = new Vector2(-3, -3);
             _airBack = UIKit.Panel(_root, "AirBack", new Color(0.05f, 0.05f, 0.06f, 0.7f), UIKit.RoundSmall);
-            _airBack.rectTransform.Place(0.5f, 0, bw / 2 + 5, 18 + S + 24, bw, 18);
+            _airBack.rectTransform.Place(0.5f, 0, bw / 2 + 5, 18 + S + 40, bw, 18);
             _air = UIKit.Panel(_airBack.transform, "Air", new Color(0.45f, 0.75f, 1f), UIKit.RoundSmall);
             _air.rectTransform.anchorMin = Vector2.zero; _air.rectTransform.anchorMax = new Vector2(1, 1); _air.rectTransform.offsetMin = new Vector2(3, 3); _air.rectTransform.offsetMax = new Vector2(-3, -3);
             // Hunger beside health; armour over health; air over hunger when it's needed.
-            _airBack.rectTransform.anchoredPosition = new Vector2(bw / 2 + 5, 18 + S + 24 + 26);
-            _foodBack = Bar("Food", new Color(0.86f, 0.58f, 0.22f), bw / 2 + 5, 18 + S + 24, bw, out _food);
-            _armourBack = Bar("Armour", new Color(0.78f, 0.80f, 0.86f), -bw / 2 - 5, 18 + S + 24 + 26, bw, out _armour);
+            _airBack.rectTransform.anchoredPosition = new Vector2(bw / 2 + 5, 18 + S + 40 + 26);
+            _foodBack = Bar("Food", new Color(0.86f, 0.58f, 0.22f), bw / 2 + 5, 18 + S + 40, bw, out _food);
+            _armourBack = Bar("Armour", new Color(0.78f, 0.80f, 0.86f), -bw / 2 - 5, 18 + S + 40 + 26, bw, out _armour);
+            _xpBack = Bar("Xp", new Color(0.45f, 0.9f, 0.25f), 0, 18 + S + 20, bw * 2 + 10, out _xp);
+            _xpBack.rectTransform.sizeDelta = new Vector2(bw * 2 + 10, 12);
+            _xpLevel = UIKit.Label(_xpBack.transform, "", 22, new Color(0.6f, 1f, 0.35f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(2);
+            _xpLevel.rectTransform.Place(0.5f, 0.5f, 0, 2, 120, 30);
             _useBack = Bar("Use", new Color(1, 1, 1, 0.9f), 0, 0, 120, out _use);
             _useBack.rectTransform.anchorMin = _useBack.rectTransform.anchorMax = new Vector2(0.5f, 0.5f); _useBack.rectTransform.anchoredPosition = new Vector2(0, -34);
             _useBack.rectTransform.sizeDelta = new Vector2(120, 12);
@@ -122,9 +126,9 @@ namespace Stratum.Game
             _sleepText.rectTransform.Fill();
 
             _name = UIKit.Label(_root, "", 30, UIKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
-            _name.rectTransform.Place(0.5f, 0, 0, 18 + S + 56, 800, 40);
+            _name.rectTransform.Place(0.5f, 0, 0, 18 + S + 72, 800, 40);
             _toast = UIKit.Label(_root, "", 28, UIKit.Accent, TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
-            _toast.rectTransform.Place(0.5f, 0, 0, 18 + S + 100, 900, 40);
+            _toast.rectTransform.Place(0.5f, 0, 0, 18 + S + 116, 900, 40);
 
             _debug = UIKit.Label(_root, "", 20, Color.white, TextAnchor.UpperLeft).Shadowed(1.5f);
             _debug.rectTransform.Place(0, 1, 16, -12, 900, 400);
@@ -136,6 +140,8 @@ namespace Stratum.Game
             P.Hurt += amt => { _hurtFlash = Mathf.Clamp01(0.25f + amt * 0.06f); };
             Act.Toast = Toast;
         }
+
+        Image _xpBack, _xp; Text _xpLevel, _craftSub;
 
         Image Bar(string name, Color col, float x, float y, float w, out Image fill)
         {
@@ -188,6 +194,9 @@ namespace Stratum.Game
             _air.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.Air / P.MaxAir), 1);
             _foodBack.gameObject.SetActive(survival && show);
             _food.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.Food / 20f), 1);
+            _xpBack.gameObject.SetActive(survival && show);
+            _xp.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.XpPoints / (float)Xp.Next(P.XpLevel)), 1);
+            _xpLevel.text = P.XpLevel > 0 ? P.XpLevel.ToString() : "";
             _food.color = P.Food <= 6 ? Color.Lerp(new Color(0.86f, 0.58f, 0.22f), new Color(0.5f, 0.3f, 0.1f), Mathf.PingPong(Time.time * 2, 1)) : new Color(0.86f, 0.58f, 0.22f);
             int arm = P.Inv.ArmourPoints;
             _armourBack.gameObject.SetActive(survival && show && arm > 0);
@@ -274,8 +283,8 @@ namespace Stratum.Game
             right.rectTransform.Place(1, 1, -40, -30, 640, 800);
             _craftTitle = UIKit.Label(right.transform, "Crafting", 34, UIKit.Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
             _craftTitle.rectTransform.Place(0, 1, 28, -16, 600, 46);
-            var sub = UIKit.Label(right.transform, "Click to make one, Shift-click to make as many as you can.", 19, UIKit.Dim);
-            sub.rectTransform.Place(0, 1, 28, -60, 600, 28);
+            _craftSub = UIKit.Label(right.transform, "", 19, UIKit.Dim);
+            _craftSub.rectTransform.Place(0, 1, 28, -60, 600, 28);
             _boxGrid = UIKit.Rect(right.transform, "Chest").Place(0, 1, 26, -110, 600, 260);
             var scroll = UIKit.Scroll(right.transform, out _craftList);
             _craftArea = scroll.gameObject;
@@ -326,6 +335,7 @@ namespace Stratum.Game
                 _cursor = Stack.None;
             }
             if (_station == "chest") { _box = null; Sfx.I?.Play("chest_close", 0.6f); CloseBoxed?.Invoke(); }
+            if (WorkStation) ReturnWork();
             _inv.SetActive(false);
         }
 
@@ -384,7 +394,8 @@ namespace Stratum.Game
             _boxSlots.Clear();
             bool chest = _station == "chest" && _box != null;
             _boxGrid.gameObject.SetActive(chest);
-            _craftArea.SetActive(!chest);
+            _craftArea.SetActive(!chest && !WorkStation);
+            LayoutWork();
             if (chest)
             {
                 const float CS = 62, CG = 5;
@@ -562,6 +573,8 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
+            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
+            if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : "Anvil"; return; }
             _craftTitle.text = _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "furnace" && furnace))
@@ -612,6 +625,7 @@ namespace Stratum.Game
             int made = 0;
             do { if (!P.Inv.Craft(r)) break; made++; } while (all && made < 64);
             if (made > 0) Sfx.I?.Play("craft", 0.6f);
+            if (made > 0 && r.Station == "furnace") P.AddXp((made + Random.Range(0, 2)) / 2);
             else Toast("No room for it");
             RebuildCraftingSoon();
         }
@@ -624,6 +638,7 @@ namespace Stratum.Game
             for (int i = 0; i < _armSlots.Count; i++) _armSlots[i].Show(P.Inv.Slots[Inventory.ArmourStart + i]);
             if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
             if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);
+            UpdateWork();
             var sp = _cursor.Empty ? null : Icons.Get(_cursor.Item);
             _cursorIcon.sprite = sp; _cursorIcon.enabled = sp != null;
             _cursorCount.text = !_cursor.Empty && _cursor.Count > 1 ? _cursor.Count.ToString() : "";

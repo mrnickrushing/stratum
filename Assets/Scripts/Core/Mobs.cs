@@ -124,6 +124,7 @@ namespace Stratum.Core
         public bool TryGet(int id, out Mob m) => _byId.TryGetValue(id, out m);
 
         public bool IsDay => Time01 > 0.27f && Time01 < 0.73f;
+        public int Weather;                                       // WeatherSim state: no sunburn in rain, storms are dark enough for monsters
 
         float Rand() => (float)_r.NextDouble();
 
@@ -251,6 +252,7 @@ namespace Stratum.Core
                 if (n > 0) l.Add((item, n));
             }
             if (m.Kind == MobKind.Sheep && !m.Sheared) l.Add(("white_wool", 1));
+            if (m.Def.Xp > 0) l.Add(("xp", m.Def.Xp + _r.Next(m.Def.Xp + 1)));
             return l;
         }
 
@@ -608,7 +610,7 @@ namespace Stratum.Core
             var d = m.Def;
             // The undead burn in sunshine (but not in water or under cover).
             bool burning = false;
-            if (d.Burns && Dimension == "" && IsDay && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
+            if (d.Burns && Dimension == "" && IsDay && Weather == 0 && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
             if (m.InLava && !d.Fireproof) burning = true;
             if (burning) m.Burn = 1.5f; else m.Burn = Math.Max(0, m.Burn - dt);
             if (m.Burn > 0 && !d.Fireproof && m.Hurt <= 0) Hurt(m, m.InLava ? 4 : 1, m.X + 0.01f, m.Z, 0, 0.1f);

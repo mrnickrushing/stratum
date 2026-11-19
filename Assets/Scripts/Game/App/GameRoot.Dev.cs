@@ -161,6 +161,17 @@ namespace Stratum.Game
             return $"farm at {x0} {y} {z0}";
         }
 
+        // Opens a station with things in its slots: "enchant" (an iron sword, shards) or "anvil" (a worn sword, a book).
+        public static string DevWork(string station, int level)
+        {
+            var g = I;
+            g._player.XpLevel = level;
+            g.OpenInventory(station);
+            g._hud.DevWork(station == "enchant" ? new Core.Stack("iron_sword", 1) : new Core.Stack("iron_sword@s2", 1) { Wear = 200 },
+                           station == "enchant" ? new Core.Stack("sunstone_shard", 5) : new Core.Stack("book@s2u3", 1));
+            return "ok";
+        }
+
         public static string DevAfterSleep() => $"time {I._sky.Time01:0.00} day {I._sky.Day} asleep {I._player.Asleep} at {I._player.Feet}";
 
         // Fight: a cow in front, hit it with the sword until it dies.

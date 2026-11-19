@@ -211,7 +211,8 @@ namespace Stratum.Game
             float fall = _fallStart - Feet.y;
             byte under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
-            if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor(fall - 3));
+            if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
+            else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
         }
 
         void Survival(float dt)
@@ -273,11 +274,23 @@ namespace Stratum.Game
         }
 
         // A blow from outside (a creature): armour takes some of it and the body is knocked back.
+        public int XpLevel, XpPoints;
+        public System.Action<int> LevelledUp;
+        public void AddXp(int n)
+        {
+            if (n <= 0) return;
+            int before = XpLevel;
+            Xp.Add(ref XpLevel, ref XpPoints, n);
+            Sfx.I?.Play("xp", 0.35f, 0.9f + Random.value * 0.4f);
+            if (XpLevel > before && XpLevel % 5 == 0) Sfx.I?.Play("levelup", 0.6f);
+            if (XpLevel > before) LevelledUp?.Invoke(XpLevel);
+        }
+
         public void Hit(float amount, Vector3 from)
         {
             if (Creative || Health <= 0) return;
             int pts = Inv.ArmourPoints;
-            float taken = amount * (1 - Mathf.Min(20, pts) * 0.04f);
+            float taken = amount * (1 - Mathf.Min(20, pts) * 0.04f) * (1 - Mathf.Min(0.64f, Inv.Warding * 0.04f));
             if (pts > 0) { var broke = Inv.WearArmour(); if (broke != null) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke(broke + " broke"); } }
             var away = Feet - from; away.y = 0;
             if (away.sqrMagnitude > 0.001f) { away.Normalize(); Velocity.x += away.x * 7; Velocity.z += away.z * 7; }

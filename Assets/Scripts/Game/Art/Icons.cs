@@ -95,11 +95,37 @@ namespace Stratum.Game
         static readonly Dictionary<string, Sprite> _sprites = new Dictionary<string, Sprite>();
         const int Size = 96;
 
+        static Texture2D Glint(Texture2D plain)
+        {
+            Color[] px;
+            try { px = plain.GetPixels(); } catch { return plain; }
+            int w = plain.width, h = plain.height;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    ref var c = ref px[x + y * w];
+                    if (c.a < 0.05f) continue;
+                    float band = Mathf.Pow(0.5f + 0.5f * Mathf.Sin((x + y) * 0.16f), 6);
+                    var glow = new Color(0.72f, 0.45f, 1f);
+                    c = new Color(Mathf.Lerp(c.r, glow.r, 0.22f + band * 0.4f), Mathf.Lerp(c.g, glow.g, 0.22f + band * 0.4f), Mathf.Lerp(c.b, glow.b, 0.22f + band * 0.4f), c.a);
+                }
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = plain.filterMode, wrapMode = TextureWrapMode.Clamp };
+            t.SetPixels(px); t.Apply();
+            return t;
+        }
+
         public static Sprite Get(string item)
         {
             if (item == null) return null;
             if (_sprites.TryGetValue(item, out var s)) return s;
-            if (!_icons.TryGetValue(item, out var t)) return null;
+            if (!_icons.TryGetValue(item, out var t))
+            {
+                // Enchanted things: the plain picture with a violet shimmer.
+                int at = item.IndexOf('@');
+                if (at < 0 || !_icons.TryGetValue(item.Substring(0, at), out var plain)) return null;
+                t = Glint(plain);
+                _icons[item] = t;
+            }
             s = Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), 100);
             _sprites[item] = s;
             return s;

@@ -102,6 +102,7 @@ namespace Stratum.Game
             float food = welcome.F32(), sat = welcome.F32();
             bool hasBed = welcome.Bool(); var bed = new Vector3Int(welcome.I32(), welcome.I32(), welcome.I32());
             int difficulty = welcome.U8();
+            int xpLevel = welcome.I32(), xpPoints = welcome.I32();
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
@@ -123,6 +124,7 @@ namespace Stratum.Game
             _player.Food = hasPos ? Mathf.Clamp(food, 0, 20) : 20;
             _player.Saturation = hasPos ? Mathf.Clamp(sat, 0, 20) : 5;
             _hasBed = hasBed; _bed = bed;
+            _player.XpLevel = xpLevel; _player.XpPoints = xpPoints;
             _player.Inv.Selected = Mathf.Clamp(selected, 0, 8);
             for (int i = 0; i < slots.Length && i < Inventory.Size; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _player.Inv.Slots[i] = slots[i];
@@ -229,7 +231,7 @@ namespace Stratum.Game
         {
             if (_net == null || _player == null) return;
             _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(_player.Inv.Slots)
-                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z));
+                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints));
         }
 
         // Reads what the server sent and keeps it up to date with us. Runs every frame while connected.
@@ -302,6 +304,7 @@ namespace Stratum.Game
                 case Net.Msg.Clock:
                 {
                     float time = (float)r.F64(); int day = r.I32();
+                    _sky.Weather = r.U8();
                     if (Mathf.Abs(Mathf.DeltaAngle(_sky.Time01 * 360, time * 360)) > 0.5f) _sky.Time01 = time;
                     _sky.Day = Math.Max(1, day);
                     break;

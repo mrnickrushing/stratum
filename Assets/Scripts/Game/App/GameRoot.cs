@@ -222,6 +222,8 @@ namespace Stratum.Game
             _player.Food = meta.hasPlayer ? Mathf.Clamp(meta.food, 0, 20) : 20;
             _player.Saturation = meta.hasPlayer ? Mathf.Clamp(meta.saturation, 0, 20) : 5;
             _hasBed = meta.hasBed; _bed = new Vector3Int(meta.bx, meta.by, meta.bz);
+            _player.XpLevel = meta.xpLevel; _player.XpPoints = meta.xpPoints;
+            _sky.Weather = meta.weather;
             _player.Flying = meta.creative && meta.flying;
             _player.Inv.Selected = Mathf.Clamp(meta.selected, 0, 8);
             for (int i = 0; i < meta.slots.Count && i < Inventory.Size; i++)
@@ -240,6 +242,7 @@ namespace Stratum.Game
             _hud.SendChat = LocalChat;
             _hud.gameObject.SetActive(false);
             SetupSurvival(new LocalLink(_world, _player, _sky, meta.Folder, meta.seed, meta.difficulty), meta.creative ? 0 : meta.difficulty);
+            if (_link is LocalLink lw) lw.Weather.Set(meta.weather, meta.weatherLeft);
 
             // Wait for the ground around the player.
             _loadTime = 0;
@@ -454,6 +457,8 @@ namespace Stratum.Game
                 _meta.yaw = _player.Yaw; _meta.pitch = _player.Pitch; _meta.health = _player.Health; _meta.flying = _player.Flying;
                 _meta.food = _player.Food; _meta.saturation = _player.Saturation;
                 _meta.hasBed = _hasBed; _meta.bx = _bed.x; _meta.by = _bed.y; _meta.bz = _bed.z;
+                _meta.xpLevel = _player.XpLevel; _meta.xpPoints = _player.XpPoints;
+                if (_link is LocalLink wl) { _meta.weather = wl.Weather.State; _meta.weatherLeft = wl.Weather.Left; }
                 _meta.time = _sky.Time01; _meta.day = _sky.Day;
                 _meta.selected = _player.Inv.Selected;
                 _meta.slots.Clear();

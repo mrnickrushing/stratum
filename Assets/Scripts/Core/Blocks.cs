@@ -24,6 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
+        EnchantTop, EnchantSide, AnvilTop, AnvilSide,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
@@ -106,6 +107,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
+            EnchantingTable, Anvil,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -381,6 +383,17 @@ namespace Stratum.Core
             Defs[OakLeaves].Bonus2 = "oak_sapling"; Defs[OakLeaves].Bonus2Chance = 0.05f;
             Defs[BirchLeaves].Bonus2 = "birch_sapling"; Defs[BirchLeaves].Bonus2Chance = 0.05f;
             Defs[PineNeedles].Bonus2 = "pine_sapling"; Defs[PineNeedles].Bonus2Chance = 0.05f;
+
+            // ---------------------------------------------------------------- 0.2: enchanting
+            b = Add("enchanting_table", "Enchanting Table", Tex.EnchantTop, Tex.EnchantSide, Tex.Obsidian);
+            b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 5; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Stone; b.Emit = 7;
+            b.Boxes = new[] { Box.Px(0, 0, 0, 16, 12, 16) }; EnchantingTable = b.Id;
+            Anvil = Facings("anvil", "Anvil", 4, (d, i) =>
+            {
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 1; d.Hardness = 5; d.Tool = Tool.Pickaxe; d.TierNeeded = 1; d.Sound = Sound.Metal;
+                d.Top = Tex.AnvilTop; d.Side = d.Bottom = Tex.AnvilSide;
+                d.Boxes = new[] { Box.Px(2, 0, 2, 14, 4, 14), Box.Px(4, 4, 5, 12, 10, 11), Box.Px(0, 10, 3, 16, 16, 13) };
+            });
 
             Palette.Remove(Water);
         }

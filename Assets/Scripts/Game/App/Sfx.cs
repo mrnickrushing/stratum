@@ -49,6 +49,10 @@ namespace Stratum.Game
             _clips["click"] = Tone(880, 0.05f, 0.25f, 3);
             _clips["craft"] = Chime(new[] { 660f, 990f }, 0.35f);
             _clips["pickup"] = Chime(new[] { 1200f }, 0.12f);
+            _clips["xp"] = Chime(new[] { 1760f, 2350f }, 0.09f);
+            _clips["levelup"] = Chime(new[] { 784f, 988f, 1175f, 1568f }, 0.7f);
+            _clips["enchant"] = Chime(new[] { 523f, 659f, 784f, 1046f, 1318f }, 1.1f);
+            _clips["anvil"] = Chime(new[] { 1900f, 2650f }, 0.35f);
             _clips["hurt"] = Hurt();
             _clips["splash"] = Splash();
             _clips["break_tool"] = Chime(new[] { 300f, 210f }, 0.3f);
@@ -81,6 +85,8 @@ namespace Stratum.Game
             _crickets = new AudioClip[3]; for (int i = 0; i < _crickets.Length; i++) _crickets[i] = Cricket();
             _wind = Loop(Wind(), 0.0f);
             _cave = Loop(CaveDrone(), 0.0f);
+            _rain = Loop(RainNoise(), 0.0f);
+            _clips["thunder"] = Thunder();
             _music = gameObject.AddComponent<AudioSource>(); _music.playOnAwake = false;
         }
 
@@ -129,6 +135,7 @@ namespace Stratum.Game
             float dt = Time.unscaledDeltaTime;
             float surface = 1 - Depth;
             _wind.volume = Mathf.MoveTowards(_wind.volume, InGame ? (0.10f + 0.06f * Mathf.Sin(Time.time * 0.13f)) * surface * Master : 0.06f * Master, dt * 0.2f);
+            _rain.volume = Mathf.MoveTowards(_rain.volume, InGame ? RainLevel * 0.42f * Master : 0, dt * 0.5f);
             _cave.volume = Mathf.MoveTowards(_cave.volume, InGame ? 0.22f * Depth * Master : 0, dt * 0.2f);
             if (InGame && surface > 0.5f)
             {
@@ -309,6 +316,41 @@ namespace Stratum.Game
             }
             d = Crossfade(d, Rate / 2);
             return Make("wind", d);
+        }
+
+        AudioSource _rain;
+        public float RainLevel;          // 0..1: how loud the rain is where the listener is (quieter under a roof)
+
+        // Rain: bright hiss with a patter of drops on top.
+        AudioClip RainNoise()
+        {
+            int n = Rate * 6; var d = new float[n]; var f = new Svf(); var g = new Svf();
+            float drop = 0, dropF = 0;
+            for (int i = 0; i < n; i++)
+            {
+                f.Step(Rand(), 2600, 0.9f); g.Step(Rand(), 700, 1.2f);
+                if (_r.NextDouble() < 0.0016) { drop = 0.5f + (float)_r.NextDouble() * 0.5f; dropF = 1500 + (float)_r.NextDouble() * 2500; }
+                drop *= 0.996f;
+                float t = i / (float)Rate;
+                d[i] = f.Band * 0.35f + g.Band * 0.25f + Mathf.Sin(2 * Mathf.PI * dropF * t) * drop * 0.08f;
+            }
+            return Make("rain", Crossfade(d, Rate / 2));
+        }
+
+        // Thunder: a crack, then a long low roll.
+        AudioClip Thunder()
+        {
+            int n = Rate * 5; var d = new float[n]; var f = new Svf(); var g = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                f.Step(Rand(), 90 + 60 * Mathf.Sin(t * 3), 1.8f);
+                g.Step(Rand(), 1800, 1.0f);
+                float crack = t < 0.25f ? Mathf.Exp(-t * 18) : 0;
+                float roll = Mathf.Exp(-t * 0.7f) * (0.6f + 0.4f * Mathf.Sin(t * 5.3f) * Mathf.Sin(t * 2.1f));
+                d[i] = g.Band * crack * 0.9f + f.Low * roll * 2.6f;
+            }
+            return Make("thunder", d);
         }
 
         AudioClip CaveDrone()

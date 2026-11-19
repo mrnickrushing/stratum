@@ -65,6 +65,7 @@ namespace Stratum.Server
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
         readonly List<(float, float)> _near = new List<(float, float)>();
+        WeatherSim _weather;
         string MobFile => System.IO.Path.Combine(_cfg.Dir, "creatures.bin");
         string BoxFile => System.IO.Path.Combine(_cfg.Dir, "containers.bin");
         readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
@@ -89,6 +90,10 @@ namespace Stratum.Server
             catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
+            _weather = new WeatherSim(World.Meta.seed ^ Environment.TickCount);
+            _weather.Set(World.Meta.weather, World.Meta.weatherLeft);
+            _weather.Changed += s => { _mobs.Weather = s; Broadcast(ClockPacket()); Broadcast(SaidPacket("", s == 0 ? "The weather clears." : s == 2 ? "A thunderstorm rolls in." : "It starts to rain.")); };
+            _mobs.Weather = _weather.State;
             try { _mobs.LoadFile(MobFile); } catch (Exception e) { Log.Warn("creatures.bin unreadable: " + e.Message); }
             _mobs.HitPlayer += (id, dmg, fx, fz, from) =>
             {
@@ -172,6 +177,7 @@ namespace Stratum.Server
                     foreach (var ch in made) Serve(ch);
 
                     World.Water.Tick(dt);
+                    _weather.Tick(dt);
                     _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
                     World.Growth.Tick(dt, _near);
                     TickMobs(dt);
@@ -209,6 +215,7 @@ namespace Stratum.Server
         void SaveAll(bool final)
         {
             World.Maintain(Needed, false);
+            World.Meta.weather = _weather.State; World.Meta.weatherLeft = _weather.Left;
             World.SaveMeta();
             try { _mobs.SaveFile(MobFile); } catch (Exception e) { Log.Warn("could not save creatures: " + e.Message); }
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
@@ -313,7 +320,7 @@ namespace Stratum.Server
                 .Bool(p.Rec.hasPos).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).F32(p.Rec.health).U8((byte)Math.Clamp(p.Rec.selected, 0, 8))
                 .Stacks(p.Rec.Stacks())
                 .Str(name).Str(res.Token ?? "")
-                .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty);
+                .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints);
             p.Conn.Send(w);
             foreach (var kv in _boxes.Signs)
             {
@@ -440,7 +447,15 @@ namespace Stratum.Server
                 return;
             }
             if (text.StartsWith("/tpnote ")) { Broadcast(SaidPacket("", $"{p.Name} went to {text.Substring(8).Trim()}")); return; }
-            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>")); return; }
+            if (text.StartsWith("/weather"))
+            {
+                int w = WeatherSim.Parse(text.Substring(8).Trim().ToLowerInvariant());
+                if (w < 0) { p.Conn.Send(SaidPacket("", "/weather clear, /weather rain or /weather thunder")); return; }
+                _weather.Set(w, w == 0 ? 900 : 480);
+                Broadcast(SaidPacket("", $"{p.Name} changed the weather to {WeatherSim.Name(w)}"));
+                return;
+            }
+            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>")); return; }
             Broadcast(SaidPacket(p.Name, text));
             Log.Info($"<{p.Name}> {text}");
         }
@@ -454,6 +469,7 @@ namespace Stratum.Server
             var st = r.Stacks();
             if (st.Length == Inventory.Size) p.Rec.SetStacks(st);
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
+            p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
         }
 
         // ------------------------------------------------------------------ creatures
@@ -628,7 +644,7 @@ namespace Stratum.Server
 
         static Packet BlockPacket(int x, int y, int z, byte id, int by) => new Packet(Net.Msg.Block).I32(x).I32(y).I32(z).U8(id).I32(by);
         Packet JoinedPacket(Player p) => new Packet(Net.Msg.Joined).I32(p.Conn.Id).Str(p.Name).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw);
-        Packet ClockPacket() => new Packet(Net.Msg.Clock).F64(World.Meta.time).I32(World.Meta.day);
+        Packet ClockPacket() => new Packet(Net.Msg.Clock).F64(World.Meta.time).I32(World.Meta.day).U8((byte)_weather.State);
         static Packet SaidPacket(string from, string text) => new Packet(Net.Msg.Said).Str(from).Str(text);
     }
 }

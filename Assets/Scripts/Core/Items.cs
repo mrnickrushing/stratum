@@ -21,6 +21,25 @@ namespace Stratum.Core
         public int Armour;           // protection points (20 in all stops 80% of a hit)
         public bool Ranged;          // the bow
         public bool Drink;           // milk: drunk whatever your hunger, gives the bucket back
+        public Dictionary<char, int> Enchants;   // enchanted copies only
+        public string Base;                      // enchanted copies: the plain item
+        public ItemDef MemberwiseCopy() => (ItemDef)MemberwiseClone();
+        public int Ench(char c) => Enchants != null && Enchants.TryGetValue(c, out int l) ? l : 0;
+    }
+
+    // Experience: points from creatures, ores and the furnace fill levels; levels pay for enchanting.
+    public static class Xp
+    {
+        public static int Next(int level) => level < 16 ? 2 * level + 7 : level < 31 ? 5 * level - 38 : 9 * level - 158;
+
+        public static void Add(ref int level, ref int points, int n)
+        {
+            points += n;
+            while (points >= Next(level)) { points -= Next(level); level++; }
+        }
+
+        // What dying leaves behind (the rest is lost).
+        public static int Dropped(int level) => Math.Min(100, level * 7);
     }
 
     public struct Stack
@@ -106,6 +125,7 @@ namespace Stratum.Core
             foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
+            Add(new ItemDef { Id = "xp", Name = "Experience", MaxStack = 1000, Creative = false });
             Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1 });
@@ -172,6 +192,8 @@ namespace Stratum.Core
             R("iron_bars", 16, "workbench", ("iron_ingot", 6));
             R("sign", 3, "workbench", ("@planks", 6), ("stick", 1));
             R("bucket", 1, "workbench", ("iron_ingot", 3));
+            R("enchanting_table", 1, "workbench", ("book", 1), ("sunstone_shard", 2), ("obsidian", 4));
+            R("anvil", 1, "workbench", ("iron_block", 3), ("iron_ingot", 4));
             // Farming.
             R("bread", 1, "workbench", ("wheat", 3));
             R("hay_bale", 1, "workbench", ("wheat", 9));
@@ -205,7 +227,20 @@ namespace Stratum.Core
             R("coal", 1, "furnace", ("@log", 1));
         }
 
-        public static ItemDef Get(string id) => id != null && Defs.TryGetValue(id, out var d) ? d : null;
+        public static ItemDef Get(string id)
+        {
+            if (id == null) return null;
+            if (Defs.TryGetValue(id, out var d)) return d;
+            if (id.IndexOf('@') < 0) return null;
+            lock (Derived)
+            {
+                if (Derived.TryGetValue(id, out d)) return d;
+                d = Enchants.Derive(id);
+                Derived[id] = d;
+                return d;
+            }
+        }
+        static readonly Dictionary<string, ItemDef> Derived = new Dictionary<string, ItemDef>();
 
         // "@planks" and "@log" accept any kind of wood.
         public static bool Matches(string want, string have)
@@ -282,12 +317,20 @@ namespace Stratum.Core
             if (s.Count <= 0) s = Stack.None;
         }
 
+        static readonly Random Luck = new Random();
+        // Lasting: each level is another chance to shrug off the wear.
+        static bool Spared(ItemDef d) { int u = d.Ench('u'); return u > 0 && Luck.Next(u + 1) != 0; }
+
+        public int Warding { get { int n = 0; for (int i = ArmourStart; i < Size; i++) { var d = Items.Get(Slots[i].Item); if (d != null) n += d.Ench('p'); } return n; } }
+        public int SoftLanding => Items.Get(Slots[Size - 1].Item)?.Ench('g') ?? 0;
+
         // Wears the held tool; true when it broke.
         public bool WearHeld()
         {
             ref var s = ref Slots[Selected];
             var d = Items.Get(s.Item);
             if (d == null || d.Durability <= 0) return false;
+            if (Spared(d)) return false;
             s.Wear++;
             if (s.Wear >= d.Durability) { s = Stack.None; return true; }
             return false;
@@ -326,7 +369,7 @@ namespace Stratum.Core
             {
                 ref var s = ref Slots[i];
                 var d = Items.Get(s.Item);
-                if (d == null || d.Durability <= 0) continue;
+                if (d == null || d.Durability <= 0 || Spared(d)) continue;
                 if (++s.Wear >= d.Durability) { broke = d.Name; s = Stack.None; }
             }
             return broke;
@@ -373,6 +416,17 @@ namespace Stratum.Core
         // Something extra a block sometimes gives (an apple from oak leaves).
         public static string Bonus(BlockDef b, Random r) => b.Bonus != null && r.NextDouble() < b.BonusChance ? b.Bonus : null;
         public static string Bonus2(BlockDef b, Random r) => b.Bonus2 != null && r.NextDouble() < b.Bonus2Chance ? b.Bonus2 : null;
+
+        // Bounty on a pickaxe or shovel: ores that drop something other than themselves may give more.
+        public static int Bounty(BlockDef b, ItemDef held, Random r, int count)
+        {
+            int f = held?.Ench('f') ?? 0;
+            if (f <= 0 || b.DropItem == null || b.DropItem == "" || b.Tool != Tool.Pickaxe) return count;
+            return count * (1 + Math.Max(0, r.Next(f + 2) - 1));
+        }
+
+        public static int XpFor(BlockDef b, Random r) =>
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : 0;
 
         public static (string item, int count) Drop(BlockDef b)
         {

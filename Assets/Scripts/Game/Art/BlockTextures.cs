@@ -122,6 +122,10 @@ namespace Stratum.Game
                 case Tex.Trapdoor: Trapdoor(p); return 2.5f;
                 case Tex.Ladder: Ladder(p); return 2f;
                 case Tex.IronBars: Bars(p); return 2f;
+                case Tex.EnchantTop: EnchantTop(p); return 3f;
+                case Tex.EnchantSide: EnchantSide(p); return 3f;
+                case Tex.AnvilTop: Metal(p, Hex(0x4a4c52), Hex(0x2c2d32)); return 3f;
+                case Tex.AnvilSide: Metal(p, Hex(0x3e4046), Hex(0x24252a)); Frame(p, Hex(0x1e1f23), 2); return 3f;
                 case Tex.FarmlandDry: Farmland(p, false); return 2.5f;
                 case Tex.FarmlandWet: Farmland(p, true); return 2.5f;
                 case Tex.Wheat0: Wheat(p, 0); return 1f;
@@ -687,6 +691,45 @@ namespace Stratum.Game
                     }
                 }
             }
+        }
+
+        // A red cloth over the top with gold edging, an open book in gold lines at its middle.
+        static void EnchantTop(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 8, 3);
+                    Color c = Color.Lerp(Hex(0x6a1420), Hex(0x9a2232), n); float h = 0.4f + n * 0.2f;
+                    int e = Mathf.Min(Mathf.Min(x, 63 - x), Mathf.Min(y, 63 - y));
+                    if (e < 4) { c = Paint.Mul(Hex(0x2a1838), 0.8f + n * 0.4f); h = 0.8f; }
+                    else if (e < 6) { c = Hex(0xe0b04a); h = 0.9f; }
+                    // The book.
+                    bool page = Mathf.Abs(x - 32) < 14 && Mathf.Abs(y - 32) < 10 && Mathf.Abs(x - 32) > 1;
+                    if (page) { c = Color.Lerp(Hex(0xe8dcc0), Hex(0xfaf2dc), n); h = 0.7f; if ((y % 4 == 0) && Mathf.Abs(x - 32) > 4 && Mathf.Abs(x - 32) < 12) c = Hex(0x6a4ab0); }
+                    c.a = 1; p.Set(x, y, c, h);
+                }
+        }
+
+        // Dark stone with violet runes glowing in it.
+        static void EnchantSide(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 6, 4);
+                    Color c = Color.Lerp(Hex(0x120c1c), Hex(0x2a2038), n); float h = n;
+                    if (y > 44) { c = Color.Lerp(Hex(0x6a1420), Hex(0x9a2232), n); h = 0.5f; if (y < 47) { c = Hex(0xe0b04a); h = 0.9f; } }
+                    else
+                    {
+                        int gx = x / 10, gy = y / 12;
+                        float rune = p.Hash(gx * 7 + gy, 3);
+                        int lx = x % 10, ly = y % 12;
+                        bool stroke = rune < 0.33f ? (lx == 4 || ly == 5) : rune < 0.66f ? (lx == ly || lx == 9 - ly) : (lx == 2 || ly == 2 || lx == 7);
+                        if (stroke && lx > 0 && lx < 9 && ly > 1 && ly < 10 && y > 4) { c = Hex(0xb07aff); h = 0.2f; }
+                    }
+                    c.a = 1; p.Set(x, y, c, h);
+                }
         }
 
         // Tilled soil in ridges; wet soil is darker.
