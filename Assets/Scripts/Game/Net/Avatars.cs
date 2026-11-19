@@ -250,7 +250,7 @@ namespace Stratum.Game
         }
 
         // A unit cube whose faces are shaded a little differently, so the figure reads as solid without lights.
-        static Mesh Cube()
+        internal static Mesh Cube()
         {
             var v = new List<Vector3>(); var col = new List<Color>(); var tri = new List<int>();
             void Face(Vector3 n, Vector3 u, Vector3 w, float shade)

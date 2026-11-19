@@ -14,6 +14,12 @@ namespace Stratum.Core
         public int Durability;       // tools: uses before it breaks
         public float Speed = 1;      // tools: how much faster than a hand
         public bool Creative = true;
+        public float Damage = 1;     // a hit with it (a bare hand is 1)
+        public int Food;             // hunger it fills when eaten (0: not food)
+        public float Saturation;     // how long that keeps hunger away
+        public int ArmourSlot = -1;  // 0 head, 1 body, 2 legs, 3 feet
+        public int Armour;           // protection points (20 in all stops 80% of a hit)
+        public bool Ranged;          // the bow
     }
 
     public struct Stack
@@ -67,6 +73,46 @@ namespace Stratum.Core
             ToolSet("stone", "Stone", 2, 130, 3.5f);
             ToolSet("copper", "Copper", 3, 220, 5f);
             ToolSet("iron", "Iron", 4, 400, 7f);
+            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f) })
+            {
+                Add(new ItemDef { Id = mat + "_sword", Name = name + " Sword", MaxStack = 1, Tool = Tool.Sword, Tier = tier, Durability = dur, Speed = 1.5f, Damage = dmg });
+                // Tools hit a little harder than a fist too.
+                Defs[mat + "_axe"].Damage = dmg - 1; Defs[mat + "_pickaxe"].Damage = dmg - 2; Defs[mat + "_shovel"].Damage = dmg - 2.5f;
+            }
+            Add(new ItemDef { Id = "bow", Name = "Bow", MaxStack = 1, Durability = 300, Ranged = true });
+            Add(new ItemDef { Id = "arrow", Name = "Arrow" });
+            Add(new ItemDef { Id = "shears", Name = "Shears", MaxStack = 1, Tool = Tool.Shears, Tier = 1, Durability = 200, Speed = 5 });
+
+            // Food: hunger filled, and how long it lasts.
+            void Food(string id, string name, int food, float sat) => Add(new ItemDef { Id = id, Name = name, Food = food, Saturation = sat });
+            Food("apple", "Apple", 4, 2.4f);
+            Food("bread", "Bread", 5, 6f);
+            Food("raw_beef", "Raw Beef", 3, 1.8f);
+            Food("steak", "Steak", 8, 12.8f);
+            Food("raw_pork", "Raw Pork", 3, 1.8f);
+            Food("roast_pork", "Roast Pork", 8, 12.8f);
+            Food("raw_mutton", "Raw Mutton", 2, 1.2f);
+            Food("roast_mutton", "Roast Mutton", 6, 9.6f);
+            Food("raw_chicken", "Raw Chicken", 2, 1.2f);
+            Food("roast_chicken", "Roast Chicken", 6, 7.2f);
+            Food("berries", "Wild Berries", 2, 0.4f);
+
+            Add(new ItemDef { Id = "hide", Name = "Hide" });
+            Add(new ItemDef { Id = "feather", Name = "Feather" });
+            Add(new ItemDef { Id = "bone", Name = "Bone" });
+            Add(new ItemDef { Id = "thread", Name = "Thread" });
+            Add(new ItemDef { Id = "ember", Name = "Ember Shard" });
+            Add(new ItemDef { Id = "colossus_heart", Name = "Heart of Cinder", MaxStack = 16 });
+
+            // Armour: a cap, a coat, leggings and boots of hide, copper or iron.
+            string[] pieces = { "cap", "coat", "leggings", "boots" }, pieceNames = { "Cap", "Coat", "Leggings", "Boots" };
+            int[] need = { 5, 8, 7, 4 };
+            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260) })
+                for (int i = 0; i < 4; i++)
+                {
+                    Add(new ItemDef { Id = mat + "_" + pieces[i], Name = name + " " + pieceNames[i], MaxStack = 1, ArmourSlot = i, Armour = pts[i], Durability = dur });
+                    R(mat + "_" + pieces[i], 1, "workbench", (item, need[i]));
+                }
 
             // By hand
             R("oak_planks", 4, null, ("oak_log", 1));
@@ -91,6 +137,26 @@ namespace Stratum.Core
             R("iron_block", 1, "workbench", ("iron_ingot", 9));
             R("gold_block", 1, "workbench", ("gold_ingot", 9));
             R("mossy_cobble", 2, "workbench", ("cobble", 2), ("tall_grass", 1));
+            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot") })
+                R(mat + "_sword", 1, "workbench", (item, 2), ("stick", 1));
+            R("bow", 1, "workbench", ("stick", 3), ("thread", 3));
+            R("arrow", 4, "workbench", ("stick", 1), ("feather", 1), ("cobble", 1));
+            R("shears", 1, "workbench", ("copper_ingot", 2));
+            R("chest", 1, "workbench", ("@planks", 8));
+            R("bed", 1, "workbench", ("white_wool", 3), ("@planks", 3));
+            R("white_wool", 1, null, ("thread", 4));
+            R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
+            R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));
+            R("blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1));
+            R("green_wool", 1, null, ("white_wool", 1), ("cactus", 1));
+            R("black_wool", 1, null, ("white_wool", 1), ("coal", 1));
+            R("grey_wool", 2, null, ("white_wool", 2), ("coal", 1));
+            R("brown_wool", 1, null, ("white_wool", 1), ("dirt", 1));
+            // Cooking needs no fuel: a furnace is warm enough.
+            R("steak", 1, "furnace", ("raw_beef", 1));
+            R("roast_pork", 1, "furnace", ("raw_pork", 1));
+            R("roast_mutton", 1, "furnace", ("raw_mutton", 1));
+            R("roast_chicken", 1, "furnace", ("raw_chicken", 1));
             // In a furnace (coal is the fuel)
             R("stone", 1, "furnace", ("cobble", 1));
             R("glass", 1, "furnace", ("sand", 1));
@@ -122,7 +188,8 @@ namespace Stratum.Core
 
     public sealed class Inventory
     {
-        public const int Hotbar = 9, Size = 36;
+        public const int Hotbar = 9, Main = 36, Size = 40;     // 36..39: armour (head, body, legs, feet)
+        public const int ArmourStart = Main;
         public readonly Stack[] Slots = new Stack[Size];
         public int Selected;
 
@@ -131,7 +198,7 @@ namespace Stratum.Core
         public int Count(string want)
         {
             int n = 0;
-            foreach (var s in Slots) if (!s.Empty && Items.Matches(want, s.Item)) n += s.Count;
+            for (int i = 0; i < Main; i++) { var s = Slots[i]; if (!s.Empty && Items.Matches(want, s.Item)) n += s.Count; }
             return n;
         }
 
@@ -141,7 +208,7 @@ namespace Stratum.Core
             var def = Items.Get(item);
             if (def == null || count <= 0) return count;
             for (int pass = 0; pass < 2 && count > 0; pass++)
-                for (int i = 0; i < Size && count > 0; i++)
+                for (int i = 0; i < Main && count > 0; i++)
                 {
                     ref var s = ref Slots[i];
                     if (pass == 0 && !s.Empty && s.Item == item && s.Count < def.MaxStack)
@@ -159,7 +226,7 @@ namespace Stratum.Core
         public bool Take(string want, int count)
         {
             if (Count(want) < count) return false;
-            for (int i = Size - 1; i >= 0 && count > 0; i--)
+            for (int i = Main - 1; i >= 0 && count > 0; i--)
             {
                 ref var s = ref Slots[i];
                 if (s.Empty || !Items.Matches(want, s.Item)) continue;
@@ -186,6 +253,45 @@ namespace Stratum.Core
             s.Wear++;
             if (s.Wear >= d.Durability) { s = Stack.None; return true; }
             return false;
+        }
+
+        // Room for this many more of an item?
+        public int Room(string item)
+        {
+            var def = Items.Get(item);
+            if (def == null) return 0;
+            int n = 0;
+            for (int i = 0; i < Main; i++)
+            {
+                var s = Slots[i];
+                if (s.Empty) n += def.MaxStack;
+                else if (s.Item == item && s.Wear == 0) n += Math.Max(0, def.MaxStack - s.Count);
+            }
+            return n;
+        }
+
+        public int ArmourPoints
+        {
+            get
+            {
+                int n = 0;
+                for (int i = ArmourStart; i < Size; i++) { var d = Items.Get(Slots[i].Item); if (d != null) n += d.Armour; }
+                return n;
+            }
+        }
+
+        // A hit wears every piece worn; returns the names of any that broke.
+        public string WearArmour()
+        {
+            string broke = null;
+            for (int i = ArmourStart; i < Size; i++)
+            {
+                ref var s = ref Slots[i];
+                var d = Items.Get(s.Item);
+                if (d == null || d.Durability <= 0) continue;
+                if (++s.Wear >= d.Durability) { broke = d.Name; s = Stack.None; }
+            }
+            return broke;
         }
 
         public bool CanCraft(Recipe r)
@@ -225,6 +331,9 @@ namespace Stratum.Core
             if (b.TierNeeded <= 0 || b.Tool != Tool.Pickaxe) return true;
             return held != null && held.Tool == Tool.Pickaxe && held.Tier >= b.TierNeeded;
         }
+
+        // Something extra a block sometimes gives (an apple from oak leaves).
+        public static string Bonus(BlockDef b, Random r) => b.Bonus != null && r.NextDouble() < b.BonusChance ? b.Bonus : null;
 
         public static (string item, int count) Drop(BlockDef b)
         {

@@ -1,0 +1,137 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace Stratum.Core
+{
+    // What's inside each chest and lost satchel in a world, by position. Kept in <world>/containers.bin, the same
+    // file in a single-player save and on a server.
+    public sealed class Containers
+    {
+        public const int ChestSlots = 27;
+        const int Version = 1;
+        readonly Dictionary<long, Stack[]> _boxes = new Dictionary<long, Stack[]>();
+        public bool Dirty;
+
+        public static long Key(int x, int y, int z) => ((long)(x & 0x3FFFFFF) << 38) | ((long)(z & 0x3FFFFFF) << 12) | (long)(y & 0xFFF);
+
+        public int Count => _boxes.Count;
+
+        // The slots of the container at a position, made (empty) if there wasn't one yet.
+        public Stack[] At(int x, int y, int z, int size = ChestSlots)
+        {
+            long k = Key(x, y, z);
+            if (!_boxes.TryGetValue(k, out var a)) { a = new Stack[size]; _boxes[k] = a; }
+            else if (a.Length < size) { Array.Resize(ref a, size); _boxes[k] = a; }
+            return a;
+        }
+
+        public bool Has(int x, int y, int z) => _boxes.ContainsKey(Key(x, y, z));
+
+        public bool IsEmpty(int x, int y, int z)
+        {
+            if (!_boxes.TryGetValue(Key(x, y, z), out var a)) return true;
+            foreach (var s in a) if (!s.Empty) return false;
+            return true;
+        }
+
+        public void Set(int x, int y, int z, int slot, Stack s)
+        {
+            var a = At(x, y, z, Math.Max(ChestSlots, slot + 1));
+            if ((uint)slot >= (uint)a.Length) return;
+            a[slot] = s.Empty ? Stack.None : s;
+            Dirty = true;
+        }
+
+        // Takes the container away and returns what was in it.
+        public Stack[] Remove(int x, int y, int z)
+        {
+            long k = Key(x, y, z);
+            if (!_boxes.TryGetValue(k, out var a)) return Array.Empty<Stack>();
+            _boxes.Remove(k);
+            Dirty = true;
+            return a;
+        }
+
+        public void Put(int x, int y, int z, Stack[] stacks)
+        {
+            var a = new Stack[Math.Max(ChestSlots, stacks.Length)];
+            int n = 0;
+            foreach (var s in stacks) if (!s.Empty && Items.Get(s.Item) != null && n < a.Length) a[n++] = s;
+            _boxes[Key(x, y, z)] = a;
+            Dirty = true;
+        }
+
+        public void Load(string file)
+        {
+            _boxes.Clear();
+            if (!File.Exists(file)) return;
+            using var r = new BinaryReader(File.OpenRead(file));
+            int ver = r.ReadInt32();
+            if (ver != Version) throw new InvalidDataException("containers file version " + ver);
+            int n = r.ReadInt32();
+            for (int i = 0; i < n; i++)
+            {
+                long k = r.ReadInt64();
+                int slots = r.ReadUInt16();
+                var a = new Stack[slots];
+                for (int j = 0; j < slots; j++)
+                {
+                    string item = r.ReadString(); int count = r.ReadUInt16(); int wear = r.ReadUInt16();
+                    if (item.Length > 0 && count > 0 && Items.Get(item) != null) a[j] = new Stack(item, count) { Wear = wear };
+                }
+                _boxes[k] = a;
+            }
+        }
+
+        public void Save(string file)
+        {
+            var tmp = file + ".tmp";
+            using (var w = new BinaryWriter(File.Create(tmp)))
+            {
+                w.Write(Version);
+                int n = 0;
+                foreach (var kv in _boxes) if (!Empty(kv.Value)) n++;
+                w.Write(n);
+                foreach (var kv in _boxes)
+                {
+                    if (Empty(kv.Value)) continue;
+                    w.Write(kv.Key);
+                    w.Write((ushort)kv.Value.Length);
+                    foreach (var s in kv.Value)
+                    {
+                        w.Write(s.Empty ? "" : s.Item);
+                        w.Write((ushort)(s.Empty ? 0 : Math.Min(s.Count, 0xFFFF)));
+                        w.Write((ushort)Math.Clamp(s.Wear, 0, 0xFFFF));
+                    }
+                }
+            }
+            if (File.Exists(file)) File.Delete(file);
+            File.Move(tmp, file);
+            Dirty = false;
+        }
+
+        static bool Empty(Stack[] a) { foreach (var s in a) if (!s.Empty) return false; return true; }
+
+        // A free cell near a point for a satchel: air (or a plant) with something solid under it, nearest first.
+        public static (int x, int y, int z) SpotFor(Func<int, int, int, byte> get, int x, int y, int z)
+        {
+            y = Math.Clamp(y, 1, Chunk.Height - 2);
+            for (int r = 0; r <= 3; r++)
+                for (int dy = 0; dy <= 4; dy++)
+                    foreach (int sy in new[] { 1, -1 })
+                        for (int dz = -r; dz <= r; dz++)
+                            for (int dx = -r; dx <= r; dx++)
+                            {
+                                if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
+                                int cx = x + dx, cy = y + dy * sy, cz = z + dz;
+                                if (cy < 1 || cy >= Chunk.Height - 1) continue;
+                                var here = Blocks.Get(get(cx, cy, cz));
+                                if (!(here.Id == 0 || here.Replaceable && here.Id != Blocks.Water)) continue;
+                                if (!Blocks.Get(get(cx, cy - 1, cz)).Solid) continue;
+                                return (cx, cy, cz);
+                            }
+            return (x, y, z);
+        }
+    }
+}

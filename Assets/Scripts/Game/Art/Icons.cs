@@ -19,46 +19,64 @@ namespace Stratum.Game
             { { 1, 0, 1 }, { 1, 1, 1 }, { 0, 1, 1 }, { 0, 0, 1 } },
             { { 0, 0, 0 }, { 0, 1, 0 }, { 1, 1, 0 }, { 1, 0, 0 } },
         };
-        static readonly Vector2[] UV = { new(0, 0), new(0, 1), new(1, 1), new(1, 0) };
-        static readonly Vector2[] UVB = { new(0, 0), new(1, 0), new(1, 1), new(0, 1) };
         public static readonly Color32 DefaultGrass = new Color32(102, 168, 61, 255);
 
         static readonly Dictionary<byte, Mesh> _cache = new Dictionary<byte, Mesh>();
 
+        // A block as a mesh centred on the origin: a whole cube, or its boxes (a bed shows both halves, shrunk to fit).
         public static Mesh Cube(byte id)
         {
             if (_cache.TryGetValue(id, out var m)) return m;
-            var d = Blocks.Get(id);
             var v = new List<Vector3>(); var n = new List<Vector3>(); var col = new List<Color32>();
-            var uv0 = new List<Vector3>(); var uv1 = new List<Color32>(); var tri = new List<int>();
-            for (int f = 0; f < 6; f++)
+            var uv0 = new List<Vector3>(); var uv1 = new List<Vector4>(); var tri = new List<int>();
+            var parts = new List<(byte id, Vector3 offset)> { (id, Vector3.zero) };
+            if (Blocks.Get(id).BaseId == Blocks.Bed) parts = new List<(byte, Vector3)> { ((byte)(Blocks.Bed + 0), new Vector3(0, 0, -0.5f)), ((byte)(Blocks.Bed + 1), new Vector3(0, 0, 0.5f)) };
+            foreach (var (pid, off) in parts)
             {
-                var t = d.Face(f);
-                int flags = 0;
-                if (t == Tex.GrassTop || t == Tex.OakLeaves) flags |= Flag.Tint;
-                if (t == Tex.GrassSide) flags |= Flag.TintMask;
-                if (d.Cutout) flags |= Flag.Clip;
-                if (t == Tex.Sunstone) flags |= Flag.Glow;
-                if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) flags |= Flag.GlowMask;
-                int b = v.Count;
-                for (int k = 0; k < 4; k++)
-                {
-                    v.Add(new Vector3(C[f, k, 0], C[f, k, 1], C[f, k, 2]) - Vector3.one * 0.5f);
-                    n.Add(N[f]);
-                    col.Add(new Color32(255, 0, 255, 255));
-                    var uv = f == 3 ? UVB[k] : UV[k];
-                    uv0.Add(new Vector3(uv.x, uv.y, (float)t));
-                    var tc = DefaultGrass; tc.a = (byte)flags;
-                    if ((flags & (Flag.Tint | Flag.TintMask)) == 0) tc = new Color32(255, 255, 255, (byte)flags);
-                    uv1.Add(tc);
-                }
-                tri.AddRange(new[] { b, b + 1, b + 2, b, b + 2, b + 3 });
+                var d = Blocks.Get(pid);
+                var boxes = d.Shape == Shape.Boxes && d.Boxes != null ? d.Boxes : new[] { new Core.Box(0, 0, 0, 1, 1, 1) };
+                foreach (var bx in boxes)
+                    for (int f = 0; f < 6; f++)
+                    {
+                        var t = d.Face(f);
+                        int flags = 0;
+                        if (t == Tex.GrassTop || t == Tex.OakLeaves) flags |= Flag.Tint;
+                        if (t == Tex.GrassSide) flags |= Flag.TintMask;
+                        if (d.Cutout) flags |= Flag.Clip;
+                        if (t == Tex.Sunstone || t == Tex.Lava) flags |= Flag.Glow;
+                        if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) flags |= Flag.GlowMask;
+                        int b = v.Count;
+                        for (int k = 0; k < 4; k++)
+                        {
+                            float px = C[f, k, 0] == 1 ? bx.X1 : bx.X0, py = C[f, k, 1] == 1 ? bx.Y1 : bx.Y0, pz = C[f, k, 2] == 1 ? bx.Z1 : bx.Z0;
+                            v.Add(new Vector3(px, py, pz) - Vector3.one * 0.5f + off);
+                            n.Add(N[f]);
+                            col.Add(new Color32(255, 0, 255, 255));
+                            float u, vv;
+                            switch (f)
+                            {
+                                case 0: u = pz; vv = py; break;
+                                case 1: u = 1 - pz; vv = py; break;
+                                case 4: u = 1 - px; vv = py; break;
+                                case 5: u = px; vv = py; break;
+                                default:
+                                {
+                                    float lx = px, lz = pz;
+                                    for (int r = 0; r < (d.Facing & 3); r++) { float tt = lx; lx = 1 - lz; lz = tt; }
+                                    u = lx; vv = lz; break;
+                                }
+                            }
+                            uv0.Add(new Vector3(u, vv, (float)t));
+                            var tc = DefaultGrass; tc.a = (byte)flags;
+                            if ((flags & (Flag.Tint | Flag.TintMask)) == 0) tc = new Color32(255, 255, 255, (byte)flags);
+                            uv1.Add(new Vector4(tc.r / 255f, tc.g / 255f, tc.b / 255f, tc.a / 255f));
+                        }
+                        tri.AddRange(new[] { b, b + 1, b + 2, b, b + 2, b + 3 });
+                    }
             }
-            m = new Mesh { name = "block " + d.Name };
-            m.SetVertices(v); m.SetNormals(n); m.SetColors(col); m.SetUVs(0, uv0); m.SetTriangles(tri, 0);
-            // TexCoord1 as unorm bytes, like the world meshes.
-            var colors = uv1.ToArray();
-            m.SetUVs(1, System.Array.ConvertAll(colors, c => new Vector4(c.r / 255f, c.g / 255f, c.b / 255f, c.a / 255f)));
+            if (parts.Count > 1) for (int i = 0; i < v.Count; i++) v[i] *= 0.62f;
+            m = new Mesh { name = "block " + Blocks.Get(id).Name };
+            m.SetVertices(v); m.SetNormals(n); m.SetColors(col); m.SetUVs(0, uv0); m.SetUVs(1, uv1); m.SetTriangles(tri, 0);
             m.RecalculateBounds();
             _cache[id] = m;
             return m;

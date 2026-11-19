@@ -84,7 +84,7 @@ namespace Stratum.Game
             DontDestroyOnLoad(_menus.gameObject);
             _menus.ListWorlds = WorldStore.List;
             _menus.Play = m => StartCoroutine(Enter(m));
-            _menus.Create = (name, seed, creative) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative)));
+            _menus.Create = (name, seed, creative, difficulty) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty)));
             _menus.Delete = WorldStore.Delete;
             _menus.Resume = Resume;
             _menus.SaveAndQuit = () => { if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
@@ -183,6 +183,7 @@ namespace Stratum.Game
         void Teardown()
         {
             TeardownNet();
+            TeardownSurvival();
             if (_hud != null) Destroy(_hud.gameObject);
             if (_player != null) { _cam.transform.SetParent(null); Destroy(_player.gameObject); }
             if (_world != null) Destroy(_world.gameObject);
@@ -218,6 +219,9 @@ namespace Stratum.Game
             _player.Feet = feet;
             _player.Yaw = meta.yaw; _player.Pitch = meta.pitch;
             _player.Health = meta.hasPlayer ? Mathf.Max(1, meta.health) : 20;
+            _player.Food = meta.hasPlayer ? Mathf.Clamp(meta.food, 0, 20) : 20;
+            _player.Saturation = meta.hasPlayer ? Mathf.Clamp(meta.saturation, 0, 20) : 5;
+            _hasBed = meta.hasBed; _bed = new Vector3Int(meta.bx, meta.by, meta.bz);
             _player.Flying = meta.creative && meta.flying;
             _player.Inv.Selected = Mathf.Clamp(meta.selected, 0, 8);
             for (int i = 0; i < meta.slots.Count && i < Inventory.Size; i++)
@@ -233,7 +237,9 @@ namespace Stratum.Game
             _act.InputEnabled = false;
             _act.OpenStation = s => OpenInventory(s);
             _hud = Hud.Create(_player, _act, _sky, _world);
+            _hud.SendChat = LocalChat;
             _hud.gameObject.SetActive(false);
+            SetupSurvival(new LocalLink(_world, _player, _sky, meta.Folder, meta.seed, meta.difficulty), meta.creative ? 0 : meta.difficulty);
 
             // Wait for the ground around the player.
             _loadTime = 0;
@@ -260,6 +266,7 @@ namespace Stratum.Game
             SetCursor(true);
             _autosave = 120;
             _hud.Toast(meta.creative ? "Creative: double-tap Space to fly" : "Press E to open your backpack");
+            if (!meta.creative) _hud.AddChat("", $"Difficulty: {DifficultyNames[_difficulty]}. Press T to chat, /help for commands.");
         }
 
         void StarterCreative(Inventory inv)
@@ -304,6 +311,9 @@ namespace Stratum.Game
                 case State.Playing:
                     Playing(kb);
                     break;
+                case State.Dead:
+                    TickSurvival(null);
+                    break;
                 case State.Paused:
                     if (kb != null && kb.escapeKey.wasPressedThisFrame) _menus.Back();
                     break;
@@ -320,6 +330,8 @@ namespace Stratum.Game
             float depth = Mathf.Clamp01((Chunk.SeaLevel - 6 - _player.Feet.y) / 30f);
             Sfx.I.Depth = depth;
             if (_meta != null) _meta.minutesPlayed += Time.unscaledDeltaTime / 60.0;
+            TickSurvival(kb);
+            if (_player.Asleep) return;
 
             // Typing in chat: the keys are for the line, not for walking.
             if (_hud.ChatOpen)
@@ -328,7 +340,7 @@ namespace Stratum.Game
                 if (kb != null && kb.escapeKey.wasPressedThisFrame) _hud.CloseChat();
                 return;
             }
-            if (!_hud.InventoryOpen && !_player.InputEnabled) { _player.InputEnabled = true; _act.InputEnabled = true; }
+            if (!_hud.InventoryOpen && !_player.InputEnabled && !_player.Asleep) { _player.InputEnabled = true; _act.InputEnabled = true; }
 
             if (kb != null)
             {
@@ -394,16 +406,22 @@ namespace Stratum.Game
         void OnDied()
         {
             _state = State.Dead;
+            if (_player.Asleep) WakeUp();
             _player.InputEnabled = false; _act.InputEnabled = false;
             if (_hud.InventoryOpen) _hud.CloseInventory();
+            bool carried = false; foreach (var st in _player.Inv.Slots) if (!st.Empty) carried = true;
+            DropAll();
+            _menus.SetDeathText(_player.Creative || !carried ? "" : "Everything you carried is in a satchel where you fell.");
+            if (Online) { SendMove(true); SendKeep(); }
             _menus.ShowDeath();
             SetCursor(false);
         }
 
         void Respawn()
         {
-            if (Online) { _player.Respawn(GroundAt(_netSpawn) + new Vector3(0, 0.01f, 0)); SendMove(true); SendKeep(); }
-            else _player.Respawn(new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz));
+            var at = RespawnPoint(Online ? GroundAt(_netSpawn) + new Vector3(0, 0.01f, 0) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz), out _);
+            _player.Respawn(at);
+            if (Online) { SendMove(true); SendKeep(); }
             _menus.HideAll();
             _state = State.Playing;
             _player.InputEnabled = true; _act.InputEnabled = true;
@@ -426,6 +444,8 @@ namespace Stratum.Game
                 var f = _player.Feet;
                 _meta.px = f.x; _meta.py = f.y; _meta.pz = f.z;
                 _meta.yaw = _player.Yaw; _meta.pitch = _player.Pitch; _meta.health = _player.Health; _meta.flying = _player.Flying;
+                _meta.food = _player.Food; _meta.saturation = _player.Saturation;
+                _meta.hasBed = _hasBed; _meta.bx = _bed.x; _meta.by = _bed.y; _meta.bz = _bed.z;
                 _meta.time = _sky.Time01; _meta.day = _sky.Day;
                 _meta.selected = _player.Inv.Selected;
                 _meta.slots.Clear();
@@ -433,6 +453,7 @@ namespace Stratum.Game
                 _meta.lastPlayed = DateTime.UtcNow.Ticks;
                 WorldStore.Save(_meta);
                 _world.SaveAll();
+                _link?.Save();
                 if (_state == State.Playing || _state == State.Paused) SaveThumbnail();
             }
             catch (Exception e) { Debug.LogWarning("save failed: " + e.Message); }

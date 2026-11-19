@@ -100,6 +100,23 @@ namespace Stratum.Game
                 case Tex.CopperBlock: Metal(p, Hex(0xd08050), Hex(0x8a4a2a)); return 3f;
                 case Tex.IronBlock: Metal(p, Hex(0xd4d6da), Hex(0x8a8c92)); return 3f;
                 case Tex.GoldBlock: Metal(p, Hex(0xf6d460), Hex(0xb88a20)); return 3f;
+                case Tex.ChestSide: Chest(p, false); return 3f;
+                case Tex.ChestFront: Chest(p, true); return 3f;
+                case Tex.ChestTop: ChestTop(p); return 3f;
+                case Tex.BedHead: BedTop(p, true); return 2f;
+                case Tex.BedFoot: BedTop(p, false); return 2f;
+                case Tex.BedSide: BedSide(p); return 2f;
+                case Tex.BedEnd: Planks(p, Hex(0x9a7448), 4); Frame(p, Hex(0x5a4128), 3); return 2.5f;
+                case Tex.WoolWhite: Wool(p, Hex(0xe8e6e0)); return 2f;
+                case Tex.WoolGrey: Wool(p, Hex(0x8a8c90)); return 2f;
+                case Tex.WoolBlack: Wool(p, Hex(0x2a2a30)); return 2f;
+                case Tex.WoolBrown: Wool(p, Hex(0x7a5636)); return 2f;
+                case Tex.WoolRed: Wool(p, Hex(0xb0302c)); return 2f;
+                case Tex.WoolYellow: Wool(p, Hex(0xe8c03a)); return 2f;
+                case Tex.WoolGreen: Wool(p, Hex(0x4f7a2e)); return 2f;
+                case Tex.WoolBlue: Wool(p, Hex(0x34509e)); return 2f;
+                case Tex.Lava: Lava(p); return 1.5f;
+                case Tex.Obsidian: Obsidian(p); return 2.5f;
             }
             Rock(p, Color.magenta, Color.black, 0, false);
             return 1;
@@ -715,6 +732,151 @@ namespace Stratum.Game
                 for (int y = -2; y <= 2; y++)
                     for (int x = -2; x <= 2; x++)
                         if (x * x + y * y <= 5) p.Set(rx + x, ry + y, Color.Lerp(light, Color.white, 0.3f - y * 0.08f), 1.2f);
+        }
+    
+        // ------------------------------------------------------------------ 0.2
+
+        // Dark iron bands round the box's edges (the chest covers x 4..60 and y 0..56 of the face).
+        static void Chest(Paint p, bool front)
+        {
+            Planks(p, Hex(0xa0763e), 4);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool band = x < 8 || x >= 56 || y < 4 || (y >= 52 && y < 57) || (y >= 34 && y < 38);
+                    if (!band) continue;
+                    float n = p.Fbm(x, y, 8, 2);
+                    var c = Color.Lerp(Hex(0x2c2a2a), Hex(0x55524e), n);
+                    if (y == 37 || y == 3 || y == 56) c = Paint.Mul(c, 0.6f);
+                    c.a = 1;
+                    p.Set(x, y, c, 0.9f);
+                }
+            foreach (var (rx, ry) in new[] { (6, 2), (57, 2), (6, 54), (57, 54), (6, 36), (57, 36) })
+                p.Set(rx, ry, Hex(0x9a968e), 1.2f);
+            if (!front) return;
+            // A brass latch over the lid's seam.
+            for (int y = 26; y < 44; y++)
+                for (int x = 26; x < 38; x++)
+                {
+                    bool rim = x == 26 || x == 37 || y == 26 || y == 43;
+                    float g = (y - 26) / 18f;
+                    var c = rim ? Hex(0x6a4a14) : Color.Lerp(Hex(0xf0c858), Hex(0xa87a22), g);
+                    if (x >= 30 && x < 34 && y >= 29 && y < 33) c = Hex(0x2a1c0c);    // keyhole
+                    c.a = 1;
+                    p.Set(x, y, c, rim ? 0.8f : 1.2f);
+                }
+        }
+
+        static void ChestTop(Paint p)
+        {
+            Planks(p, Hex(0xa0763e), 4);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool band = x < 8 || x >= 56 || y < 8 || y >= 56;
+                    if (!band) continue;
+                    var c = Color.Lerp(Hex(0x2c2a2a), Hex(0x55524e), p.Fbm(x, y, 8, 2)); c.a = 1;
+                    p.Set(x, y, c, 0.9f);
+                }
+        }
+
+        static void Wool(Paint p, Color col)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 8, 3);
+                    float curl = p.V(x, y, 32, 3);
+                    p.Cells(x, y, 12, out float f1, out float f2, out _);
+                    float tuft = Mathf.Clamp01((f2 - f1) / 3f);
+                    float k = 0.80f + n * 0.22f + tuft * 0.08f - (curl > 0.82f ? 0.08f : 0);
+                    var c = Paint.Mul(col, k); c.a = 1;
+                    p.Set(x, y, c, n * 0.6f + tuft * 0.4f);
+                }
+        }
+
+        // The blanket and, at the head end, a pillow (toward +v, the head of the bed).
+        static void BedTop(Paint p, bool head)
+        {
+            var blanket = Hex(0xa8302c);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 8, 3);
+                    var c = Paint.Mul(blanket, 0.82f + n * 0.25f);
+                    float h = n * 0.5f;
+                    // Quilted squares.
+                    if ((x + 4) % 16 == 0 || (y + 4) % 16 == 0) { c = Paint.Mul(blanket, 0.62f); h = 0; }
+                    if (x < 3 || x > 60) { c = Paint.Mul(blanket, 0.7f); h = 0.2f; }
+                    if (head)
+                    {
+                        if (y > 30 && y < 34) { c = Color.Lerp(Hex(0xe8e2d4), blanket, 0.3f); h = 0.6f; }   // the turned-down sheet
+                        if (y >= 34)
+                        {
+                            float px = (x - 32) / 26f, py = (y - 48) / 11f;
+                            float d = px * px * px * px + py * py * py * py;
+                            if (d < 1) { c = Color.Lerp(Hex(0xf2eee6), Hex(0xc8c2b4), d * 0.8f + n * 0.2f); h = 1 - d * 0.8f; }
+                            else { c = Color.Lerp(Hex(0xe8e2d4), Hex(0xd0c8b8), n); h = 0.4f; }
+                        }
+                    }
+                    c.a = 1;
+                    p.Set(x, y, c, h);
+                }
+        }
+
+        static void BedSide(Paint p)
+        {
+            Planks(p, Hex(0x8a6038), 4);
+            var blanket = Hex(0xa8302c);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    if (y >= 20 && y < 36)
+                    {
+                        float n = p.Fbm(x, y, 8, 3);
+                        var c = Paint.Mul(blanket, 0.8f + n * 0.25f);
+                        if (y == 20) c = Paint.Mul(blanket, 0.55f);
+                        c.a = 1;
+                        p.Set(x, y, c, 0.5f + n * 0.3f);
+                    }
+                    else if (y < 12)
+                    {
+                        var c = Paint.Mul(Hex(0x6a4428), 0.85f + p.Streak(x, y, 2, 10, 2) * 0.3f); c.a = 1;
+                        p.Set(x, y, c, 0.6f);
+                    }
+                }
+        }
+
+        static void Lava(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 4, 4);
+                    p.Cells(x, y, 5, out float f1, out float f2, out _);
+                    float vein = Mathf.Clamp01(1 - (f2 - f1) / 6f);
+                    float heat = Mathf.Clamp01(n * 0.9f + vein * 0.7f - 0.15f);
+                    var c = heat < 0.35f ? Color.Lerp(Hex(0x3a1206), Hex(0x8a2a08), heat / 0.35f)
+                                         : Color.Lerp(Hex(0xd84a0c), Hex(0xffd860), (heat - 0.35f) / 0.65f);
+                    c.a = 1;
+                    p.Set(x, y, c, 1 - heat);
+                }
+        }
+
+        static void Obsidian(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 4, 4);
+                    p.Cells(x, y, 6, out float f1, out float f2, out int id);
+                    float facet = p.Hash(id, 3);
+                    float edge = Mathf.Clamp01((f2 - f1) / 2.5f);
+                    var c = Color.Lerp(Hex(0x0c0814), Hex(0x2a1e3e), facet * 0.6f + n * 0.4f);
+                    if (edge < 0.4f) c = Color.Lerp(Hex(0x5a4a7a), c, edge / 0.4f);
+                    c.a = 1;
+                    p.Set(x, y, c, facet * 0.7f + edge * 0.3f);
+                }
         }
     }
 }

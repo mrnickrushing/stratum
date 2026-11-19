@@ -72,7 +72,7 @@ namespace Stratum.Core
                     if (t == Tex.GrassSide) fl |= Flag.TintMask;
                     if (d.Cutout) fl |= Flag.Clip;
                     if (d.Sway) fl |= Flag.Sway;
-                    if (t == Tex.Sunstone || t == Tex.Torch) fl |= Flag.Glow;
+                    if (t == Tex.Sunstone || t == Tex.Torch || t == Tex.Lava) fl |= Flag.Glow;
                     if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) fl |= Flag.GlowMask;
                     FlagsOf[i * 6 + f] = fl;
                 }
@@ -237,7 +237,8 @@ namespace Stratum.Core
                         switch ((Shape)ShapeOf[id])
                         {
                             case Shape.Cube: Cube(c, id, x, y, z, rx, rz); break;
-                            case Shape.Liquid: Water(id, x, y, z, rx, rz); break;
+                            case Shape.Liquid: if (id == Blocks.Water) Water(id, x, y, z, rx, rz); else Lava(id, x, y, z, rx, rz); break;
+                            case Shape.Boxes: Boxes(c, id, x, y, z, rx, rz); break;
                             case Shape.Cross: Cross(c, id, x, y, z, rx, rz); break;
                             case Shape.Torch: Torch(id, x, y, z, rx, rz); break;
                         }
@@ -355,6 +356,101 @@ namespace Stratum.Core
                 {
                     _iw[_iwn++] = baseV; _iw[_iwn++] = baseV + 2; _iw[_iwn++] = baseV + 1;
                     _iw[_iwn++] = baseV; _iw[_iwn++] = baseV + 3; _iw[_iwn++] = baseV + 2;
+                }
+            }
+        }
+
+        // Lava: drawn like water's shape but opaque and glowing, with the solid blocks.
+        void Lava(byte id, int x, int y, int z, int rx, int rz)
+        {
+            bool covered = B(rx, y + 1, rz) == id;
+            float topH = covered ? 1f : 0.875f;
+            uint tint = 0xFFFFFF | ((uint)Flag.Glow << 24);
+            for (int f = 0; f < 6; f++)
+            {
+                int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
+                if (ny < 0) continue;
+                byte nb = B(nx, ny, nz);
+                if (nb == id || Opaque[nb]) continue;
+                Grow();
+                uint light = Pack(15, 15, 3);
+                int baseV = _vn;
+                for (int k = 0; k < 4; k++)
+                {
+                    ref var v = ref _v[_vn++];
+                    v.X = x + C[f, k, 0]; v.Y = y + (C[f, k, 1] == 1 ? topH : 0); v.Z = z + C[f, k, 2];
+                    v.NX = N[f, 0]; v.NY = N[f, 1]; v.NZ = N[f, 2];
+                    v.Light = light;
+                    v.U = f == 3 ? UVBottom[k, 0] : UV[k, 0]; v.V = f == 3 ? UVBottom[k, 1] : UV[k, 1];
+                    v.Layer = (float)Tex.Lava; v.Tint = tint;
+                }
+                _is[_isn++] = baseV; _is[_isn++] = baseV + 1; _is[_isn++] = baseV + 2;
+                _is[_isn++] = baseV; _is[_isn++] = baseV + 2; _is[_isn++] = baseV + 3;
+            }
+        }
+
+        // Blocks made of a few boxes (chests, beds, slabs, doors...). Each box face takes the part of the block's
+        // texture it covers, so the pixels line up with whole blocks beside it. A face on the cell's edge is
+        // hidden by an opaque neighbour and lit by the light there; inner faces take the cell's own light.
+        void Boxes(Chunk c, byte id, int x, int y, int z, int rx, int rz)
+        {
+            var d = Blocks.Defs[id];
+            if (d.Boxes == null) return;
+            int turns = d.Facing;
+            int ownSky = SkyAt(rx, y, rz), ownLit = LitAt(rx, y, rz);
+            // A non-opaque block's own cell is lit like the air around it (it may have been dimmed by itself).
+            for (int f = 0; f < 6; f++)
+            {
+                int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
+                ownSky = Math.Max(ownSky, SkyAt(nx, ny, nz) - 1); ownLit = Math.Max(ownLit, LitAt(nx, ny, nz) - 1);
+            }
+            foreach (var b in d.Boxes)
+            {
+                for (int f = 0; f < 6; f++)
+                {
+                    bool edge = f switch { 0 => b.X1 >= 1, 1 => b.X0 <= 0, 2 => b.Y1 >= 1, 3 => b.Y0 <= 0, 4 => b.Z1 >= 1, _ => b.Z0 <= 0 };
+                    int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
+                    int sk = ownSky, lt = ownLit;
+                    if (edge)
+                    {
+                        if (ny >= 0 && Op(nx, ny, nz)) continue;
+                        if (ny < 0) continue;
+                        sk = SkyAt(nx, ny, nz); lt = LitAt(nx, ny, nz);
+                    }
+                    Grow();
+                    int flags = FlagsOf[id * 6 + f];
+                    uint tint = TintFor(c, x, z, flags, id);
+                    float layer = (float)d.Face(f);
+                    // Faces looking down or sideways sit a touch darker, like the blocks' own ambient occlusion.
+                    uint light = Pack(sk, lt, f == 3 ? 2 : 3);
+                    int baseV = _vn;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        float px = C[f, k, 0] == 1 ? b.X1 : b.X0, py = C[f, k, 1] == 1 ? b.Y1 : b.Y0, pz = C[f, k, 2] == 1 ? b.Z1 : b.Z0;
+                        ref var v = ref _v[_vn++];
+                        v.X = x + px; v.Y = y + py; v.Z = z + pz;
+                        v.NX = N[f, 0]; v.NY = N[f, 1]; v.NZ = N[f, 2];
+                        v.Light = light;
+                        float u, vv;
+                        switch (f)
+                        {
+                            case 0: u = pz; vv = py; break;
+                            case 1: u = 1 - pz; vv = py; break;
+                            case 4: u = 1 - px; vv = py; break;
+                            case 5: u = px; vv = py; break;
+                            default:
+                            {
+                                // Tops and bottoms turn with the block, so a bed's pillow stays at its head.
+                                float lx = px, lz = pz;
+                                for (int r = 0; r < (turns & 3); r++) { float t = lx; lx = 1 - lz; lz = t; }
+                                u = lx; vv = lz;
+                                break;
+                            }
+                        }
+                        v.U = u; v.V = vv; v.Layer = layer; v.Tint = tint;
+                    }
+                    _is[_isn++] = baseV; _is[_isn++] = baseV + 1; _is[_isn++] = baseV + 2;
+                    _is[_isn++] = baseV; _is[_isn++] = baseV + 2; _is[_isn++] = baseV + 3;
                 }
             }
         }

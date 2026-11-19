@@ -1,10 +1,11 @@
+using System;
 using System.Collections.Generic;
 
 namespace Stratum.Core
 {
-    public enum Shape : byte { Cube, Cross, Torch, Liquid }
+    public enum Shape : byte { Cube, Cross, Torch, Liquid, Boxes }
     public enum Sound : byte { Stone, Dirt, Grass, Sand, Wood, Leaves, Glass, Snow, Metal, Cloth }
-    public enum Tool : byte { None, Pickaxe, Axe, Shovel }
+    public enum Tool : byte { None, Pickaxe, Axe, Shovel, Sword, Hoe, Shears }
 
     // Texture layers used by block faces. BlockTextures (Game) paints one layer per entry, in this order.
     public enum Tex : byte
@@ -16,7 +17,12 @@ namespace Stratum.Core
         CoalOre, CopperOre, IronOre, GoldOre, SunstoneOre, Sunstone, Torch,
         TallGrass, RedFlower, YellowFlower, BlueFlower, DeadBush, Fern,
         BenchTop, BenchSide, FurnaceFront, FurnaceSide, FurnaceTop, CopperBlock, IronBlock, GoldBlock,
-        ClayBricks, SlateTiles, Count
+        ClayBricks, SlateTiles,
+        // 0.2
+        ChestFront, ChestSide, ChestTop, BedHead, BedFoot, BedSide, BedEnd,
+        WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
+        Lava, Obsidian,
+        Count
     }
 
     public sealed class BlockDef
@@ -42,6 +48,11 @@ namespace Stratum.Core
         public bool Creative = true;     // listed in the creative palette
         public string DropItem;          // item id dropped; null = itself; "" = nothing
         public int DropCount = 1;
+        public Box[] Boxes;              // Shape.Boxes: the pieces, in block units, already turned for Facing
+        public int Variant;              // per-family meaning (bed: 0 foot, 1 head)
+        public string Bonus;             // an item it sometimes drops as well
+        public float BonusChance;
+        public bool Container;           // holds things (chests, lost satchels)
 
         public Tex Face(int face)        // 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z
         {
@@ -56,6 +67,17 @@ namespace Stratum.Core
         }
     }
 
+    // A piece of a block that isn't a whole cube (chests, beds, slabs...), in block units 0..1.
+    public struct Box
+    {
+        public float X0, Y0, Z0, X1, Y1, Z1;
+        public Box(float x0, float y0, float z0, float x1, float y1, float z1) { X0 = x0; Y0 = y0; Z0 = z0; X1 = x1; Y1 = y1; Z1 = z1; }
+        public static Box Px(int x0, int y0, int z0, int x1, int y1, int z1) => new Box(x0 / 16f, y0 / 16f, z0 / 16f, x1 / 16f, y1 / 16f, z1 / 16f);
+        // A quarter turn clockwise seen from above (+Z front becomes +X front).
+        public Box Turn() => new Box(Z0, Y0, 1 - X1, Z1, Y1, 1 - X0);
+        public Box Turn(int times) { var b = this; for (int i = 0; i < (times & 3); i++) b = b.Turn(); return b; }
+    }
+
     public static class Blocks
     {
         public const byte Air = 0;
@@ -67,7 +89,10 @@ namespace Stratum.Core
             Water, Clay, OakLog, OakLeaves, BirchLog, BirchLeaves, PineLog, PineNeedles, Cactus, OakPlanks, BirchPlanks,
             PinePlanks, Cobble, MossyCobble, StoneBricks, Glass, CoalOre, CopperOre, IronOre, GoldOre, SunstoneOre,
             Sunstone, Torch, TallGrass, RedFlower, YellowFlower, BlueFlower, DeadBush, Fern, Workbench, Furnace,
-            CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles;
+            CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
+            Chest, Bed, Satchel, Lava, Obsidian;
+        public static readonly byte[] Wool = new byte[8];
+        public static readonly string[] WoolColours = { "white", "grey", "black", "brown", "red", "yellow", "green", "blue" };
 
         static byte _next = 1;
 
@@ -130,7 +155,7 @@ namespace Stratum.Core
             b = Add("clay", "Clay", Tex.Clay); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Dirt; Clay = b.Id;
 
             b = Add("oak_log", "Oak Log", Tex.OakLogTop, Tex.OakLog, Tex.OakLogTop); b.Hardness = 2; b.Tool = Tool.Axe; b.Sound = Sound.Wood; OakLog = b.Id;
-            OakLeaves = Leaves("oak_leaves", "Oak Leaves", Tex.OakLeaves).Id;
+            OakLeaves = Leaves("oak_leaves", "Oak Leaves", Tex.OakLeaves).Id; Defs[OakLeaves].Bonus = "apple"; Defs[OakLeaves].BonusChance = 0.06f;
             b = Add("birch_log", "Birch Log", Tex.BirchLogTop, Tex.BirchLog, Tex.BirchLogTop); b.Hardness = 2; b.Tool = Tool.Axe; b.Sound = Sound.Wood; BirchLog = b.Id;
             BirchLeaves = Leaves("birch_leaves", "Birch Leaves", Tex.BirchLeaves).Id;
             b = Add("pine_log", "Pine Log", Tex.PineLogTop, Tex.PineLog, Tex.PineLogTop); b.Hardness = 2; b.Tool = Tool.Axe; b.Sound = Sound.Wood; PineLog = b.Id;
@@ -155,7 +180,7 @@ namespace Stratum.Core
             b = Add("sunstone", "Sunstone Lamp", Tex.Sunstone); b.Emit = 15; b.Hardness = 0.5f; b.Sound = Sound.Glass; Sunstone = b.Id;
             b = Add("torch", "Torch", Tex.Torch); b.Shape = Shape.Torch; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Emit = 14; b.Hardness = 0; b.Cutout = true; b.Sound = Sound.Wood; Torch = b.Id;
 
-            TallGrass = Plant("tall_grass", "Tall Grass", Tex.TallGrass).Id; Defs[TallGrass].DropItem = "";
+            TallGrass = Plant("tall_grass", "Tall Grass", Tex.TallGrass).Id; Defs[TallGrass].DropItem = ""; Defs[TallGrass].Bonus = "berries"; Defs[TallGrass].BonusChance = 0.05f;
             RedFlower = Plant("red_flower", "Poppy", Tex.RedFlower).Id;
             YellowFlower = Plant("yellow_flower", "Buttercup", Tex.YellowFlower).Id;
             BlueFlower = Plant("blue_flower", "Cornflower", Tex.BlueFlower).Id;
@@ -177,7 +202,58 @@ namespace Stratum.Core
             IronBlock = Rock("iron_block", "Block of Iron", Tex.IronBlock, 4, 3, Sound.Metal).Id;
             GoldBlock = Rock("gold_block", "Block of Gold", Tex.GoldBlock, 4, 3, Sound.Metal).Id;
 
+            // ---------------------------------------------------------------- 0.2: survival
+            // Every new block goes after the ones before it, so saved worlds keep their ids.
+            Chest = Facings("chest", "Chest", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 1; d.Hardness = 2.5f; d.Tool = Tool.Axe; d.Sound = Sound.Wood; d.Container = true;
+                d.Top = d.Bottom = Tex.ChestTop; d.Side = Tex.ChestSide; d.Front = Tex.ChestFront; d.HasFront = true;
+                d.Boxes = new[] { Box.Px(1, 0, 1, 15, 14, 15) };
+            });
+            // A bed is two blocks: the foot (where it was placed) and the head (in the direction it faces).
+            Bed = Facings("bed", "Bed", 8, (d, i) =>
+            {
+                int f = i / 2; d.Variant = i % 2;
+                d.Facing = (byte)f;
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 1; d.Hardness = 0.4f; d.Sound = Sound.Cloth; d.DropItem = "bed";
+                d.Top = d.Variant == 1 ? Tex.BedHead : Tex.BedFoot; d.Bottom = Tex.OakPlanks; d.Side = Tex.BedSide; d.Front = Tex.BedEnd;
+                d.HasFront = d.Variant == 1;
+                d.Boxes = new[] { Box.Px(0, 3, 0, 16, 9, 16), Box.Px(1, 0, 1, 3, 3, 3), Box.Px(13, 0, 1, 15, 3, 3), Box.Px(1, 0, 13, 3, 3, 15), Box.Px(13, 0, 13, 15, 3, 15) };
+            }, facingOf: i => i / 2);
+            for (int i = 0; i < 8; i++)
+            {
+                b = Add(WoolColours[i] + "_wool", char.ToUpper(WoolColours[i][0]) + WoolColours[i].Substring(1) + " Wool", (Tex)((int)Tex.WoolWhite + i));
+                b.Hardness = 0.8f; b.Tool = Tool.Shears; b.Sound = Sound.Cloth; Wool[i] = b.Id;
+            }
+            // What a player had when they fell: a sack that hands it all back to whoever opens it.
+            b = Add("satchel", "Lost Satchel", Tex.WoolBrown); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 0.2f;
+            b.Sound = Sound.Cloth; b.Container = true; b.Creative = false; b.DropItem = ""; Palette.Remove(b.Id);
+            b.Boxes = new[] { Box.Px(3, 0, 3, 13, 8, 13), Box.Px(5, 8, 5, 11, 10, 11), Box.Px(6, 10, 6, 10, 12, 10) };
+            Satchel = b.Id;
+            b = Add("lava", "Lava", Tex.Lava); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 1; b.Emit = 15; b.Hardness = -1;
+            b.Replaceable = true; b.Creative = false; Palette.Remove(b.Id); Lava = b.Id;
+            b = Rock("obsidian", "Obsidian", Tex.Obsidian, 18, 4); Obsidian = b.Id;
+
             Palette.Remove(Water);
+        }
+
+        // A family of blocks sharing one item: `count` ids; the first is the item and the rest drop it. Their boxes
+        // are given for facing 0 (front toward +Z) and turned for each facing.
+        static byte Facings(string key, string name, int count, Action<BlockDef, int> make, Func<int, int> facingOf = null)
+        {
+            byte first = 0;
+            for (int i = 0; i < count; i++)
+            {
+                var d = Add(i == 0 ? key : key + "_" + i, name, Tex.OakPlanks);
+                if (i == 0) first = d.Id; else { d.Creative = false; Palette.Remove(d.Id); d.DropItem ??= key; }
+                d.BaseId = first;
+                int f = facingOf != null ? facingOf(i) : i;
+                d.Facing = (byte)(f & 3);
+                make(d, i);
+                if (i != 0 && d.DropItem == null) d.DropItem = key;
+                if (d.Boxes != null) for (int k = 0; k < d.Boxes.Length; k++) d.Boxes[k] = d.Boxes[k].Turn(d.Facing);
+            }
+            return first;
         }
 
         public static BlockDef Get(byte id) => Defs[id] ?? Defs[0];

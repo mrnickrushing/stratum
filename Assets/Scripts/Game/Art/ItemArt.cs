@@ -65,6 +65,20 @@ namespace Stratum.Game
                 return c;
             }
 
+            // Filled circle (or ellipse with ry) with a colour function of the offset from the centre in -1..1.
+            public void Disc(Vector2 c, float r, System.Func<float, float, Color> col, float ry = -1)
+            {
+                if (ry < 0) ry = r;
+                for (int y = Mathf.FloorToInt(c.y - ry - 1); y <= Mathf.CeilToInt(c.y + ry + 1); y++)
+                    for (int x = Mathf.FloorToInt(c.x - r - 1); x <= Mathf.CeilToInt(c.x + r + 1); x++)
+                    {
+                        float dx = (x + 0.5f - c.x) / r, dy = (y + 0.5f - c.y) / ry;
+                        float d = Mathf.Sqrt(dx * dx + dy * dy);
+                        float cov = Mathf.Clamp01((1 - d) * Mathf.Min(r, ry) + 0.5f);
+                        if (cov > 0) { var cc = col(dx, dy); Put(x, y, cc, cov * cc.a); }
+                    }
+            }
+
             public void Outline(Color c)
             {
                 var copy = (Color[])P.Clone();
@@ -107,6 +121,9 @@ namespace Stratum.Game
         {
             var c = new Canvas();
             string id = item.Id;
+            if (item.Tool == Tool.Sword) { Sword(c, id); return c.Done(); }
+            if (item.Tool == Tool.Shears) { Shears(c); return c.Done(); }
+            if (item.ArmourSlot >= 0) { Armour(c, item); return c.Done(); }
             if (item.Tool != Tool.None)
             {
                 var a = new Vector2(18, 16); var b = new Vector2(70, 68);
@@ -152,11 +169,197 @@ namespace Stratum.Game
                         (x, y) => Color.Lerp(Hex(0xff8a20), Hex(0xfff2b0), Mathf.Clamp01((x - 30) / 40f * 0.5f + (y - 10) / 80f * 0.6f)));
                     c.Poly(new[] { new Vector2(48, 88), new Vector2(40, 10), new Vector2(30, 56) }, (x, y) => Hex(0xe86a10));
                     break;
+                case "bow": Bow(c); break;
+                case "arrow": Arrow(c); break;
+                case "apple": Apple(c); break;
+                case "bread": Bread(c); break;
+                case "raw_beef": Steak(c, false, Hex(0xc0303a)); break;
+                case "steak": Steak(c, true, Hex(0x8a4a24)); break;
+                case "raw_pork": Steak(c, false, Hex(0xe88a8a)); break;
+                case "roast_pork": Steak(c, true, Hex(0xa86034)); break;
+                case "raw_mutton": Steak(c, false, Hex(0xb8404a)); break;
+                case "roast_mutton": Steak(c, true, Hex(0x7a4a2a)); break;
+                case "raw_chicken": Drumstick(c, Hex(0xf0c0a8)); break;
+                case "roast_chicken": Drumstick(c, Hex(0xc07a34)); break;
+                case "berries": Berries(c); break;
+                case "hide": Hide(c); break;
+                case "feather": Feather(c); break;
+                case "bone": Bone(c); break;
+                case "thread": Thread(c); break;
+                case "ember":
+                    c.Poly(new[] { new Vector2(48, 90), new Vector2(70, 58), new Vector2(62, 14), new Vector2(36, 10), new Vector2(26, 50) },
+                        (x, y) => Color.Lerp(Hex(0xb81e08), Hex(0xffb040), Mathf.Clamp01((x - 26) / 44f * 0.5f + (y - 10) / 80f * 0.6f)));
+                    c.Poly(new[] { new Vector2(48, 90), new Vector2(36, 10), new Vector2(26, 50) }, (x, y) => Hex(0x8a1206));
+                    break;
+                case "colossus_heart":
+                    c.Disc(new Vector2(36, 56), 20, (dx, dy) => Color.Lerp(Hex(0xff6a1a), Hex(0x7a0c04), Mathf.Clamp01((dx + 1) * 0.3f - dy * 0.3f + 0.2f)));
+                    c.Disc(new Vector2(60, 56), 20, (dx, dy) => Color.Lerp(Hex(0xff8a2a), Hex(0x7a0c04), Mathf.Clamp01((dx + 1) * 0.35f - dy * 0.3f)));
+                    c.Poly(new[] { new Vector2(17, 52), new Vector2(79, 52), new Vector2(48, 12) }, (x, y) => Color.Lerp(Hex(0x9a1406), Hex(0xff7a20), (y - 12) / 50f));
+                    c.Disc(new Vector2(40, 62), 6, (dx, dy) => new Color(1, 0.95f, 0.7f, 1 - Mathf.Sqrt(dx * dx + dy * dy)));
+                    break;
                 default:
                     c.Poly(new[] { new Vector2(20, 20), new Vector2(76, 20), new Vector2(76, 76), new Vector2(20, 76) }, (x, y) => Color.magenta);
                     break;
             }
             return c.Done();
+        }
+
+        static Color Shade(Color c, float k) => new Color(c.r * k, c.g * k, c.b * k, c.a);
+
+        static void Sword(Canvas c, string id)
+        {
+            // Blade from the guard to the tip, bright along the edge and darker down the fuller.
+            var a = new Vector2(34, 34); var tip = new Vector2(84, 84);
+            c.Line(a, tip - new Vector2(6, 6), 13, (t, s) => { var m = Mat(id, 0.75f - Mathf.Abs(s) * 0.15f + (s > 0.5f ? 0.25f : 0)); m.a = 1; return m; });
+            c.Poly(new[] { tip - new Vector2(10.6f, 1.4f), tip, tip - new Vector2(1.4f, 10.6f) }, (x, y) => Mat(id, 0.85f));
+            c.Line(a + new Vector2(2, 2), tip - new Vector2(10, 10), 2.5f, (t, s) => Mat(id, 0.35f));
+            c.Line(new Vector2(22, 44), new Vector2(44, 22), 7, (t, s) => Color.Lerp(Hex(0x4a3a2a), Hex(0x8a6a3a), 0.5f + s * 0.3f));
+            c.Line(new Vector2(14, 14), new Vector2(32, 32), 7.5f, (t, s) => { var h = Handle(t, s); h.a = 1; return h; });
+            c.Disc(new Vector2(13, 13), 5, (dx, dy) => Color.Lerp(Hex(0x9a7a3a), Hex(0x4a3418), (dx - dy + 1.4f) / 2.8f));
+        }
+
+        static void Shears(Canvas c)
+        {
+            var steel = Hex(0xc8ccd4);
+            c.Poly(new[] { new Vector2(44, 46), new Vector2(84, 86), new Vector2(76, 70), new Vector2(50, 40) }, (x, y) => Color.Lerp(steel, Color.white, (y - 40) / 90f));
+            c.Poly(new[] { new Vector2(46, 44), new Vector2(86, 84), new Vector2(70, 76), new Vector2(40, 50) }, (x, y) => Color.Lerp(Shade(steel, 0.75f), steel, (x - 40) / 60f));
+            foreach (var ctr in new[] { new Vector2(24, 40), new Vector2(40, 24) })
+            {
+                c.Disc(ctr, 12, (dx, dy) => dx * dx + dy * dy < 0.3f ? new Color(0, 0, 0, 0) : Color.Lerp(Hex(0xb04020), Hex(0x702010), (dx + dy + 2) / 4));
+            }
+            c.Disc(new Vector2(46, 46), 3.5f, (dx, dy) => Hex(0x3a3a40));
+        }
+
+        static void Bow(Canvas c)
+        {
+            Vector2 a = new Vector2(16, 82), b = new Vector2(82, 16), ctl = new Vector2(84, 84);
+            Vector2 prev = a;
+            for (int i = 1; i <= 24; i++)
+            {
+                float t = i / 24f;
+                var pt = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * ctl + t * t * b;
+                float w = 6.5f + 2.5f * Mathf.Sin(t * Mathf.PI);
+                c.Line(prev, pt, w, (tt, s) => Color.Lerp(Hex(0x5a3a1e), Hex(0xa87440), 0.5f + s * 0.4f));
+                prev = pt;
+            }
+            c.Line(new Vector2(48, 48), new Vector2(58, 58), 9, (t, s) => Hex(0x3a2a1a));       // grip
+            c.Line(a, b, 1.6f, (t, s) => new Color(0.92f, 0.9f, 0.84f, 1));
+        }
+
+        static void Arrow(Canvas c)
+        {
+            c.Line(new Vector2(18, 18), new Vector2(72, 72), 4.5f, (t, s) => Color.Lerp(Hex(0x7a5a34), Hex(0xb08a56), 0.5f + s * 0.4f));
+            c.Poly(new[] { new Vector2(64, 76), new Vector2(86, 86), new Vector2(76, 64) }, (x, y) => Color.Lerp(Hex(0x6a6c72), Hex(0xc8ccd4), (x + y - 128) / 44f));
+            foreach (var off in new[] { new Vector2(-9, 3), new Vector2(3, -9) })
+                c.Poly(new[] { new Vector2(14, 14), new Vector2(30, 30), new Vector2(30, 30) + off * 1.4f, new Vector2(14, 14) + off * 1.6f },
+                    (x, y) => Color.Lerp(Hex(0xe8e4dc), Hex(0xb8b0a4), (x - 6) / 30f));
+        }
+
+        static void Apple(Canvas c)
+        {
+            c.Disc(new Vector2(48, 42), 30, (dx, dy) => Color.Lerp(Hex(0xe23a2a), Hex(0x7a1410), Mathf.Clamp01(0.35f + dx * 0.35f - dy * 0.35f)), 28);
+            c.Disc(new Vector2(36, 54), 8, (dx, dy) => new Color(1, 0.85f, 0.8f, 0.55f * (1 - Mathf.Sqrt(dx * dx + dy * dy))));
+            c.Line(new Vector2(48, 66), new Vector2(52, 82), 4.5f, (t, s) => Hex(0x5a3a1e));
+            c.Poly(new[] { new Vector2(52, 76), new Vector2(64, 86), new Vector2(76, 82), new Vector2(62, 74) }, (x, y) => Color.Lerp(Hex(0x3a8a2a), Hex(0x6ab03a), (y - 74) / 12f));
+        }
+
+        static void Bread(Canvas c)
+        {
+            c.Disc(new Vector2(48, 44), 38, (dx, dy) => Color.Lerp(Hex(0xe0a050), Hex(0x8a5420), Mathf.Clamp01(0.3f - dy * 0.4f + dx * 0.2f)), 22);
+            for (int k = -1; k <= 1; k++)
+                c.Line(new Vector2(40 + k * 20, 34), new Vector2(54 + k * 20, 56), 3, (t, s) => Hex(0xf0d090));
+        }
+
+        static void Steak(Canvas c, bool cooked, Color meat)
+        {
+            var pts = new[] { new Vector2(16, 44), new Vector2(26, 24), new Vector2(50, 16), new Vector2(76, 22), new Vector2(86, 42), new Vector2(80, 64), new Vector2(58, 78), new Vector2(34, 76), new Vector2(20, 62) };
+            c.Poly(pts, (x, y) => Color.Lerp(Shade(meat, 0.75f), meat, Mathf.Clamp01((y - 16) / 70f + Mathf.PerlinNoise(x * 0.1f, y * 0.1f) * 0.3f)));
+            // A rim of fat and, when cooked, grill marks.
+            c.Line(new Vector2(22, 60), new Vector2(36, 74), 6, (t, s) => cooked ? Hex(0xc89060) : Hex(0xf4e4d4));
+            c.Line(new Vector2(36, 74), new Vector2(58, 76), 6, (t, s) => cooked ? Hex(0xc89060) : Hex(0xf4e4d4));
+            if (cooked) for (int k = 0; k < 3; k++) c.Line(new Vector2(28 + k * 16, 26), new Vector2(46 + k * 16, 62), 3.5f, (t, s) => Hex(0x3a1c0c));
+            else c.Disc(new Vector2(56, 46), 6, (dx, dy) => Hex(0xf4e4d4));
+        }
+
+        static void Drumstick(Canvas c, Color meat)
+        {
+            c.Line(new Vector2(18, 18), new Vector2(42, 42), 7, (t, s) => Hex(0xf0e8d8));
+            c.Disc(new Vector2(16, 20), 5, (dx, dy) => Hex(0xf0e8d8));
+            c.Disc(new Vector2(20, 16), 5, (dx, dy) => Hex(0xe8dcc8));
+            c.Disc(new Vector2(60, 60), 26, (dx, dy) => Color.Lerp(meat, Shade(meat, 0.65f), Mathf.Clamp01(0.4f + dx * 0.3f - dy * 0.3f)), 22);
+        }
+
+        static void Berries(Canvas c)
+        {
+            c.Poly(new[] { new Vector2(40, 70), new Vector2(60, 88), new Vector2(84, 82), new Vector2(62, 66) }, (x, y) => Color.Lerp(Hex(0x2e6a22), Hex(0x5aa034), (y - 66) / 22f));
+            foreach (var (bx, by) in new[] { (30, 36), (50, 30), (42, 52), (64, 46), (24, 56), (56, 62) })
+                c.Disc(new Vector2(bx, by), 11, (dx, dy) => Color.Lerp(Hex(0xd02a4a), Hex(0x5a0a20), Mathf.Clamp01(0.4f + dx * 0.3f - dy * 0.35f)));
+        }
+
+        static void Hide(Canvas c)
+        {
+            var pts = new[] { new Vector2(20, 30), new Vector2(14, 50), new Vector2(24, 64), new Vector2(18, 80), new Vector2(40, 74), new Vector2(56, 82), new Vector2(76, 76), new Vector2(72, 60), new Vector2(84, 44), new Vector2(76, 22), new Vector2(54, 26), new Vector2(36, 14) };
+            c.Poly(pts, (x, y) => Color.Lerp(Hex(0x6a4428), Hex(0xa87448), Mathf.PerlinNoise(x * 0.08f + 3, y * 0.08f) * 0.8f + (y - 14) / 300f));
+            c.Disc(new Vector2(46, 48), 9, (dx, dy) => new Color(0.95f, 0.88f, 0.76f, 0.5f));
+        }
+
+        static void Feather(Canvas c)
+        {
+            c.Line(new Vector2(16, 14), new Vector2(76, 82), 2.5f, (t, s) => Hex(0xc8c0b0));
+            var vane = new[] { new Vector2(30, 26), new Vector2(26, 50), new Vector2(46, 74), new Vector2(76, 84), new Vector2(66, 60), new Vector2(54, 36), new Vector2(36, 24) };
+            c.Poly(vane, (x, y) => Color.Lerp(Hex(0xf6f2ea), Hex(0xc8c0b4), Mathf.Abs(Mathf.Sin((x + y) * 0.35f)) * 0.4f + (x - y + 30) / 160f));
+            c.Line(new Vector2(28, 28), new Vector2(74, 80), 1.5f, (t, s) => Hex(0xb0a898));
+        }
+
+        static void Bone(Canvas c)
+        {
+            var bone = Hex(0xf0e8d6);
+            c.Line(new Vector2(26, 26), new Vector2(70, 70), 10, (t, s) => Color.Lerp(bone, Shade(bone, 0.78f), 0.5f + s * 0.4f));
+            foreach (var ctr in new[] { new Vector2(20, 28), new Vector2(28, 20), new Vector2(68, 76), new Vector2(76, 68) })
+                c.Disc(ctr, 8, (dx, dy) => Color.Lerp(bone, Shade(bone, 0.75f), Mathf.Clamp01(0.4f + dx * 0.3f - dy * 0.3f)));
+        }
+
+        static void Thread(Canvas c)
+        {
+            for (int k = 0; k < 4; k++)
+            {
+                float r = 30 - k * 5;
+                Vector2 prev = Vector2.zero;
+                for (int i = 0; i <= 40; i++)
+                {
+                    float a = i / 40f * Mathf.PI * 2;
+                    var pt = new Vector2(48 + Mathf.Cos(a) * r, 48 + Mathf.Sin(a) * r * 0.7f + k * 3);
+                    if (i > 0) c.Line(prev, pt, 2.6f, (t, s) => new Color(0.95f, 0.94f, 0.9f, 1) * (0.85f + 0.15f * s));
+                    prev = pt;
+                }
+            }
+        }
+
+        static void Armour(Canvas c, ItemDef item)
+        {
+            string mat = item.Id.Substring(0, item.Id.IndexOf('_'));
+            Color m = mat == "hide" ? Hex(0x8a5a34) : mat == "copper" ? Hex(0xd08050) : Hex(0xccd0d6);
+            System.Func<float, float, Color> fill = (x, y) => Color.Lerp(Shade(m, 0.65f), Color.Lerp(m, Color.white, 0.2f), Mathf.Clamp01((y - 10) / 90f + Mathf.PerlinNoise(x * 0.07f, y * 0.07f) * 0.25f));
+            switch (item.ArmourSlot)
+            {
+                case 0:
+                    c.Disc(new Vector2(48, 42), 32, (dx, dy) => dy < 0 ? new Color(0, 0, 0, 0) : fill(48 + dx * 30, 42 + dy * 30), 30);
+                    c.Poly(new[] { new Vector2(12, 40), new Vector2(84, 40), new Vector2(84, 32), new Vector2(12, 32) }, (x, y) => Shade(m, 0.7f));
+                    break;
+                case 1:
+                    c.Poly(new[] { new Vector2(30, 12), new Vector2(66, 12), new Vector2(68, 60), new Vector2(84, 52), new Vector2(90, 70), new Vector2(64, 86), new Vector2(54, 80),
+                                   new Vector2(42, 80), new Vector2(32, 86), new Vector2(6, 70), new Vector2(12, 52), new Vector2(28, 60) }, fill);
+                    c.Line(new Vector2(48, 16), new Vector2(48, 78), 2.5f, (t, s) => Shade(m, 0.55f));
+                    break;
+                case 2:
+                    c.Poly(new[] { new Vector2(24, 84), new Vector2(72, 84), new Vector2(72, 76), new Vector2(70, 12), new Vector2(54, 12), new Vector2(48, 60), new Vector2(42, 12), new Vector2(26, 12), new Vector2(24, 76) }, fill);
+                    c.Poly(new[] { new Vector2(24, 84), new Vector2(72, 84), new Vector2(72, 76), new Vector2(24, 76) }, (x, y) => Shade(m, 0.6f));
+                    break;
+                default:
+                    foreach (int ox in new[] { 0, 40 })
+                        c.Poly(new[] { new Vector2(10 + ox, 20), new Vector2(46 + ox, 20), new Vector2(46 + ox, 30), new Vector2(30 + ox, 34), new Vector2(30 + ox, 70), new Vector2(12 + ox, 70) }, fill);
+                    break;
+            }
         }
     }
 }

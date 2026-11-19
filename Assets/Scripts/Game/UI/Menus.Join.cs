@@ -182,6 +182,7 @@ namespace Stratum.Game
         // Tab moves between the boxes, Enter presses the button.
         void Update()
         {
+            SettingsUpdate();
             if (_join == null || !_join.activeSelf || _joining) return;
             var kb = Keyboard.current;
             if (kb == null) return;

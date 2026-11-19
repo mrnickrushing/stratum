@@ -192,6 +192,12 @@ namespace Stratum.Server
         public float yaw { get; set; }
         public float pitch { get; set; }
         public float health { get; set; } = 20;
+        public float food { get; set; } = 20;
+        public float saturation { get; set; } = 5;
+        public bool hasBed { get; set; }
+        public int bx { get; set; }
+        public int by { get; set; }
+        public int bz { get; set; }
         public int selected { get; set; }
         public List<SlotRecord> slots { get; set; } = new List<SlotRecord>();
         public long lastSeen { get; set; }

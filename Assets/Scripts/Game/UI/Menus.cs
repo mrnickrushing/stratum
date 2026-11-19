@@ -9,7 +9,7 @@ namespace Stratum.Game
     public sealed partial class Menus : MonoBehaviour
     {
         public Action<WorldMeta> Play;
-        public Action<string, string, bool> Create;   // name, seed text, creative
+        public Action<string, string, bool, int> Create;   // name, seed text, creative, difficulty
         public Action<WorldMeta> Delete;
         public Action Resume, SaveAndQuit, Respawn, Quit, SettingsChanged;
         public Func<List<WorldMeta>> ListWorlds;
@@ -21,6 +21,8 @@ namespace Stratum.Game
         Image _loadBar; Text _loadText, _loadTip;
         InputField _newName, _newSeed;
         bool _newCreative;
+        int _newDifficulty = 2;
+        Button _diffBtn;
         Button _modeBtn;
         Action _settingsBack;
         Image _shade;
@@ -174,10 +176,12 @@ namespace Stratum.Game
             var l2 = UIKit.Label(card.transform, "Seed (leave blank for a random world)", 24, UIKit.Dim); l2.rectTransform.Place(0, 1, 70, -246, 760, 30);
             _newSeed = UIKit.Field(card.transform, "random", ""); ((RectTransform)_newSeed.transform).Place(0, 1, 70, -282, 760, 64);
             _modeBtn = UIKit.Button(card.transform, "Mode: Survival", () => { _newCreative = !_newCreative; UpdateMode(); }, 28);
-            ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -378, 760, 68);
+            ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -378, 372, 68);
+            _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 3; UpdateMode(); }, 28);
+            ((RectTransform)_diffBtn.transform).Place(0, 1, 458, -378, 372, 68);
             var hint = UIKit.Label(card.transform, "", 21, UIKit.Dim, TextAnchor.UpperLeft); hint.rectTransform.Place(0, 1, 74, -456, 760, 60);
             hint.name = "ModeHint";
-            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative), 30, true);
+            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative, _newDifficulty), 30, true);
             ((RectTransform)create.transform).Place(0.5f, 0, 170, 36, 320, 72);
             var back = UIKit.Button(card.transform, "Back", ShowWorlds, 30);
             ((RectTransform)back.transform).Place(0.5f, 0, -170, 36, 320, 72);
@@ -187,9 +191,28 @@ namespace Stratum.Game
         void UpdateMode()
         {
             _modeBtn.SetText(_newCreative ? "Mode: Creative" : "Mode: Survival");
+            _diffBtn.SetText("Difficulty: " + GameRoot.DifficultyNames[_newDifficulty]);
+            _diffBtn.gameObject.SetActive(!_newCreative);
             var hint = _new.transform.Find("Card/ModeHint")?.GetComponent<Text>();
             if (hint != null) hint.text = _newCreative ? "Every block in the palette, instant breaking, flight. Nothing can hurt you." :
-                "Gather, craft tools and dig for ore. Falls and deep water hurt.";
+                _newDifficulty == 0 ? "Gather, craft and build. No monsters, and you never go hungry." :
+                _newDifficulty == 1 ? "Monsters come out at night but hit softly. Hunger won't take you below half health." :
+                "Monsters at night and in the dark. Keep fed, build a shelter, sleep in a bed.";
+        }
+
+        Image _micMeter; Button _micBtn; float _micRefresh;
+
+        void SettingsUpdate()
+        {
+            if (_settings == null) return;
+            if (_settings.activeSelf)
+            {
+                float lv = MicChoice.TestLevel();
+                if (_micMeter != null) _micMeter.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(lv), 1);
+                // A headset plugged in while the screen is open shows up.
+                if ((_micRefresh -= Time.unscaledDeltaTime) <= 0) { _micRefresh = 1; _micBtn?.SetText("Microphone: " + MicChoice.Label()); }
+            }
+            else if (!VoiceChat.Active) MicChoice.StopTest();
         }
 
         Text _viewLabel, _fovLabel, _sensLabel, _volLabel, _musicLabel;
@@ -218,6 +241,18 @@ namespace Stratum.Game
             Row("Voice chat volume", out _, 0, 2, Settings.VoiceVolume, false, f => Settings.VoiceVolume = f, f => $"{Mathf.RoundToInt(f * 100)}%", 610);
             y -= 110;
             Row("Microphone boost", out _, 0.25f, 4, Settings.MicGain, false, f => Settings.MicGain = f, f => $"{f:0.0}×", 70);
+            // Which microphone (a headset's), with a meter that moves when you speak into it.
+            Button micBtn = null;
+            micBtn = UIKit.Button(card.transform, "Microphone: " + MicChoice.Label(), () => { MicChoice.Next(); micBtn.SetText("Microphone: " + MicChoice.Label()); }, 22);
+            ((RectTransform)micBtn.transform).Place(0, 1, 610, y + 4, 500, 52);
+            _micBtn = micBtn;
+            var meterBack = UIKit.Panel(card.transform, "MicMeter", new Color(0.05f, 0.05f, 0.06f, 0.8f), UIKit.RoundSmall);
+            meterBack.rectTransform.Place(0, 1, 610, y - 58, 500, 16);
+            _micMeter = UIKit.Panel(meterBack.transform, "Level", new Color(0.4f, 0.9f, 0.5f), UIKit.RoundSmall);
+            _micMeter.rectTransform.anchorMin = Vector2.zero; _micMeter.rectTransform.anchorMax = new Vector2(0, 1);
+            _micMeter.rectTransform.offsetMin = new Vector2(2, 2); _micMeter.rectTransform.offsetMax = new Vector2(-2, -2);
+            var micHint = UIKit.Label(card.transform, "Talk: the bar should move. A headset stops echo.", 17, UIKit.Dim);
+            micHint.rectTransform.Place(0, 1, 610, y - 76, 520, 26);
             y -= 120;
             float x = 70; int n = 0;
             void Toggle(string name, Func<string> state, Action flip)
@@ -258,13 +293,15 @@ namespace Stratum.Game
         void BuildDeath()
         {
             _death = Screen("Death");
-            var t = UIKit.Label(_death.transform, "You blacked out", 96, new Color(1f, 0.78f, 0.72f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(5);
+            var t = UIKit.Label(_death.transform, "You died!", 96, new Color(1f, 0.78f, 0.72f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(5);
             t.rectTransform.Place(0.5f, 0.5f, 0, 120, 1400, 140);
-            var s = _deathSub = UIKit.Label(_death.transform, "You wake where you first came ashore, your pack still with you.", 30, UIKit.Ink, TextAnchor.MiddleCenter).Shadowed(2);
+            var s = _deathSub = UIKit.Label(_death.transform, "Everything you carried is in a satchel where you fell.", 30, UIKit.Ink, TextAnchor.MiddleCenter).Shadowed(2);
             s.rectTransform.Place(0.5f, 0.5f, 0, 30, 1400, 50);
-            var b = UIKit.Button(_death.transform, "Get Up", () => Respawn?.Invoke(), 32, true);
+            var b = UIKit.Button(_death.transform, "Respawn", () => Respawn?.Invoke(), 32, true);
             ((RectTransform)b.transform).Place(0.5f, 0.5f, 0, -80, 380, 80);
         }
+
+        public void SetDeathText(string s) { if (_deathSub != null) _deathSub.text = s.Length > 0 ? s : "Respawn to carry on."; }
 
         void BuildLoading()
         {
@@ -289,7 +326,7 @@ namespace Stratum.Game
         {
             _quitBtn.SetText(online ? "Disconnect" : "Save and Quit to Title");
             _pauseInfo.text = online ? info : "";
-            _deathSub.text = online ? "You wake at the server's spawn, your pack still with you." : "You wake where you first came ashore, your pack still with you.";
+            _deathSub.text = online ? "You wake at the server's spawn, your pack still with you." : "Everything you carried is in a satchel where you fell.";
         }
 
         public void HideAll()

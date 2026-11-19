@@ -12,7 +12,7 @@ namespace Stratum.Core
     // player moves themselves and keeps their own backpack, which the server saves for them.
     public static class Net
     {
-        public const int Protocol = 2;                  // 2: accounts (Hello carries a login, Welcome a token), voice chat
+        public const int Protocol = 3;                  // 2: accounts, voice chat. 3: creatures, food, chests, beds
         public const int DefaultPort = 25600;
         public const int MaxMessage = 1 << 20;          // a chunk is ~4-12 KB compressed; nothing should come near
         public const int MaxNameLength = 16;
@@ -22,12 +22,17 @@ namespace Stratum.Core
         {
             // client -> server
             Hello = 1, Move = 2, WantChunks = 3, SetBlock = 4, Chat = 5, Keep = 6, Ping = 7, Voice = 8,
+            Strike = 9, Shoot = 10, UseMob = 11, OpenBox = 12, BoxSlot = 13, CloseBox = 14, Sleep = 15, Drop = 16,
             // server -> client
             Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73, Heard = 74,
+            Mobs = 75, Hurt = 76, Give = 77, Box = 78, BoxSet = 79, Sleepers = 80, MobSound = 81,
         }
 
         // Player flags in Move/Moved.
-        public const byte Sneaking = 1, Flying = 2, Swinging = 4, InWater = 8;
+        public const byte Sneaking = 1, Flying = 2, Swinging = 4, InWater = 8, Dead = 16, Asleep = 32;
+
+        // Creature sounds in MobSound.
+        public static readonly string[] MobSounds = { "hurt", "die", "say", "shoot", "stick" };
 
         public static bool ValidName(string n)
         {
@@ -85,6 +90,14 @@ namespace Stratum.Core
         }
         public Packet Blob(byte[] b) { _w.Write(b.Length); _w.Write(b); return this; }
 
+        public Packet Slot(Stack s)
+        {
+            Str(s.Empty ? "" : s.Item);
+            _w.Write((ushort)(s.Empty ? 0 : Math.Min(s.Count, 0xFFFF)));
+            _w.Write((ushort)Math.Clamp(s.Wear, 0, 0xFFFF));
+            return this;
+        }
+
         public Packet Stacks(Stack[] slots)
         {
             _w.Write((byte)slots.Length);
@@ -131,6 +144,12 @@ namespace Stratum.Core
             int n = _r.ReadInt32();
             if (n < 0 || n > Net.MaxMessage) throw new InvalidDataException("blob too big");
             return _r.ReadBytes(n);
+        }
+
+        public Stack Slot()
+        {
+            string item = Str(); int count = _r.ReadUInt16(); int wear = _r.ReadUInt16();
+            return string.IsNullOrEmpty(item) || count == 0 || Items.Get(item) == null ? Stack.None : new Stack(item, count) { Wear = wear };
         }
 
         public Stack[] Stacks()

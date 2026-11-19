@@ -24,6 +24,7 @@ namespace Stratum.Server
         public string Reset = "";                  // account names whose passwords to clear once (STRATUM_RESET)
         public bool Creative;
         public int MaxView = 10;
+        public int Difficulty = 2;                 // 0 peaceful, 1 easy, 2 normal (STRATUM_DIFFICULTY)
     }
 
     // One thread runs the world at 20 ticks a second; connections hand it their messages through a queue.
@@ -46,6 +47,10 @@ namespace Stratum.Server
             public int Refused;
             public bool Checking;                   // login being checked
             public int VoiceFrames;                 // this second
+            public int Strikes, Shots;              // this second
+            public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public bool Alive => (Flags & Net.Dead) == 0;
+            public bool Asleep => (Flags & Net.Asleep) != 0;
         }
 
         readonly ServerConfig _cfg;
@@ -55,6 +60,11 @@ namespace Stratum.Server
         readonly ConcurrentQueue<Connection> _opened = new ConcurrentQueue<Connection>();
         readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
         readonly Accounts _accounts;
+        readonly MobSim _mobs;
+        readonly Containers _boxes = new Containers();
+        readonly List<Seen> _seen = new List<Seen>();
+        int _lastSleepers = -1;
+        string BoxFile => System.IO.Path.Combine(_cfg.Dir, "containers.bin");
         readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
         readonly Dictionary<long, List<Player>> _waiters = new Dictionary<long, List<Player>>();
         TcpListener _listener;
@@ -73,6 +83,28 @@ namespace Stratum.Server
             World.Changed += (x, y, z, id) => Broadcast(BlockPacket(x, y, z, id, 0));
             _accounts = new Accounts(cfg.Dir);
             _accounts.ApplyReset(cfg.Reset);
+            try { _boxes.Load(BoxFile); }
+            catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
+            _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
+            _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
+            _mobs.HitPlayer += (id, dmg, fx, fz, from) =>
+            {
+                if (_players.TryGetValue(id, out var p) && p.Joined) p.Conn.Send(new Packet(Net.Msg.Hurt).F32(dmg).F32(fx).F32(fz).U8((byte)from.Kind));
+            };
+            _mobs.Died += (m, killer) =>
+            {
+                if (killer <= 0 || !_players.TryGetValue(killer, out var p) || !p.Joined) return;
+                foreach (var (item, n) in _mobs.Loot(m)) Give(p, item, n);
+                if (m.Def.Boss) Broadcast(SaidPacket("", $"{p.Name} defeated the {m.Def.Name}!"));
+            };
+            _mobs.Sound += (m, what) =>
+            {
+                int code = Array.IndexOf(Net.MobSounds, what);
+                if (code < 0) return;
+                var f = new Packet(Net.Msg.MobSound).I32(m.Id).U8((byte)m.Kind).U8((byte)code).F32(m.X).F32(m.Y).F32(m.Z).Bytes();
+                foreach (var p in _players.Values)
+                    if (p.Joined && (p.X - m.X) * (p.X - m.X) + (p.Z - m.Z) * (p.Z - m.Z) < 48 * 48) p.Conn.Send(f);
+            };
         }
 
         public void Start()
@@ -85,7 +117,7 @@ namespace Stratum.Server
             _loop = new Thread(Loop) { Name = "game loop" };
             _loop.Start();
             Log.Info($"\"{_cfg.Name}\" listening on port {Port}, world {System.IO.Path.GetFullPath(_cfg.Dir)}, seed {World.Meta.seed}, " +
-                     $"{(_cfg.Creative ? "creative" : "survival")}, up to {_cfg.MaxPlayers} players, {_accounts.Count} accounts{(_cfg.Password != "" ? ", invite code set" : ", anyone can make an account")}");
+                     $"{(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal" }[Math.Clamp(_cfg.Difficulty, 0, 2)]}, up to {_cfg.MaxPlayers} players, {_accounts.Count} accounts{(_cfg.Password != "" ? ", invite code set" : ", anyone can make an account")}");
         }
 
         void Accept()
@@ -118,7 +150,7 @@ namespace Stratum.Server
         {
             const double Tick = 0.05;
             var clock = Stopwatch.StartNew();
-            double last = 0, nextMoves = 0, nextClock = 0, nextSave = 60, nextUnload = 30, nextStats = 300, nextSecond = 1;
+            double last = 0, nextMoves = 0, nextClock = 0, nextSave = 60, nextUnload = 30, nextStats = 300, nextSecond = 1, nextMobs = 0;
             var made = new List<Chunk>();
             while (!_stop)
             {
@@ -137,15 +169,17 @@ namespace Stratum.Server
                     foreach (var ch in made) Serve(ch);
 
                     World.Water.Tick(dt);
+                    TickMobs(dt);
+                    if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); }
                     World.Meta.time += dt / 1200.0;     // Sky.DayLength
                     if (World.Meta.time >= 1) { World.Meta.time -= 1; World.Meta.day++; }
 
                     if (now >= nextMoves) { nextMoves = now + 0.1; SendMoves(); }
                     if (now >= nextClock) { nextClock = now + 5; Broadcast(ClockPacket()); KickSilent(); }
-                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.VoiceFrames = 0; } }
+                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.VoiceFrames = 0; p.Strikes = 0; p.Shots = 0; } CheckSleep(); }
                     if (now >= nextSave) { nextSave = now + 60; SaveAll(false); }
                     if (now >= nextUnload) { nextUnload = now + 30; World.Maintain(Needed, true); }
-                    if (now >= nextStats) { nextStats = now + 300; Log.Info($"{_onlineCount} online, {World.Loaded} chunks loaded, day {World.Meta.day}"); }
+                    if (now >= nextStats) { nextStats = now + 300; Log.Info($"{_onlineCount} online, {World.Loaded} chunks loaded, {_mobs.All.Count} creatures, day {World.Meta.day}"); }
                 }
                 catch (Exception e) { Log.Warn("tick failed: " + e); }
                 double sleep = Tick - (clock.Elapsed.TotalSeconds - now);
@@ -171,6 +205,7 @@ namespace Stratum.Server
         {
             World.Maintain(Needed, false);
             World.SaveMeta();
+            if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
             foreach (var p in _players.Values) if (p.Joined) SavePlayer(p);
         }
 
@@ -205,6 +240,14 @@ namespace Stratum.Server
                     case Net.Msg.Chat: Chat(p, r); break;
                     case Net.Msg.Voice: Speak(p, r); break;
                     case Net.Msg.Keep: Keep(p, r); break;
+                    case Net.Msg.Strike: Strike(p, r); break;
+                    case Net.Msg.Shoot: Shoot(p, r); break;
+                    case Net.Msg.UseMob: UseMob(p, r); break;
+                    case Net.Msg.OpenBox: OpenBox(p, r); break;
+                    case Net.Msg.BoxSlot: BoxSlot(p, r); break;
+                    case Net.Msg.CloseBox: p.HasBox = false; break;
+                    case Net.Msg.Sleep: p.Flags = (byte)(r.Bool() ? p.Flags | Net.Asleep : p.Flags & ~Net.Asleep); CheckSleep(); break;
+                    case Net.Msg.Drop: Drop(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
             }
@@ -261,7 +304,8 @@ namespace Stratum.Server
                 .F64(m.time).I32(m.day).I32(m.sx).I32(m.sy).I32(m.sz)
                 .Bool(p.Rec.hasPos).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).F32(p.Rec.health).U8((byte)Math.Clamp(p.Rec.selected, 0, 8))
                 .Stacks(p.Rec.Stacks())
-                .Str(name).Str(res.Token ?? "");
+                .Str(name).Str(res.Token ?? "")
+                .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty);
             p.Conn.Send(w);
             foreach (var o in _players.Values)
                 if (o.Joined && o != p)
@@ -284,6 +328,7 @@ namespace Stratum.Server
             var left = new Packet(Net.Msg.Left).I32(c.Id).Bytes();
             foreach (var o in _players.Values) if (o.Joined) o.Conn.Send(left);
             if (!_players.Values.Any(o => o.Joined && o.Key == p.Key)) Broadcast(SaidPacket("", $"{p.Name} left the game"));
+            CheckSleep();
             Log.Info($"{p.Name} left ({why}), {_onlineCount} online");
         }
 
@@ -365,6 +410,8 @@ namespace Stratum.Server
             World.SetRaw(x, y, z, id);
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
             if (id == 0) World.Water.Wake(x, y, z);
+            if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
+                foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
         }
 
         void Chat(Player p, Reader r)
@@ -378,7 +425,8 @@ namespace Stratum.Server
                 p.Conn.Send(SaidPacket("", $"Online ({_onlineCount}/{_cfg.MaxPlayers}): {string.Join(", ", names)}"));
                 return;
             }
-            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list")); return; }
+            if (text.StartsWith("/tpnote ")) { Broadcast(SaidPacket("", $"{p.Name} went to {text.Substring(8).Trim()}")); return; }
+            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>")); return; }
             Broadcast(SaidPacket(p.Name, text));
             Log.Info($"<{p.Name}> {text}");
         }
@@ -386,9 +434,145 @@ namespace Stratum.Server
         void Keep(Player p, Reader r)
         {
             p.Rec.health = Math.Clamp(r.F32(), 0, 20);
+            p.Rec.food = Math.Clamp(r.F32(), 0, 20);
+            p.Rec.saturation = Math.Clamp(r.F32(), 0, 20);
             p.Rec.selected = r.U8();
             var st = r.Stacks();
             if (st.Length == Inventory.Size) p.Rec.SetStacks(st);
+            p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
+        }
+
+        // ------------------------------------------------------------------ creatures
+
+        void TickMobs(float dt)
+        {
+            _seen.Clear();
+            foreach (var p in _players.Values)
+                if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep });
+            _mobs.Time01 = (float)World.Meta.time;
+            _mobs.Tick(dt, _seen);
+        }
+
+        // Each player hears about the creatures within sight of them, ten times a second.
+        void SendMobs()
+        {
+            foreach (var p in _players.Values)
+            {
+                if (!p.Joined) continue;
+                int n = 0;
+                foreach (var m in _mobs.All) if (Near(m, p, 96)) n++;
+                var pk = new Packet(Net.Msg.Mobs).U16(Math.Min(n, 400));
+                int k = 0;
+                foreach (var m in _mobs.All)
+                {
+                    if (!Near(m, p, 96) || k++ >= 400) continue;
+                    pk.I32(m.Id).U8((byte)m.Kind).F32(m.X).F32(m.Y).F32(m.Z)
+                      .U8((byte)((int)Math.Round(m.Yaw / 360f * 256) & 255)).U8((byte)(sbyte)Math.Clamp((int)m.Pitch, -90, 90)).U8(m.Flags)
+                      .U8((byte)Math.Clamp((int)Math.Ceiling(m.Health / m.Def.Health * 255), 0, 255));
+                }
+                p.Conn.Send(pk);
+            }
+        }
+
+        static bool Near(Mob m, Player p, float r) { float dx = m.X - p.X, dz = m.Z - p.Z; return dx * dx + dz * dz < r * r; }
+
+        void Strike(Player p, Reader r)
+        {
+            int id = r.I32(); float dmg = Math.Clamp(r.F32(), 0, 14);
+            if (++p.Strikes > 8) return;
+            _mobs.Strike(id, p.Conn.Id, dmg, p.X, p.Y, p.Z);
+        }
+
+        void Shoot(Player p, Reader r)
+        {
+            float x = r.F32(), y = r.F32(), z = r.F32(), vx = r.F32(), vy = r.F32(), vz = r.F32(), dmg = Math.Clamp(r.F32(), 0, 10);
+            if (++p.Shots > 4) return;
+            float dx = x - p.X, dy = y - (p.Y + 1.5f), dz = z - p.Z;
+            if (dx * dx + dy * dy + dz * dz > 9 || vx * vx + vy * vy + vz * vz > 60 * 60) return;
+            _mobs.Shoot(p.Conn.Id, x, y, z, vx, vy, vz, dmg);
+        }
+
+        void UseMob(Player p, Reader r)
+        {
+            int id = r.I32(); string item = r.Str();
+            var got = _mobs.Use(id, item, p.X, p.Z);
+            if (got is (string it, int n)) Give(p, it, n);
+        }
+
+        void Give(Player p, string item, int n)
+        {
+            if (Items.Get(item) == null || n <= 0) return;
+            p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(n).U16(0));
+        }
+
+        // ------------------------------------------------------------------ chests, satchels and beds
+
+        bool InReach(Player p, int x, int y, int z)
+        {
+            float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
+            return dx * dx + dy * dy + dz * dz <= (Net.Reach + 2) * (Net.Reach + 2);
+        }
+
+        void OpenBox(Player p, Reader r)
+        {
+            int x = r.I32(), y = r.I32(), z = r.I32();
+            if (!InReach(p, x, y, z) || !Blocks.Get(World.Get(x, y, z)).Container) return;
+            p.HasBox = true; p.BX = x; p.BY = y; p.BZ = z;
+            p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
+        }
+
+        void BoxSlot(Player p, Reader r)
+        {
+            int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
+            if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.ChestSlots) return;
+            if (!Blocks.Get(World.Get(x, y, z)).Container) return;
+            _boxes.Set(x, y, z, slot, st);
+            var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
+            foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
+        }
+
+        // What a player had when they fell, or what didn't fit in their pack: into a satchel on the ground.
+        void Drop(Player p, Reader r)
+        {
+            float x = r.F32(), y = r.F32(), z = r.F32(); var st = r.Stacks();
+            if (Math.Abs(x - p.X) > 8 || Math.Abs(z - p.Z) > 8 || Math.Abs(y - p.Y) > 12) { x = p.X; y = p.Y; z = p.Z; }
+            bool any = false; foreach (var s in st) if (!s.Empty) any = true;
+            if (!any) return;
+            int ix = (int)Math.Floor(x), iz = (int)Math.Floor(z);
+            if (!World.IsLoaded(ix, iz)) return;
+            // Into a satchel already there if there's room, else a new one.
+            var (sx, sy, sz) = Containers.SpotFor(World.Get, ix, (int)Math.Floor(y), iz);
+            _boxes.Put(sx, sy, sz, Merge(_boxes.Has(sx, sy, sz) ? _boxes.Remove(sx, sy, sz) : Array.Empty<Stack>(), st));
+            World.SetRaw(sx, sy, sz, Blocks.Satchel);
+            Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
+            Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
+        }
+
+        static Stack[] Merge(Stack[] a, Stack[] b)
+        {
+            var l = new List<Stack>();
+            foreach (var s in a) if (!s.Empty) l.Add(s);
+            foreach (var s in b) if (!s.Empty) l.Add(s);
+            return l.ToArray();
+        }
+
+        // When everyone online is asleep at night, the night passes.
+        void CheckSleep()
+        {
+            int asleep = 0, total = 0;
+            foreach (var p in _players.Values) if (p.Joined && p.Alive) { total++; if (p.Asleep) asleep++; }
+            if (asleep != _lastSleepers) { _lastSleepers = asleep; Broadcast(new Packet(Net.Msg.Sleepers).U8((byte)asleep).U8((byte)total)); }
+            if (total == 0 || asleep < total) return;
+            double t = World.Meta.time;
+            if (t > 0.23 && t < 0.77) return;
+            if (t >= 0.77) World.Meta.day++;
+            World.Meta.time = 0.25;
+            foreach (var p in _players.Values) p.Flags = (byte)(p.Flags & ~Net.Asleep);
+            Broadcast(ClockPacket());
+            Broadcast(new Packet(Net.Msg.Sleepers).U8(0).U8((byte)total));
+            _lastSleepers = 0;
+            Broadcast(SaidPacket("", "Good morning!"));
+            Log.Info($"everyone slept; day {World.Meta.day}");
         }
 
         // ------------------------------------------------------------------ sending

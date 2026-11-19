@@ -18,6 +18,19 @@ namespace Stratum.Game
         public bool Swinging => _swing < 0.95f;
         public System.Action<string> OpenStation;      // "workbench" / "furnace"
         public System.Action<string> Toast;
+        public System.Action<Vector3Int> OpenBox;      // a chest
+        public System.Action<Vector3Int> UseBed;       // the bed's foot
+        public Link Link;
+        public Creatures Creatures;
+
+        public bool HasMob { get; private set; }
+        public int TargetMob { get; private set; }
+        public float EatProgress => _eat / EatTime;
+        public float DrawProgress => _drawing ? Mathf.Clamp01(_draw / 1f) : 0;
+        public float AttackReady => Mathf.Clamp01(1 - _attackCool / Mathf.Max(0.01f, _attackEvery));
+        const float EatTime = 1.6f;
+        float _eat, _draw, _attackCool, _attackEvery = 0.5f, _crunch;
+        bool _drawing;
 
         public bool HasTarget { get; private set; }
         public Vector3Int Target { get; private set; }
@@ -103,13 +116,22 @@ namespace Stratum.Game
             float tx = (d.x > 0 ? x + 1 - o.x : o.x - x) * tdx, ty = (d.y > 0 ? y + 1 - o.y : o.y - y) * tdy, tz = (d.z > 0 ? z + 1 - o.z : o.z - z) * tdz;
             var n = Vector3Int.zero;
             float t = 0;
-            while (t <= reach)
+            HasMob = false;
+            float mobDist = reach;
+            if (Creatures != null && Creatures.Raycast(o, d, P.Creative ? 7f : 4.5f, out int mob, out float md)) { HasMob = true; TargetMob = mob; mobDist = md; }
+            while (t <= reach && t <= mobDist)
             {
                 byte b = World.Get(x, y, z);
-                if (b != 0 && b != Blocks.Water)
+                if (b != 0 && b != Blocks.Water && b != Blocks.Lava)
                 {
                     bool hit = true;
-                    if (hit) { HasTarget = true; Target = new Vector3Int(x, y, z); TargetNormal = n; return; }
+                    var bd = Blocks.Get(b);
+                    if (bd.Shape == Shape.Boxes)
+                    {
+                        float bt = Body.Ray(b, o.x - x, o.y - y, o.z - z, d.x, d.y, d.z);
+                        hit = bt >= 0 && bt <= reach && bt <= mobDist;
+                    }
+                    if (hit) { HasTarget = true; HasMob = false; Target = new Vector3Int(x, y, z); TargetNormal = n; return; }
                 }
                 if (tx < ty && tx < tz) { x += sx; t = tx; tx += tdx; n = new Vector3Int(-sx, 0, 0); }
                 else if (ty < tz) { y += sy; t = ty; ty += tdy; n = new Vector3Int(0, -sy, 0); }
@@ -118,6 +140,7 @@ namespace Stratum.Game
         }
 
         Vector3Int _mining;
+        readonly System.Random _rng = new System.Random();
 
         void Act(float dt)
         {
@@ -133,7 +156,79 @@ namespace Stratum.Game
                     if (kb[(Key)((int)Key.Digit1 + i)].wasPressedThisFrame) P.Inv.Selected = i;
 
             _repeat -= dt;
+            _attackCool -= dt;
             bool lmb = mouse.leftButton.isPressed, rmb = mouse.rightButton.isPressed;
+            var heldDef = Items.Get(P.Inv.Held.Item);
+
+            // Fighting: a hit as often as the weapon allows.
+            if (lmb && HasMob)
+            {
+                Progress = 0;
+                if (_attackCool <= 0 && (mouse.leftButton.wasPressedThisFrame || _attackCool < -0.05f))
+                {
+                    _attackEvery = heldDef != null && heldDef.Tool == Tool.Sword ? 0.55f : heldDef != null && heldDef.Tool == Tool.Axe ? 0.9f : 0.5f;
+                    _attackCool = _attackEvery;
+                    float dmg = heldDef?.Damage ?? 1;
+                    if (!P.OnGround && P.Velocity.y < -1 && !P.InWater) { dmg *= 1.5f; Sfx.I?.Play("hit_hard", 0.6f, 1.3f); }
+                    Link?.Strike(TargetMob, dmg);
+                    Sfx.I?.Play(dmg >= 6 ? "hit_hard" : "hit", 0.7f);
+                    _swing = 0;
+                    P.Exhaustion += 0.1f;
+                    if (heldDef != null && heldDef.Durability > 0 && !P.Creative && P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke(heldDef.Name + " broke"); }
+                }
+                return;
+            }
+            if (mouse.leftButton.wasPressedThisFrame && !HasTarget) { _swing = 0; Sfx.I?.Play("swish", 0.3f); }
+
+            // Eating: hold the right button with food in hand.
+            bool canEat = heldDef != null && heldDef.Food > 0 && (P.Hungry || P.Creative);
+            if (rmb && canEat && !(HasTarget && IsUsable(World.Get(Target.x, Target.y, Target.z))))
+            {
+                _eat += dt;
+                if ((_crunch -= dt) <= 0) { _crunch = 0.22f; Sfx.I?.Play("eat", 0.5f); _swing = 0.6f; }
+                if (_eat >= EatTime)
+                {
+                    _eat = 0;
+                    P.Eat(heldDef);
+                    if (!P.Creative) P.Inv.UseHeld();
+                    Sfx.I?.Play("burp", 0.4f);
+                }
+                return;
+            }
+            _eat = 0;
+
+            // The bow: hold to draw, let go to loose an arrow.
+            if (heldDef != null && heldDef.Ranged)
+            {
+                bool hasArrow = P.Creative || P.Inv.Count("arrow") > 0;
+                if (rmb && hasArrow) { _drawing = true; _draw += dt; return; }
+                if (_drawing && !rmb)
+                {
+                    _drawing = false;
+                    float power = Mathf.Clamp01(_draw / 1f);
+                    _draw = 0;
+                    if (power > 0.15f)
+                    {
+                        var dir = P.Cam.transform.forward;
+                        var from = P.Cam.transform.position + dir * 0.4f;
+                        Link?.Shoot(from, dir * (14 + 40 * power) + P.Velocity * 0.5f, 1.5f + 7.5f * power * power);
+                        Sfx.I?.Play("bow", 0.7f, 0.9f + power * 0.3f);
+                        if (!P.Creative) { P.Inv.Take("arrow", 1); if (P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Bow broke"); } }
+                        _swing = 0.3f;
+                    }
+                    return;
+                }
+                if (rmb && !hasArrow && mouse.rightButton.wasPressedThisFrame) Toast?.Invoke("You need arrows");
+            }
+            else { _drawing = false; _draw = 0; }
+
+            // Shears on a sheep, and other things done to a creature.
+            if (rmb && HasMob && _repeat <= 0)
+            {
+                _repeat = 0.3f;
+                if (heldDef != null && heldDef.Tool == Tool.Shears) { Link?.UseMob(TargetMob, heldDef.Id); _swing = 0; if (!P.Creative) P.Inv.WearHeld(); }
+                return;
+            }
 
             if (lmb && HasTarget)
             {
@@ -164,12 +259,27 @@ namespace Stratum.Game
             if (mouse.middleButton.wasPressedThisFrame && HasTarget) Pick();
         }
 
+        static readonly Vector3Int[] Dir4 = { new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 0), new Vector3Int(0, 0, -1), new Vector3Int(-1, 0, 0) };
+
+        // Blocks the right button does something to (rather than placing against).
+        static bool IsUsable(byte id)
+        {
+            var d = Blocks.Get(id);
+            return id == Blocks.Workbench || d.BaseId == Blocks.Furnace || d.Container || d.BaseId == Blocks.Bed;
+        }
+
         void Break(Vector3Int p)
         {
             byte id = World.Get(p.x, p.y, p.z);
             var def = Blocks.Get(id);
             if (id == 0 || def.Hardness < 0 && !P.Creative) return;
             if (!World.Set(p.x, p.y, p.z, 0)) return;
+            // A bed goes as a whole.
+            if (def.BaseId == Blocks.Bed)
+            {
+                var other = def.Variant == 0 ? p + Dir4[def.Facing] : p - Dir4[def.Facing];
+                if (Blocks.Get(World.Get(other.x, other.y, other.z)).BaseId == Blocks.Bed) World.Set(other.x, other.y, other.z, 0);
+            }
             Sfx.I?.Block("break", id, 0.9f);
             Burst(p, def);
             _swing = 0;
@@ -189,6 +299,8 @@ namespace Stratum.Game
                 }
             }
             else if (def.TierNeeded > 0) Toast?.Invoke("Needs a better pickaxe");
+            var bonus = Mining.Bonus(def, _rng);
+            if (bonus != null && P.Inv.Add(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
             if (held != null && held.Durability > 0 && def.Hardness > 0 && P.Inv.WearHeld())
             {
                 Sfx.I?.Play("break_tool", 0.8f);
@@ -206,6 +318,9 @@ namespace Stratum.Game
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
                 if (tdef.BaseId == Blocks.Furnace) { OpenStation?.Invoke("furnace"); return; }
+                if (tdef.BaseId == Blocks.Chest) { OpenBox?.Invoke(Target); return; }
+                if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
+                if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
             }
             var held = P.Inv.Held;
             var item = Items.Get(held.Item);
@@ -226,6 +341,21 @@ namespace Stratum.Game
             }
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
             var look = P.Cam.transform.forward;
+            if (id == Blocks.Bed)
+            {
+                // Two blocks: the foot here and the head one further on, the way the player is looking.
+                int f = Mathf.Abs(look.x) > Mathf.Abs(look.z) ? (look.x > 0 ? 1 : 3) : (look.z > 0 ? 0 : 2);
+                var head = at + Dir4[f];
+                byte hc = World.Get(head.x, head.y, head.z);
+                if (hc != 0 && !Blocks.Get(hc).Replaceable || P.Overlaps(head.x, head.y, head.z) || P.Overlaps(at.x, at.y, at.z)) { Toast?.Invoke("No room for a bed here"); return; }
+                if (!Blocks.Get(below).Solid || !Blocks.Get(World.Get(head.x, head.y - 1, head.z)).Solid) { Toast?.Invoke("A bed needs flat ground"); return; }
+                if (!World.Set(at.x, at.y, at.z, (byte)(Blocks.Bed + f * 2))) return;
+                World.Set(head.x, head.y, head.z, (byte)(Blocks.Bed + f * 2 + 1));
+                Sfx.I?.Block("place", id, 0.8f);
+                _swing = 0;
+                if (!P.Creative) P.Inv.UseHeld();
+                return;
+            }
             byte place = Blocks.Facing(id, look.x, look.z);
             if (!World.Set(at.x, at.y, at.z, place)) return;
             Sfx.I?.Block("place", id, 0.8f);

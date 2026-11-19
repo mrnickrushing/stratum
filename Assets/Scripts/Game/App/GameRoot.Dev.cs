@@ -1,0 +1,127 @@
+#if UNITY_EDITOR
+using Stratum.Core;
+using UnityEngine;
+
+namespace Stratum.Game
+{
+    // Editor-only shortcuts for checking the game from the command line (script eval).
+    public sealed partial class GameRoot
+    {
+        // A fresh survival world named "Dev" (replacing the last one).
+        public static void DevWorld(int difficulty = 2, int seed = 4242)
+        {
+            foreach (var m in WorldStore.List()) if (m.name == "Dev") WorldStore.Delete(m);
+            I.StartCoroutine(I.Enter(WorldStore.Create("Dev", seed, false, difficulty)));
+        }
+
+        public static string DevState() => I._state + (I._player != null ? $" at {I._player.Feet} hp {I._player.Health} food {I._player.Food}" : "") + (I._link != null ? $" mobs {I._link.Mobs.Count}" : "");
+
+        // A creature a few metres in front of the player, on the ground.
+        public static int DevSpawn(string kind, float ahead = 5, float side = 0)
+        {
+            if (!(I._link is LocalLink l)) return -1;
+            var p = I._player;
+            var f = Quaternion.Euler(0, p.Yaw, 0) * new Vector3(side, 0, ahead) + p.Feet;
+            int x = Mathf.FloorToInt(f.x), z = Mathf.FloorToInt(f.z), y = Chunk.Height - 2;
+            while (y > 1 && !Blocks.Get(I._world.Get(x, y - 1, z)).Solid) y--;
+            var m = l.Sim.Spawn((MobKind)System.Enum.Parse(typeof(MobKind), kind), f.x, y, f.z);
+            return m != null ? m.Id : -1;
+        }
+
+        // Somewhere open: a grass column with nothing over it and flat ground around.
+        public static string DevOpen(int range = 120)
+        {
+            var w = I._world; var p = I._player.Feet;
+            for (int r = 4; r < range; r += 3)
+                for (int a = 0; a < 24; a++)
+                {
+                    int x = Mathf.FloorToInt(p.x + Mathf.Cos(a * 0.2618f) * r), z = Mathf.FloorToInt(p.z + Mathf.Sin(a * 0.2618f) * r);
+                    if (!w.IsReady(x, z)) continue;
+                    int top = Top(x, z);
+                    if (top < 0 || w.Get(x, top, z) != Blocks.Grass) continue;
+                    bool flat = true;
+                    for (int dz = -6; dz <= 6 && flat; dz += 2) for (int dx = -6; dx <= 6 && flat; dx += 2)
+                    { int t = Top(x + dx, z + dz); if (t < 0 || Mathf.Abs(t - top) > 1 || !Blocks.Get(w.Get(x + dx, t, z + dz)).Solid) flat = false; }
+                    if (!flat) continue;
+                    I._player.Feet = new Vector3(x + 0.5f, top + 1, z + 0.5f); I._player.ResetFall();
+                    return $"moved to {x} {top + 1} {z}";
+                }
+            return "nothing open";
+        }
+
+        static int Top(int x, int z)
+        {
+            for (int y = Chunk.Height - 2; y > 1; y--) { var b = Blocks.Get(I._world.Get(x, y, z)); if (b.Id != 0 && !(b.Replaceable && !b.Solid)) return y; }
+            return -1;
+        }
+
+        public static void DevTime(float t) => I._sky.Time01 = t;
+        public static void DevGive(string item, int n) => I._player.Inv.Add(item, n);
+        public static void DevLook(float yaw, float pitch) { I._player.Yaw = yaw; I._player.Pitch = pitch; }
+        public static void DevSpawning(bool on) { if (I._link is LocalLink l) l.Sim.Spawning = on; }
+        // Runs through chests, satchels, beds, eating and fighting, and says what happened.
+        public static string DevCheck()
+        {
+            var g = I; var log = new System.Text.StringBuilder();
+            void Say(string x) => log.Append(x).Append(" | ");
+            if (g._state == State.Dead) g.Respawn();
+            var l = (LocalLink)g._link; l.Sim.Clear(); l.Sim.Spawning = false;
+            g._sky.Time01 = 0.3f;
+            var inv = g._player.Inv;
+            for (int i = 0; i < Inventory.Size; i++) inv.Slots[i] = Core.Stack.None;
+            inv.Add("iron_sword", 1); inv.Add("steak", 3); inv.Add("chest", 1); inv.Add("bed", 1); inv.Add("cobble", 20);
+            var f = g._player.Feet; int x = Mathf.FloorToInt(f.x) + 2, y = Mathf.FloorToInt(f.y), z = Mathf.FloorToInt(f.z);
+            // Chest: put a stack in, break it, get it back.
+            g._world.Set(x, y, z, Blocks.Chest);
+            Core.Stack[] seen = null; var was = g._link.BoxOpened;
+            g._link.BoxOpened = (at, st) => seen = st;
+            g._link.OpenBox(new Vector3Int(x, y, z));
+            g._link.BoxOpened = was;
+            Say($"chest opened with {seen?.Length} slots");
+            g._link.BoxSlot(new Vector3Int(x, y, z), 4, new Core.Stack("cobble", 7));
+            g._link.CloseBox();
+            Say($"chest holds {l.Boxes.At(x, y, z)[4].Count} cobble");
+            int before = inv.Count("cobble");
+            g._world.Set(x, y, z, 0);
+            Say($"broke chest: cobble {before} -> {inv.Count("cobble")}");
+            // Satchel: drop things, take them back.
+            g._link.Drop(f, new[] { new Core.Stack("steak", 2) });
+            var (sx, sy, sz) = Containers.SpotFor(g._world.Get, Mathf.FloorToInt(f.x), Mathf.FloorToInt(f.y), Mathf.FloorToInt(f.z));
+            Say($"satchel at {sx} {sy} {sz}: {Blocks.Get(g._world.Get(sx, sy, sz)).Name}");
+            int st0 = inv.Count("steak"); g._world.Set(sx, sy, sz, 0);
+            Say($"opened satchel: steak {st0} -> {inv.Count("steak")}");
+            // Eating.
+            g._player.Food = 10; g._player.Eat(Items.Get("steak"));
+            Say($"ate steak: food {g._player.Food} sat {g._player.Saturation}");
+            // Bed: two halves, sleep through the night.
+            int bx = x, bz = z - 2;
+            g._world.Set(bx, y, bz, (byte)(Blocks.Bed + 0)); g._world.Set(bx, y, bz + 1, (byte)(Blocks.Bed + 1));
+            g._sky.Time01 = 0.85f;
+            g._player.Feet = new Vector3(bx + 1.5f, y, bz + 0.5f);
+            g.TrySleep(new Vector3Int(bx, y, bz));
+            Say($"asleep {g._player.Asleep}, bed set {g._hasBed}");
+            return log.ToString();
+        }
+
+        public static string DevAfterSleep() => $"time {I._sky.Time01:0.00} day {I._sky.Day} asleep {I._player.Asleep} at {I._player.Feet}";
+
+        // Fight: a cow in front, hit it with the sword until it dies.
+        public static string DevFight()
+        {
+            var l = (LocalLink)I._link;
+            int id = DevSpawn("Cow", 2, 0);
+            int hits = 0;
+            int beef0 = I._player.Inv.Count("raw_beef"), hide0 = I._player.Inv.Count("hide");
+            while (hits < 20 && l.Sim.TryGet(id, out var m) && m.Dead <= 0) { m.Hurt = 0; l.Strike(id, 7); hits++; }
+            return $"cow died after {hits} hits; beef {beef0}->{I._player.Inv.Count("raw_beef")}, hide {hide0}->{I._player.Inv.Count("hide")}";
+        }
+
+        public static string DevMobs()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var m in I._link.Mobs) sb.Append($"{m.Kind}#{m.Id} {(m.Pos - I._player.Feet).magnitude:0.0}m hp{m.Health:0.00} f{m.Flags}; ");
+            return sb.ToString();
+        }
+    }
+}
+#endif

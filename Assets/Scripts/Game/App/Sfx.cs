@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Stratum.Core;
@@ -26,6 +27,7 @@ namespace Stratum.Game
 
         public static Sfx Create()
         {
+            HookDeviceChanges();
             var go = new GameObject("Sfx");
             DontDestroyOnLoad(go);
             I = go.AddComponent<Sfx>();
@@ -51,12 +53,52 @@ namespace Stratum.Game
             _clips["splash"] = Splash();
             _clips["break_tool"] = Chime(new[] { 300f, 210f }, 0.3f);
             _clips["levelup"] = Chime(new[] { 523f, 659f, 784f }, 0.6f);
+            // Creatures and fighting.
+            _clips["moo"] = Voice(0.9f, 140, 95, 0.9f, 2.2f, 0.5f);
+            _clips["oink"] = Grunt(0.28f, 260, 0.9f, 3);
+            _clips["baa"] = Voice(0.7f, 330, 300, 0.6f, 18, 0.35f);
+            _clips["cluck"] = Grunt(0.12f, 900, 0.55f, 2);
+            _clips["groan"] = Voice(1.1f, 120, 85, 1.1f, 5, 0.6f);
+            _clips["rattle"] = Rattle();
+            _clips["hiss"] = Hiss(0.6f);
+            _clips["imp"] = Voice(0.5f, 420, 600, 0.5f, 25, 0.3f);
+            _clips["roar"] = Voice(1.8f, 70, 50, 1.6f, 7, 0.9f);
+            _clips["villager"] = Voice(0.35f, 210, 180, 0.6f, 4, 0.2f);
+            _clips["hit"] = Thud(0.18f, 120, 0.9f);
+            _clips["hit_hard"] = Thud(0.25f, 90, 1.2f);
+            _clips["swish"] = Swish(0.16f);
+            _clips["bow"] = Twang();
+            _clips["arrow"] = Thud(0.1f, 600, 0.5f);
+            _clips["eat"] = Crunch();
+            _clips["burp"] = Grunt(0.3f, 140, 0.6f, 1);
+            _clips["chest_open"] = Creak(0.45f, true);
+            _clips["chest_close"] = Creak(0.3f, false);
+            _clips["sizzle"] = Hiss(0.9f);
             // A small set of calls, reused (a new clip every chirp would pile up in memory).
             _birds = new AudioClip[8]; for (int i = 0; i < _birds.Length; i++) _birds[i] = Bird();
             _crickets = new AudioClip[3]; for (int i = 0; i < _crickets.Length; i++) _crickets[i] = Cricket();
             _wind = Loop(Wind(), 0.0f);
             _cave = Loop(CaveDrone(), 0.0f);
             _music = gameObject.AddComponent<AudioSource>(); _music.playOnAwake = false;
+        }
+
+        // Plugging in a headset (or pulling it out) changes the system's sound output. Unity keeps playing to the
+        // old device unless the audio is reset, and a reset stops every source, so the loops are started again.
+        public static event Action AudioRestarted;
+        static bool _hooked;
+
+        static void HookDeviceChanges()
+        {
+            if (_hooked) return;
+            _hooked = true;
+            AudioSettings.OnAudioConfigurationChanged += changed =>
+            {
+                if (!changed) return;
+                Debug.Log("[Stratum] sound output changed; switching to " + AudioSettings.driverCapabilities);
+                AudioSettings.Reset(AudioSettings.GetConfiguration());
+                if (I != null) foreach (var a in I.GetComponents<AudioSource>()) if (a.loop && a.clip != null) a.Play();
+                AudioRestarted?.Invoke();
+            };
         }
 
         AudioSource Loop(AudioClip c, float vol)
@@ -112,6 +154,27 @@ namespace Stratum.Game
                 }
             }
             _music.volume = 0.32f * Music * Master;
+        }
+
+        // A sound out in the world, quieter with distance.
+        readonly AudioSource[] _at = new AudioSource[16];
+        int _nextAt;
+        public void PlayAt(string name, Vector3 pos, float vol = 1, float pitch = 1)
+        {
+            if (!_clips.TryGetValue(name, out var c)) return;
+            var a = _at[_nextAt];
+            if (a == null)
+            {
+                var go = new GameObject("Sfx3D"); go.transform.SetParent(transform, false);
+                a = _at[_nextAt] = go.AddComponent<AudioSource>();
+                a.playOnAwake = false; a.spatialBlend = 1; a.rolloffMode = AudioRolloffMode.Linear; a.minDistance = 3; a.maxDistance = 40; a.dopplerLevel = 0;
+            }
+            _nextAt = (_nextAt + 1) % _at.Length;
+            a.transform.position = pos;
+            a.pitch = pitch * (0.92f + (float)_r.NextDouble() * 0.16f);
+            a.volume = vol * Master;
+            a.clip = c;
+            a.Play();
         }
 
         void PlayClip(AudioClip c, float vol)
@@ -307,6 +370,145 @@ namespace Stratum.Game
                 d[i] = Mathf.Sin(2 * Mathf.PI * 4600 * t) * pulse * burst * 0.4f * Mathf.Sin(t / 0.6f * Mathf.PI);
             }
             return Make("cricket", d);
+        }
+
+        // A voiced call: a pulse train through two formants, gliding from one pitch to another.
+        AudioClip Voice(float len, float hz0, float hz1, float formant, float vibrato, float breath)
+        {
+            int n = (int)(Rate * len); var d = new float[n]; var f1 = new Svf(); var f2 = new Svf();
+            float ph = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, u = i / (float)n;
+                float hz = Mathf.Lerp(hz0, hz1, u) * (1 + 0.04f * Mathf.Sin(t * vibrato * 6.283f));
+                ph += hz / Rate; ph -= Mathf.Floor(ph);
+                float src = (ph < 0.5f ? 1 - ph * 4 : -1 + (ph - 0.5f) * 4) + Rand() * breath;
+                f1.Step(src, 600 * formant + 200 * Mathf.Sin(u * 3.1f), 0.5f);
+                f2.Step(src, 1500 * formant, 0.7f);
+                float env = Mathf.Min(1, t * 20) * Mathf.Min(1, (len - t) * 8);
+                d[i] = (f1.Band * 0.8f + f2.Band * 0.4f) * env * 0.7f;
+            }
+            return Make("voice", Norm(d, 0.8f));
+        }
+
+        AudioClip Grunt(float len, float hz, float formant, int bursts)
+        {
+            int n = (int)(Rate * len * bursts * 1.2f); var d = new float[n]; var f = new Svf();
+            float ph = 0;
+            for (int b = 0; b < bursts; b++)
+            {
+                int s0 = (int)(b * Rate * len * 1.15f);
+                for (int i = 0; i < (int)(Rate * len) && s0 + i < n; i++)
+                {
+                    float t = i / (float)Rate, u = t / len;
+                    ph += hz * (1.1f - u * 0.3f) / Rate; ph -= Mathf.Floor(ph);
+                    float src = (ph * 2 - 1) + Rand() * 0.6f;
+                    f.Step(src, 900 * formant, 0.6f);
+                    d[s0 + i] += f.Band * Mathf.Sin(u * Mathf.PI) * 0.8f;
+                }
+            }
+            return Make("grunt", Norm(d, 0.75f));
+        }
+
+        AudioClip Rattle()
+        {
+            int n = (int)(Rate * 0.5f); var d = new float[n]; var f = new Svf();
+            for (int k = 0; k < 9; k++)
+            {
+                int s0 = (int)(Rate * (k * 0.045f + (float)_r.NextDouble() * 0.02f));
+                float hz = 1400 + (float)_r.NextDouble() * 900;
+                for (int i = 0; i < Rate * 0.04f && s0 + i < n; i++)
+                {
+                    float t = i / (float)Rate;
+                    d[s0 + i] += (Mathf.Sin(6.283f * hz * t) * 0.6f + Rand() * 0.5f) * Mathf.Exp(-t * 90);
+                }
+            }
+            for (int i = 0; i < n; i++) { f.Step(d[i], 3000, 0.8f); d[i] = f.Band; }
+            return Make("rattle", Norm(d, 0.7f));
+        }
+
+        AudioClip Hiss(float len)
+        {
+            int n = (int)(Rate * len); var d = new float[n]; var f = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, u = i / (float)n;
+                f.Step(Rand(), 4200 + 1200 * Mathf.Sin(u * 9), 1.2f);
+                d[i] = f.Band * Mathf.Min(1, t * 15) * Mathf.Exp(-u * 2.5f);
+            }
+            return Make("hiss", Norm(d, 0.6f));
+        }
+
+        AudioClip Thud(float len, float hz, float weight)
+        {
+            int n = (int)(Rate * len); var d = new float[n]; var f = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, u = i / (float)n;
+                f.Step(Rand(), 1400 * weight, 0.9f);
+                d[i] = (Mathf.Sin(6.283f * hz * (1 - u * 0.5f) * t) * 0.9f + f.Low * 0.6f) * Mathf.Exp(-u * 7) * Mathf.Min(1, t * 900);
+            }
+            return Make("thud", Norm(d, 0.85f));
+        }
+
+        AudioClip Swish(float len)
+        {
+            int n = (int)(Rate * len); var d = new float[n]; var f = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float u = i / (float)n;
+                f.Step(Rand(), 900 + 3500 * Mathf.Sin(u * Mathf.PI), 1.3f);
+                d[i] = f.Band * Mathf.Sin(u * Mathf.PI);
+            }
+            return Make("swish", Norm(d, 0.45f));
+        }
+
+        AudioClip Twang()
+        {
+            int n = (int)(Rate * 0.45f); var d = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate;
+                float hz = 180 + 260 * Mathf.Exp(-t * 30);
+                d[i] = (Mathf.Sin(6.283f * hz * t) + 0.4f * Mathf.Sin(6.283f * hz * 2.02f * t)) * Mathf.Exp(-t * 9) * Mathf.Min(1, t * 2000) + Rand() * 0.2f * Mathf.Exp(-t * 60);
+            }
+            return Make("twang", Norm(d, 0.7f));
+        }
+
+        AudioClip Crunch()
+        {
+            int n = (int)(Rate * 0.22f); var d = new float[n]; var f = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float u = i / (float)n;
+                float grit = Mathf.Abs(Mathf.Sin(u * 70 + Mathf.Sin(u * 13) * 4));
+                f.Step(Rand() * grit, 2200, 0.9f);
+                d[i] = f.Band * Mathf.Sin(u * Mathf.PI);
+            }
+            return Make("crunch", Norm(d, 0.6f));
+        }
+
+        AudioClip Creak(float len, bool rising)
+        {
+            int n = (int)(Rate * len); var d = new float[n]; var f = new Svf();
+            float ph = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, u = i / (float)n;
+                float hz = rising ? 90 + 70 * u : 150 - 70 * u;
+                ph += hz / Rate; ph -= Mathf.Floor(ph);
+                float stick = ph < 0.08f ? 1 : 0;                 // stick-slip clicks
+                f.Step(stick + Rand() * 0.1f, 1300, 0.4f);
+                d[i] = f.Band * Mathf.Sin(u * Mathf.PI) + (u > 0.85f && !rising ? Mathf.Sin(6.283f * 80 * t) * (u - 0.85f) * 4 : 0);
+            }
+            return Make("creak", Norm(d, 0.6f));
+        }
+
+        static float[] Norm(float[] d, float peak)
+        {
+            float m = 0.0001f; foreach (var v in d) m = Mathf.Max(m, Mathf.Abs(v));
+            for (int i = 0; i < d.Length; i++) d[i] = d[i] / m * peak;
+            return d;
         }
 
         // A short pentatonic phrase on a soft plucked voice with a long tail.
