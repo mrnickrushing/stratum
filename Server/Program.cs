@@ -12,7 +12,9 @@ namespace Stratum.Server
     //   STRATUM_NAME / --name          server name shown to players
     //   STRATUM_MOTD / --motd          a line shown when joining
     //   STRATUM_MAX_PLAYERS / --max    players at once (default 10)
-    //   STRATUM_PASSWORD / --password  needed to join, if set
+    //   STRATUM_PASSWORD / --password  invite code needed to make an account (blank: anyone who has the address can)
+    //   STRATUM_RESET / --reset        "Name1,Name2": clears those accounts' passwords once; each owner's next login
+    //                                  sets a new one (for a forgotten password; everything they own is kept)
     //   STRATUM_CREATIVE / --creative  1 for creative mode
     //   STRATUM_VIEW / --view          most chunks a player sees in each direction (default 10)
     // `--selftest` starts a private server with two scripted players and checks they see each other's world.
@@ -52,6 +54,7 @@ namespace Stratum.Server
             c.Motd = Get("STRATUM_MOTD", "--motd") ?? "";
             if (int.TryParse(Get("STRATUM_MAX_PLAYERS", "--max"), out int max)) c.MaxPlayers = Math.Clamp(max, 1, 64);
             c.Password = Get("STRATUM_PASSWORD", "--password") ?? "";
+            c.Reset = Get("STRATUM_RESET", "--reset") ?? "";
             var cr = Get("STRATUM_CREATIVE", "--creative");
             c.Creative = cr == "1" || string.Equals(cr, "true", StringComparison.OrdinalIgnoreCase);
             if (int.TryParse(Get("STRATUM_VIEW", "--view"), out int view)) c.MaxView = Math.Clamp(view, 4, 16);

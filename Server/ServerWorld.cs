@@ -181,7 +181,7 @@ namespace Stratum.Server
         public void Stop() => _work.CompleteAdding();
     }
 
-    // What the server remembers about each player, keyed by a hash of the secret their game made for them.
+    // What the server remembers about each player, keyed by a hash of their account name (Accounts.KeyFor).
     public sealed class PlayerRecord
     {
         public string name { get; set; }

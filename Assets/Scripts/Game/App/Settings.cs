@@ -15,6 +15,9 @@ namespace Stratum.Game
         public static bool VSync { get => PlayerPrefs.GetInt("st_vsync", 1) == 1; set => PlayerPrefs.SetInt("st_vsync", value ? 1 : 0); }
         public static bool Fullscreen { get => PlayerPrefs.GetInt("st_full", 1) == 1; set => PlayerPrefs.SetInt("st_full", value ? 1 : 0); }
         public static bool ShowFps { get => PlayerPrefs.GetInt("st_fps", 0) == 1; set => PlayerPrefs.SetInt("st_fps", value ? 1 : 0); }
+        public static int VoiceMode { get => PlayerPrefs.GetInt("st_voice", 1); set => PlayerPrefs.SetInt("st_voice", Mathf.Clamp(value, 0, 2)); }   // off, hold V, open mic
+        public static float VoiceVolume { get => PlayerPrefs.GetFloat("st_voicevol", 1f); set => PlayerPrefs.SetFloat("st_voicevol", Mathf.Clamp(value, 0, 2)); }
+        public static float MicGain { get => PlayerPrefs.GetFloat("st_micgain", 1f); set => PlayerPrefs.SetFloat("st_micgain", Mathf.Clamp(value, 0.25f, 4)); }
         public static bool ViewBob { get => PlayerPrefs.GetInt("st_bob", 1) == 1; set => PlayerPrefs.SetInt("st_bob", value ? 1 : 0); }
     }
 }

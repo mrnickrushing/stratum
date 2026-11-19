@@ -6,15 +6,13 @@ using UnityEngine.UI;
 namespace Stratum.Game
 {
     // Title screen, world list, new world, settings, pause, the blackout screen and the loading screen.
-    public sealed class Menus : MonoBehaviour
+    public sealed partial class Menus : MonoBehaviour
     {
         public Action<WorldMeta> Play;
         public Action<string, string, bool> Create;   // name, seed text, creative
         public Action<WorldMeta> Delete;
         public Action Resume, SaveAndQuit, Respawn, Quit, SettingsChanged;
         public Func<List<WorldMeta>> ListWorlds;
-        public Action<string, string, string> Join;    // name, address, password
-        public Action CancelJoin;
 
         Canvas _canvas;
         RectTransform _root;
@@ -28,10 +26,8 @@ namespace Stratum.Game
         Image _shade;
         readonly List<Texture2D> _thumbs = new List<Texture2D>();
 
-        InputField _joinName, _joinAddr, _joinPass;
-        Text _joinStatus, _pauseInfo, _deathSub;
-        Button _joinBtn, _quitBtn;
-        bool _joining;
+        Text _pauseInfo, _deathSub;
+        Button _quitBtn;
 
         public bool AnyOpen => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _settings.activeSelf || _pause.activeSelf || _death.activeSelf || _loading.activeSelf || _join.activeSelf;
         public bool PauseOpen => _pause.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowPause;
@@ -201,7 +197,7 @@ namespace Stratum.Game
         void BuildSettings()
         {
             _settings = Screen("Settings");
-            var card = Card(_settings, 1180, 860, "Settings");
+            var card = Card(_settings, 1180, 1010, "Settings");
             float y = -120;
             void Row(string name, out Text label, float min, float max, float val, bool whole, Action<float> set, Func<float, string> fmt, float x)
             {
@@ -219,6 +215,9 @@ namespace Stratum.Game
             Row("Sound", out _volLabel, 0, 1, Settings.Volume, false, f => Settings.Volume = f, f => $"{Mathf.RoundToInt(f * 100)}%", 610);
             y -= 110;
             Row("Music", out _musicLabel, 0, 1, Settings.Music, false, f => Settings.Music = f, f => $"{Mathf.RoundToInt(f * 100)}%", 70);
+            Row("Voice chat volume", out _, 0, 2, Settings.VoiceVolume, false, f => Settings.VoiceVolume = f, f => $"{Mathf.RoundToInt(f * 100)}%", 610);
+            y -= 110;
+            Row("Microphone boost", out _, 0.25f, 4, Settings.MicGain, false, f => Settings.MicGain = f, f => $"{f:0.0}×", 70);
             y -= 120;
             float x = 70; int n = 0;
             void Toggle(string name, Func<string> state, Action flip)
@@ -234,6 +233,7 @@ namespace Stratum.Game
             Toggle("Invert mouse", () => Settings.InvertY ? "On" : "Off", () => Settings.InvertY = !Settings.InvertY);
             Toggle("View bobbing", () => Settings.ViewBob ? "On" : "Off", () => Settings.ViewBob = !Settings.ViewBob);
             Toggle("Show FPS", () => Settings.ShowFps ? "On" : "Off", () => Settings.ShowFps = !Settings.ShowFps);
+            Toggle("Voice chat", () => new[] { "Off", "Hold V", "Open mic" }[Settings.VoiceMode], () => Settings.VoiceMode = (Settings.VoiceMode + 1) % 3);
             var done = UIKit.Button(card.transform, "Done", () => { PlayerPrefs.Save(); _settingsBack?.Invoke(); }, 30, true);
             ((RectTransform)done.transform).Place(0.5f, 0, 0, 36, 340, 72);
         }
@@ -283,61 +283,6 @@ namespace Stratum.Game
         }
 
         // ------------------------------------------------------------------ multiplayer
-
-        void BuildJoin()
-        {
-            _join = Screen("Multiplayer");
-            var card = Card(_join, 900, 760, "Multiplayer");
-            float y = -120;
-            InputField Row(string label, string placeholder, string value)
-            {
-                var l = UIKit.Label(card.transform, label, 24, UIKit.Dim); l.rectTransform.Place(0, 1, 70, y, 760, 30);
-                var f = UIKit.Field(card.transform, placeholder, value); ((RectTransform)f.transform).Place(0, 1, 70, y - 36, 760, 64);
-                y -= 126;
-                return f;
-            }
-            _joinName = Row("Your name (1-16 letters, numbers, - or _)", "Name", PlayerPrefs.GetString("mp_name", ""));
-            _joinName.characterLimit = Core.Net.MaxNameLength;
-            _joinAddr = Row("Server address (host or host:port)", "play.example.com:25600", PlayerPrefs.GetString("mp_addr", ""));
-            _joinPass = Row("Password (only if the server has one)", "none", "");
-            _joinPass.contentType = InputField.ContentType.Password;
-            _joinStatus = UIKit.Label(card.transform, "", 24, UIKit.Dim, TextAnchor.MiddleCenter);
-            _joinStatus.rectTransform.Place(0.5f, 0, 0, 136, 800, 70);
-            _joinBtn = UIKit.Button(card.transform, "Join Server", DoJoin, 30, true);
-            ((RectTransform)_joinBtn.transform).Place(0.5f, 0, 170, 36, 320, 72);
-            var back = UIKit.Button(card.transform, "Back", () => { if (_joining) CancelJoin?.Invoke(); _joining = false; ShowMain(); }, 30);
-            ((RectTransform)back.transform).Place(0.5f, 0, -170, 36, 320, 72);
-        }
-
-        void DoJoin()
-        {
-            if (_joining) return;
-            var name = _joinName.text.Trim();
-            if (!Core.Net.ValidName(name)) { SetJoinStatus("Pick a name of 1-16 letters, numbers, spaces, - or _.", true); return; }
-            if (!NetClient.ParseAddress(_joinAddr.text, out _, out _)) { SetJoinStatus("Type the server's address, like play.example.com:25600.", true); return; }
-            PlayerPrefs.SetString("mp_name", name);
-            PlayerPrefs.SetString("mp_addr", _joinAddr.text.Trim());
-            PlayerPrefs.Save();
-            _joining = true;
-            _joinBtn.interactable = false;
-            SetJoinStatus("Connecting...", false);
-            Join?.Invoke(name, _joinAddr.text.Trim(), _joinPass.text);
-        }
-
-        // Shows the join screen; with a message (why the last attempt or game ended) when there is one.
-        public void ShowJoin(string status)
-        {
-            Show(_join, true);
-            _joining = false;
-            _joinBtn.interactable = true;
-            SetJoinStatus(status ?? "Play on a Stratum server with friends.", status != null);
-        }
-
-        public void SetJoinStatus(string text, bool bad)
-        {
-            _joinStatus.text = text;
-            _joinStatus.color = bad ? UIKit.Bad : UIKit.Dim;
-        }
 
         // Pause and blackout read a little differently on a server.
         public void SetOnline(bool online, string info)

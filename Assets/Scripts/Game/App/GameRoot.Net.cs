@@ -13,6 +13,7 @@ namespace Stratum.Game
     {
         NetClient _net;
         Avatars _avatars;
+        VoiceChat _voice;
         Coroutine _joining;
         int _myId;
         string _serverName = "", _serverAddr = "";
@@ -22,26 +23,10 @@ namespace Stratum.Game
         Vector3 _lastSentPos; float _lastSentYaw, _lastSentPitch; byte _lastSentFlags; float _forceMove;
         bool Online => _net != null;
 
-        // Each copy of the game has its own secret; the server knows the player by a hash of it, so the same
-        // name on a different machine is a different player and nobody can take over someone else's backpack.
-        static string PlayerSecret()
-        {
-            var s = PlayerPrefs.GetString("mp_secret", "");
-            if (s.Length < 32)
-            {
-                var b = new byte[24];
-                using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(b);
-                s = BitConverter.ToString(b).Replace("-", "").ToLowerInvariant();
-                PlayerPrefs.SetString("mp_secret", s);
-                PlayerPrefs.Save();
-            }
-            return s;
-        }
-
-        void JoinServer(string name, string address, string password)
+        void JoinServer(string address, byte mode, string user, string secret, string invite)
         {
             if (_joining != null) StopCoroutine(_joining);
-            _joining = StartCoroutine(EnterRemote(name, address, password, null));
+            _joining = StartCoroutine(EnterRemote(address, mode, user, secret, invite));
         }
 
         void CancelJoin()
@@ -54,7 +39,7 @@ namespace Stratum.Game
 
         NetClient _pendingNet;
 
-        IEnumerator EnterRemote(string name, string address, string password, string secret)
+        IEnumerator EnterRemote(string address, byte mode, string user, string secret, string invite)
         {
             if (!NetClient.ParseAddress(address, out var host, out int port)) { _menus.ShowJoin("That address doesn't look right."); yield break; }
             var net = _pendingNet = new NetClient(host, port);
@@ -66,8 +51,8 @@ namespace Stratum.Game
                 yield return null;
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
-            _menus.SetJoinStatus("Saying hello...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).Str(name).Str(secret ?? PlayerSecret()).Str(password ?? "").Str(Application.version + " " + Application.platform));
+            _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform));
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -81,7 +66,13 @@ namespace Stratum.Game
                     yield return null;
                     continue;
                 }
-                if (r.Type == Net.Msg.Refuse) { var why = r.Str(); net.Dispose(); _pendingNet = null; _menus.ShowJoin(why); yield break; }
+                if (r.Type == Net.Msg.Refuse)
+                {
+                    var why = r.Str(); net.Dispose(); _pendingNet = null;
+                    if (mode == Menus.ModeToken) Logins.Forget(address, user);     // the remembered login no longer works
+                    _menus.ShowJoin(why);
+                    yield break;
+                }
                 if (r.Type == Net.Msg.Welcome) welcome = r;
             }
             _pendingNet = null;
@@ -107,6 +98,9 @@ namespace Stratum.Game
             float yaw = welcome.F32(), pitch = welcome.F32(), health = welcome.F32();
             int selected = welcome.U8();
             var slots = welcome.Stacks();
+            string name = welcome.Str(), token = welcome.Str();
+            Logins.Remember(address, name, token);
+            _menus.JoinedAs(name);
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
             yield return null;
 
@@ -138,6 +132,9 @@ namespace Stratum.Game
             _hud.OnlineInfo = OnlineLine;
             _hud.gameObject.SetActive(false);
             _avatars = Avatars.Create(_world, _sky, _cam);
+            _voice = VoiceChat.Create(_avatars, _cam.transform);
+            _voice.Send = f => _net?.Send(new Packet(Net.Msg.Voice).Blob(f));
+            _voice.CanTalk = () => _state == State.Playing && _hud != null && !_hud.ChatOpen && !_menus.AnyOpen;
             _sinceHeard = 0; _pingTimer = 0; _keepTimer = 10; _moveTimer = 0; _forceMove = 0;
             SendMove(true);
 
@@ -167,6 +164,8 @@ namespace Stratum.Game
             _hud.AddChat("", $"Welcome to {_serverName}. Press T to chat.");
             if (!string.IsNullOrWhiteSpace(motd)) _hud.AddChat("", motd);
             if (!hasPos) _hud.Toast(creative ? "Creative: double-tap Space to fly" : "Press E to open your backpack");
+            if (Settings.VoiceMode == 1) _hud.AddChat("", "Hold V to talk.");
+            else if (Settings.VoiceMode == 2) _hud.AddChat("", "Your microphone is on: friends hear you when you speak.");
             Debug.Log($"[Stratum] joined {_serverName} at {address} as {name} (id {_myId})");
         }
 
@@ -272,10 +271,17 @@ namespace Stratum.Game
                     _online = _avatars.Count + 1;
                     break;
                 }
+                case Net.Msg.Heard:
+                    _voice?.Heard(r.I32(), r.Blob());
+                    break;
                 case Net.Msg.Left:
-                    _avatars.Remove(r.I32());
+                {
+                    int id = r.I32();
+                    _avatars.Remove(id);
+                    _voice?.Remove(id);
                     _online = _avatars.Count + 1;
                     break;
+                }
                 case Net.Msg.Moved:
                 {
                     int id = r.I32();
@@ -329,6 +335,8 @@ namespace Stratum.Game
         {
             if (_avatars != null) Destroy(_avatars.gameObject);
             _avatars = null;
+            if (_voice != null) Destroy(_voice.gameObject);
+            _voice = null;
             if (_net != null) { _net.Dispose(); _net = null; }
             _pingMs = -1; _online = 1;
         }
@@ -345,21 +353,25 @@ namespace Stratum.Game
             var connect = Arg("-connect");
             if (connect == null) return;
             string name = Arg("-name") ?? "Player";
-            if (Array.IndexOf(args, "-mptest") < 0) { _joining = StartCoroutine(EnterRemote(name, connect, Arg("-password"), null)); return; }
+            VoiceChat.TestTone = Array.IndexOf(args, "-voicetone") >= 0;
+            if (Array.IndexOf(args, "-mptest") < 0)
+            {
+                // "-connect host:port -name X -password P [-create]": log straight in (or make the account).
+                _joining = StartCoroutine(EnterRemote(connect, Array.IndexOf(args, "-create") >= 0 ? Menus.ModeCreate : Menus.ModeLogin, name, Arg("-password") ?? "", ""));
+                return;
+            }
             _smokeDir = Arg("-mptest") ?? Path.Combine(Application.persistentDataPath, "mptest");
             Directory.CreateDirectory(_smokeDir);
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
-            StartCoroutine(MpTest(name, connect, Arg("-mprole") ?? "host"));
+            StartCoroutine(MpTest(name, connect, Arg("-mprole") ?? "host", Arg("-password") ?? "mptest-password", Array.IndexOf(args, "-create") >= 0));
         }
 
-        IEnumerator MpTest(string name, string address, string role)
+        IEnumerator MpTest(string name, string address, string role, string password, bool create)
         {
             float t0 = Time.realtimeSinceStartup;
-            SmokeNote($"mptest {role} as {name} to {address}");
-            // A secret made from the name, so two test copies on one machine are two players.
-            var secret = ("mptest-" + name + "-0123456789abcdef0123456789").Substring(0, 32);
-            StartCoroutine(EnterRemote(name, address, null, secret));
+            SmokeNote($"mptest {role} as {name} to {address}{(create ? " (new account)" : "")}");
+            StartCoroutine(EnterRemote(address, create ? Menus.ModeCreate : Menus.ModeLogin, name, password, ""));
             while (_state != State.Playing && Time.realtimeSinceStartup - t0 < 120) yield return null;
             SmokeNote($"joined: {_state == State.Playing} in {Time.realtimeSinceStartup - t0:0.0} s, {_net?.BytesIn / 1024 ?? 0} KB in");
             if (_state != State.Playing) { Finish(); yield break; }
@@ -419,6 +431,7 @@ namespace Stratum.Game
                 yield return Shot("guest_2_chat");
                 _hud.CloseChat();
             }
+            if (_voice != null) SmokeNote($"voice: sent {_voice.FramesSent} frames, heard {_voice.FramesHeard} (last level {_voice.HeardLevel:0.000})");
             SmokeNote($"host sees top of pillar: {Blocks.Get(_world.Get(mx, gy + 3, mz)).Name}; in {_net?.BytesIn / 1024 ?? 0} KB, out {_net?.BytesOut / 1024 ?? 0} KB, ping {_pingMs:0} ms");
             LeaveServer(null);
             SmokeNote($"done in {Time.realtimeSinceStartup - t0:0} s");

@@ -20,7 +20,8 @@ namespace Stratum.Server
         public string Name = "Stratum Server";
         public string Motd = "";
         public int MaxPlayers = 10;
-        public string Password = "";
+        public string Password = "";               // invite code needed to make an account (blank: anyone can)
+        public string Reset = "";                  // account names whose passwords to clear once (STRATUM_RESET)
         public bool Creative;
         public int MaxView = 10;
     }
@@ -43,6 +44,8 @@ namespace Stratum.Server
             public readonly HashSet<long> Waiting = new HashSet<long>();
             public int Edits;                       // this second, to stop a flood
             public int Refused;
+            public bool Checking;                   // login being checked
+            public int VoiceFrames;                 // this second
         }
 
         readonly ServerConfig _cfg;
@@ -50,6 +53,8 @@ namespace Stratum.Server
         readonly ConcurrentQueue<(Connection c, byte[] f)> _inbox = new ConcurrentQueue<(Connection, byte[])>();
         readonly ConcurrentQueue<(Connection c, string why)> _closed = new ConcurrentQueue<(Connection, string)>();
         readonly ConcurrentQueue<Connection> _opened = new ConcurrentQueue<Connection>();
+        readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
+        readonly Accounts _accounts;
         readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
         readonly Dictionary<long, List<Player>> _waiters = new Dictionary<long, List<Player>>();
         TcpListener _listener;
@@ -66,6 +71,8 @@ namespace Stratum.Server
             _cfg = cfg;
             World = new ServerWorld(cfg.Dir, cfg.Seed);
             World.Changed += (x, y, z, id) => Broadcast(BlockPacket(x, y, z, id, 0));
+            _accounts = new Accounts(cfg.Dir);
+            _accounts.ApplyReset(cfg.Reset);
         }
 
         public void Start()
@@ -78,7 +85,7 @@ namespace Stratum.Server
             _loop = new Thread(Loop) { Name = "game loop" };
             _loop.Start();
             Log.Info($"\"{_cfg.Name}\" listening on port {Port}, world {System.IO.Path.GetFullPath(_cfg.Dir)}, seed {World.Meta.seed}, " +
-                     $"{(_cfg.Creative ? "creative" : "survival")}, up to {_cfg.MaxPlayers} players{(_cfg.Password != "" ? ", password set" : "")}");
+                     $"{(_cfg.Creative ? "creative" : "survival")}, up to {_cfg.MaxPlayers} players, {_accounts.Count} accounts{(_cfg.Password != "" ? ", invite code set" : ", anyone can make an account")}");
         }
 
         void Accept()
@@ -123,6 +130,7 @@ namespace Stratum.Server
                     while (_opened.TryDequeue(out var c)) _players[c.Id] = new Player { Conn = c };
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) Leave(cl.c, cl.why);
+                    while (_later.TryDequeue(out var a)) a();
 
                     made.Clear();
                     World.Collect(made);
@@ -134,7 +142,7 @@ namespace Stratum.Server
 
                     if (now >= nextMoves) { nextMoves = now + 0.1; SendMoves(); }
                     if (now >= nextClock) { nextClock = now + 5; Broadcast(ClockPacket()); KickSilent(); }
-                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) p.Edits = 0; }
+                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.VoiceFrames = 0; } }
                     if (now >= nextSave) { nextSave = now + 60; SaveAll(false); }
                     if (now >= nextUnload) { nextUnload = now + 30; World.Maintain(Needed, true); }
                     if (now >= nextStats) { nextStats = now + 300; Log.Info($"{_onlineCount} online, {World.Loaded} chunks loaded, day {World.Meta.day}"); }
@@ -195,6 +203,7 @@ namespace Stratum.Server
                     case Net.Msg.WantChunks: WantChunks(p, r); break;
                     case Net.Msg.SetBlock: SetBlock(p, r); break;
                     case Net.Msg.Chat: Chat(p, r); break;
+                    case Net.Msg.Voice: Speak(p, r); break;
                     case Net.Msg.Keep: Keep(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
@@ -211,18 +220,31 @@ namespace Stratum.Server
         void Hello(Player p, Reader r)
         {
             int proto = r.I32();
-            string name = r.Str().Trim(), secret = r.Str(), pass = r.Str(), version = r.Str();
-            if (proto != Net.Protocol) { Refuse(p, proto < Net.Protocol ? "This server needs a newer Stratum." : "This server runs an older Stratum."); return; }
-            if (!Net.ValidName(name)) { Refuse(p, "Pick a name of 1-16 letters, numbers, spaces, - or _."); return; }
-            if (secret.Length < 16 || secret.Length > 128) { Refuse(p, "Bad player key."); return; }
-            if (_cfg.Password != "" && !FixedEquals(pass, _cfg.Password)) { Refuse(p, "Wrong server password."); return; }
-            string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("stratum:" + secret))).ToLowerInvariant().Substring(0, 32);
+            if (proto != Net.Protocol) { Refuse(p, proto < Net.Protocol ? "This server needs a newer Stratum. Download the latest version." : "This server runs an older Stratum."); return; }
+            if (p.Checking) return;                        // already checking this connection's login
+            var mode = (Accounts.Mode)r.U8();
+            string name = r.Str().Trim(), secret = r.Str(), invite = r.Str(), version = r.Str();
+            p.Checking = true;
+            // Password hashing takes a moment on purpose; do it off the game loop, and answer a wrong one slowly.
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                Accounts.Result res;
+                try { res = _accounts.Enter(mode, name, secret, invite, _cfg.Password); }
+                catch (Exception e) { Log.Warn("login failed: " + e); res = new Accounts.Result("The server had trouble with that login. Try again."); }
+                if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
+                _later.Enqueue(() => Admit(p, res, mode, version));
+            });
+        }
 
-            // The same player coming back from a dropped connection replaces the old one.
+        void Admit(Player p, Accounts.Result res, Accounts.Mode mode, string version)
+        {
+            if (!_players.TryGetValue(p.Conn.Id, out var still) || still != p || p.Joined) return;    // gone meanwhile
+            if (!res.Ok) { Refuse(p, res.Error); return; }
+            string name = res.Name, key = res.Key;
+
+            // The same account coming back (a dropped connection, or another computer) replaces the old session.
             foreach (var o in _players.Values.ToList())
-                if (o.Joined && o != p && o.Key == key) o.Conn.Close("joined again elsewhere");
-            if (_players.Values.Any(o => o.Joined && o != p && o.Key != key && string.Equals(o.Name, name, StringComparison.OrdinalIgnoreCase)))
-            { Refuse(p, $"Someone called {name} is already playing."); return; }
+                if (o.Joined && o != p && o.Key == key) o.Conn.Close("logged in again elsewhere");
             if (_players.Values.Count(o => o.Joined && o.Key != key) >= _cfg.MaxPlayers) { Refuse(p, "The server is full."); return; }
 
             p.Name = name; p.Key = key;
@@ -238,7 +260,8 @@ namespace Stratum.Server
                 .I32(p.Conn.Id).I32(m.seed).Str(_cfg.Name).Str(_cfg.Motd).Bool(_cfg.Creative).U8((byte)_cfg.MaxView)
                 .F64(m.time).I32(m.day).I32(m.sx).I32(m.sy).I32(m.sz)
                 .Bool(p.Rec.hasPos).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).F32(p.Rec.health).U8((byte)Math.Clamp(p.Rec.selected, 0, 8))
-                .Stacks(p.Rec.Stacks());
+                .Stacks(p.Rec.Stacks())
+                .Str(name).Str(res.Token ?? "");
             p.Conn.Send(w);
             foreach (var o in _players.Values)
                 if (o.Joined && o != p)
@@ -246,12 +269,9 @@ namespace Stratum.Server
                     p.Conn.Send(JoinedPacket(o));
                     o.Conn.Send(JoinedPacket(p));
                 }
-            Broadcast(SaidPacket("", $"{name} joined the game"));
-            Log.Info($"{name} joined from {p.Conn.Address} ({version}), {_onlineCount} online");
+            Broadcast(SaidPacket("", mode == Accounts.Mode.Create ? $"{name} joined the game for the first time!" : $"{name} joined the game"));
+            Log.Info($"{name} joined from {p.Conn.Address} ({version}{(mode == Accounts.Mode.Create ? ", new account" : "")}), {_onlineCount} online");
         }
-
-        static bool FixedEquals(string a, string b) =>
-            CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(a)), SHA256.HashData(Encoding.UTF8.GetBytes(b)));
 
         void Leave(Connection c, string why)
         {
@@ -273,6 +293,15 @@ namespace Stratum.Server
             p.Rec.x = p.X; p.Rec.y = p.Y; p.Rec.z = p.Z; p.Rec.yaw = p.Yaw; p.Rec.pitch = p.Pitch;
             p.Rec.lastSeen = DateTime.UtcNow.Ticks;
             p.Rec.Save(_cfg.Dir, p.Key);
+        }
+
+        // Voice: passed on as it is to everyone else (the game places it at the speaker's figure).
+        void Speak(Player p, Reader r)
+        {
+            var f = r.Blob();
+            if (f.Length != Voice.FrameBytes || ++p.VoiceFrames > Voice.MaxFramesPerSecond) return;
+            var heard = new Packet(Net.Msg.Heard).I32(p.Conn.Id).Blob(f).Bytes();
+            foreach (var o in _players.Values) if (o.Joined && o != p) o.Conn.Send(heard);
         }
 
         void Move(Player p, Reader r)
