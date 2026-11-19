@@ -22,3 +22,4 @@
 /Packages/packages-lock.json
 /ProjectSettings/Packages/com.unity.pipeline/
 .vscode/
+/Assets/Resources/PerformanceTestRun*
