@@ -1,0 +1,174 @@
+using System.Collections.Generic;
+using Stratum.Core;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+namespace Stratum.Game
+{
+    // A single block as a mesh (for the hand and for icons), and the icon for every item.
+    public static class BlockMesh
+    {
+        static readonly Vector3Int[] N = { new(1, 0, 0), new(-1, 0, 0), new(0, 1, 0), new(0, -1, 0), new(0, 0, 1), new(0, 0, -1) };
+        static readonly int[,,] C =
+        {
+            { { 1, 0, 0 }, { 1, 1, 0 }, { 1, 1, 1 }, { 1, 0, 1 } },
+            { { 0, 0, 1 }, { 0, 1, 1 }, { 0, 1, 0 }, { 0, 0, 0 } },
+            { { 0, 1, 0 }, { 0, 1, 1 }, { 1, 1, 1 }, { 1, 1, 0 } },
+            { { 0, 0, 0 }, { 1, 0, 0 }, { 1, 0, 1 }, { 0, 0, 1 } },
+            { { 1, 0, 1 }, { 1, 1, 1 }, { 0, 1, 1 }, { 0, 0, 1 } },
+            { { 0, 0, 0 }, { 0, 1, 0 }, { 1, 1, 0 }, { 1, 0, 0 } },
+        };
+        static readonly Vector2[] UV = { new(0, 0), new(0, 1), new(1, 1), new(1, 0) };
+        static readonly Vector2[] UVB = { new(0, 0), new(1, 0), new(1, 1), new(0, 1) };
+        public static readonly Color32 DefaultGrass = new Color32(102, 168, 61, 255);
+
+        static readonly Dictionary<byte, Mesh> _cache = new Dictionary<byte, Mesh>();
+
+        public static Mesh Cube(byte id)
+        {
+            if (_cache.TryGetValue(id, out var m)) return m;
+            var d = Blocks.Get(id);
+            var v = new List<Vector3>(); var n = new List<Vector3>(); var col = new List<Color32>();
+            var uv0 = new List<Vector3>(); var uv1 = new List<Color32>(); var tri = new List<int>();
+            for (int f = 0; f < 6; f++)
+            {
+                var t = d.Face(f);
+                int flags = 0;
+                if (t == Tex.GrassTop || t == Tex.OakLeaves) flags |= Flag.Tint;
+                if (t == Tex.GrassSide) flags |= Flag.TintMask;
+                if (d.Cutout) flags |= Flag.Clip;
+                if (t == Tex.Sunstone) flags |= Flag.Glow;
+                if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) flags |= Flag.GlowMask;
+                int b = v.Count;
+                for (int k = 0; k < 4; k++)
+                {
+                    v.Add(new Vector3(C[f, k, 0], C[f, k, 1], C[f, k, 2]) - Vector3.one * 0.5f);
+                    n.Add(N[f]);
+                    col.Add(new Color32(255, 0, 255, 255));
+                    var uv = f == 3 ? UVB[k] : UV[k];
+                    uv0.Add(new Vector3(uv.x, uv.y, (float)t));
+                    var tc = DefaultGrass; tc.a = (byte)flags;
+                    if ((flags & (Flag.Tint | Flag.TintMask)) == 0) tc = new Color32(255, 255, 255, (byte)flags);
+                    uv1.Add(tc);
+                }
+                tri.AddRange(new[] { b, b + 1, b + 2, b, b + 2, b + 3 });
+            }
+            m = new Mesh { name = "block " + d.Name };
+            m.SetVertices(v); m.SetNormals(n); m.SetColors(col); m.SetUVs(0, uv0); m.SetTriangles(tri, 0);
+            // TexCoord1 as unorm bytes, like the world meshes.
+            var colors = uv1.ToArray();
+            m.SetUVs(1, System.Array.ConvertAll(colors, c => new Vector4(c.r / 255f, c.g / 255f, c.b / 255f, c.a / 255f)));
+            m.RecalculateBounds();
+            _cache[id] = m;
+            return m;
+        }
+
+        public static bool IsFlat(byte id)
+        {
+            var s = Blocks.Get(id).Shape;
+            return s == Shape.Cross || s == Shape.Torch;
+        }
+    }
+
+    public static class Icons
+    {
+        static readonly Dictionary<string, Texture2D> _icons = new Dictionary<string, Texture2D>();
+        static readonly Dictionary<string, Sprite> _sprites = new Dictionary<string, Sprite>();
+        const int Size = 96;
+
+        public static Sprite Get(string item)
+        {
+            if (item == null) return null;
+            if (_sprites.TryGetValue(item, out var s)) return s;
+            if (!_icons.TryGetValue(item, out var t)) return null;
+            s = Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), 100);
+            _sprites[item] = s;
+            return s;
+        }
+
+        // Renders every block item as a small three-quarter view cube and paints the rest.
+        public static void Build(Material blockMat)
+        {
+            if (_icons.Count > 0) return;
+            const int Layer = 31;
+            var rt = new RenderTexture(Size, Size, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+            var camGo = new GameObject("IconCamera");
+            var cam = camGo.AddComponent<Camera>();
+            cam.orthographic = true; cam.orthographicSize = 0.92f;
+            cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0, 0, 0, 0);
+            cam.cullingMask = 1 << Layer; cam.targetTexture = rt; cam.allowHDR = false; cam.allowMSAA = true;
+            cam.nearClipPlane = 0.1f; cam.farClipPlane = 20;
+            var data = camGo.AddComponent<UniversalAdditionalCameraData>();
+            data.renderPostProcessing = false; data.renderShadows = false;
+            camGo.transform.position = new Vector3(0, -5000, 0) + Quaternion.Euler(30, 45, 0) * new Vector3(0, 0, -6);
+            camGo.transform.rotation = Quaternion.Euler(30, 45, 0);
+
+            var obj = new GameObject("IconBlock") { layer = Layer };
+            obj.transform.position = new Vector3(0, -5000, 0);
+            var mf = obj.AddComponent<MeshFilter>();
+            var mr = obj.AddComponent<MeshRenderer>();
+            var mat = new Material(blockMat);
+            mat.SetVector("_LightOverride", new Vector4(1, 0, 0, 1));
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+
+            bool fog = RenderSettings.fog;
+            RenderSettings.fog = false;
+            Shader.SetGlobalColor("_SkyAmbient", new Color(1.05f, 1.05f, 1.05f));
+            Shader.SetGlobalColor("_TorchColor", Color.black);
+            Shader.SetGlobalFloat("_Wind", 0);
+
+            foreach (var item in Items.Order)
+            {
+                if (item.Block == 0) continue;
+                if (BlockMesh.IsFlat(item.Block)) { _icons[item.Id] = Flat(Blocks.Get(item.Block).Top); continue; }
+                mf.sharedMesh = BlockMesh.Cube(item.Block);
+                cam.Render();
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
+                var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, name = item.Id };
+                tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
+                RenderTexture.active = prev;
+                FixAlpha(tex);
+                tex.Apply();
+                _icons[item.Id] = tex;
+            }
+            RenderSettings.fog = fog;
+            Object.Destroy(obj); Object.Destroy(camGo); Object.Destroy(mat);
+            rt.Release(); Object.Destroy(rt);
+
+            foreach (var item in Items.Order) if (item.Block == 0) _icons[item.Id] = ItemArt.Paint(item);
+        }
+
+        // If the pipeline dropped the alpha channel, key out the black clear colour instead.
+        static void FixAlpha(Texture2D t)
+        {
+            var px = t.GetPixels32();
+            bool anyClear = false;
+            foreach (var p in px) if (p.a < 250) { anyClear = true; break; }
+            if (anyClear) return;
+            for (int i = 0; i < px.Length; i++)
+                if (px[i].r < 3 && px[i].g < 3 && px[i].b < 3) px[i].a = 0;
+            t.SetPixels32(px);
+        }
+
+        static Texture2D Flat(Tex layer)
+        {
+            var src = BlockTextures.Pixels(layer);
+            var t = new Texture2D(Paint.S, Paint.S, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            var px = new Color[src.Length];
+            for (int i = 0; i < src.Length; i++)
+            {
+                var c = src[i];
+                if (layer == Tex.TallGrass || layer == Tex.Fern) { c.r *= BlockMesh.DefaultGrass.r / 255f; c.g *= BlockMesh.DefaultGrass.g / 255f; c.b *= BlockMesh.DefaultGrass.b / 255f; }
+                px[i] = c;
+            }
+            t.SetPixels(px);
+            t.Apply();
+            return t;
+        }
+
+        public static Texture2D TextureOf(string item) => item != null && _icons.TryGetValue(item, out var t) ? t : null;
+    }
+}
