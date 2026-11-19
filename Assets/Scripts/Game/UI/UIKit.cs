@@ -17,8 +17,18 @@ namespace Stratum.Game
         public static readonly Color Good = new Color(0.55f, 0.85f, 0.45f);
         public static readonly Color Bad = new Color(0.95f, 0.42f, 0.38f);
 
-        static Font _font;
-        public static Font Font => _font ??= Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        // Lato ships with the game (Resources/Fonts, SIL OFL) so text never depends on the fonts a machine has
+        // installed; each style is its own face rather than Unity's faked bold and slant.
+        static Font _regular, _bold, _italic, _boldItalic;
+        static Font Load(string name) => Resources.Load<Font>("Fonts/" + name) ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        public static Font Font => _regular ??= Load("Lato-Regular");
+        public static Font FontFor(FontStyle style) => style switch
+        {
+            FontStyle.Bold => _bold ??= Load("Lato-Bold"),
+            FontStyle.Italic => _italic ??= Load("Lato-Italic"),
+            FontStyle.BoldAndItalic => _boldItalic ??= Load("Lato-BoldItalic"),
+            _ => Font,
+        };
         static Sprite _round, _roundSmall, _white;
 
         public static Sprite Round => _round ??= RoundSprite(64, 18);
@@ -109,7 +119,7 @@ namespace Stratum.Game
         {
             var r = Rect(parent, "Label");
             var t = r.gameObject.AddComponent<Text>();
-            t.font = Font; t.text = text; t.fontSize = size; t.color = c; t.alignment = align; t.fontStyle = style;
+            t.font = FontFor(style); t.text = text; t.fontSize = size; t.color = c; t.alignment = align; t.fontStyle = FontStyle.Normal;
             t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
             t.raycastTarget = false;
             return t;

@@ -89,6 +89,13 @@ namespace Stratum.EditorTools
             // A build can report "Succeeded" with errors and no player written (a platform module installed while
             // the Editor was open, for one), so check the file too.
             bool ok = sum.result == BuildResult.Succeeded && sum.totalErrors == 0 && File.Exists(path);
+            if (ok)
+            {
+                // The font licence has to travel with the game.
+                File.Copy("CREDITS.md", Path.Combine(dir, "CREDITS.md"), true);
+                Directory.CreateDirectory(Path.Combine(dir, "licenses"));
+                foreach (var f in Directory.GetFiles("licenses")) File.Copy(f, Path.Combine(dir, "licenses", Path.GetFileName(f)), true);
+            }
             Debug.Log($"Build {target}: {(ok ? "OK" : "FAILED")} ({sum.result}), {sum.totalSize / (1024 * 1024)} MB, {sum.totalErrors} errors, at {path}");
             if (Application.isBatchMode) EditorApplication.Exit(ok ? 0 : 1);
             else if (!ok) throw new System.Exception($"{target} build failed; see the Console");
