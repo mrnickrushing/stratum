@@ -13,10 +13,12 @@ namespace Stratum.Game
         public Action<WorldMeta> Delete;
         public Action Resume, SaveAndQuit, Respawn, Quit, SettingsChanged;
         public Func<List<WorldMeta>> ListWorlds;
+        public Action<string, string, string> Join;    // name, address, password
+        public Action CancelJoin;
 
         Canvas _canvas;
         RectTransform _root;
-        GameObject _main, _worlds, _new, _settings, _pause, _death, _loading;
+        GameObject _main, _worlds, _new, _settings, _pause, _death, _loading, _join;
         RectTransform _worldList;
         Image _loadBar; Text _loadText, _loadTip;
         InputField _newName, _newSeed;
@@ -26,7 +28,12 @@ namespace Stratum.Game
         Image _shade;
         readonly List<Texture2D> _thumbs = new List<Texture2D>();
 
-        public bool AnyOpen => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _settings.activeSelf || _pause.activeSelf || _death.activeSelf || _loading.activeSelf;
+        InputField _joinName, _joinAddr, _joinPass;
+        Text _joinStatus, _pauseInfo, _deathSub;
+        Button _joinBtn, _quitBtn;
+        bool _joining;
+
+        public bool AnyOpen => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _settings.activeSelf || _pause.activeSelf || _death.activeSelf || _loading.activeSelf || _join.activeSelf;
         public bool PauseOpen => _pause.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowPause;
 
         static readonly string[] Tips =
@@ -55,7 +62,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
             _shade = UIKit.Panel(_root, "Shade", new Color(0, 0, 0, 0.45f), UIKit.White); _shade.rectTransform.Fill();
 
-            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading();
+            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin();
             HideAll();
         }
 
@@ -88,7 +95,7 @@ namespace Stratum.Game
 
             float y = 20;
             foreach (var (label, act, primary) in new (string, Action, bool)[]
-                     { ("Play", ShowWorlds, true), ("Settings", () => ShowSettings(ShowMain), false), ("Quit", () => Quit?.Invoke(), false) })
+                     { ("Play", ShowWorlds, true), ("Multiplayer", () => ShowJoin(null), false), ("Settings", () => ShowSettings(ShowMain), false), ("Quit", () => Quit?.Invoke(), false) })
             {
                 var b = UIKit.Button(_main.transform, label, act, 34, primary);
                 ((RectTransform)b.transform).Place(0, 0.5f, 148, y, 420, 76);
@@ -234,14 +241,17 @@ namespace Stratum.Game
         void BuildPause()
         {
             _pause = Screen("Pause");
-            var card = Card(_pause, 620, 520, "Paused");
-            float y = -130;
+            var card = Card(_pause, 620, 500, "Paused");
+            _pauseInfo = UIKit.Label(card.transform, "", 22, UIKit.Dim, TextAnchor.MiddleCenter);
+            _pauseInfo.rectTransform.Place(0.5f, 1, 0, -92, 560, 30);
+            float y = -150;
             foreach (var (label, act, primary) in new (string, Action, bool)[]
                      { ("Back to Game", () => Resume?.Invoke(), true), ("Settings", () => ShowSettings(ShowPause), false), ("Save and Quit to Title", () => SaveAndQuit?.Invoke(), false) })
             {
                 var b = UIKit.Button(card.transform, label, act, 30, primary);
                 ((RectTransform)b.transform).Place(0.5f, 1, 0, y, 460, 76);
                 y -= 96;
+                _quitBtn = b;
             }
         }
 
@@ -250,7 +260,7 @@ namespace Stratum.Game
             _death = Screen("Death");
             var t = UIKit.Label(_death.transform, "You blacked out", 96, new Color(1f, 0.78f, 0.72f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(5);
             t.rectTransform.Place(0.5f, 0.5f, 0, 120, 1400, 140);
-            var s = UIKit.Label(_death.transform, "You wake where you first came ashore, your pack still with you.", 30, UIKit.Ink, TextAnchor.MiddleCenter).Shadowed(2);
+            var s = _deathSub = UIKit.Label(_death.transform, "You wake where you first came ashore, your pack still with you.", 30, UIKit.Ink, TextAnchor.MiddleCenter).Shadowed(2);
             s.rectTransform.Place(0.5f, 0.5f, 0, 30, 1400, 50);
             var b = UIKit.Button(_death.transform, "Get Up", () => Respawn?.Invoke(), 32, true);
             ((RectTransform)b.transform).Place(0.5f, 0.5f, 0, -80, 380, 80);
@@ -272,9 +282,74 @@ namespace Stratum.Game
             _loadTip.rectTransform.Place(0.5f, 0, 0, 90, 1400, 40);
         }
 
+        // ------------------------------------------------------------------ multiplayer
+
+        void BuildJoin()
+        {
+            _join = Screen("Multiplayer");
+            var card = Card(_join, 900, 760, "Multiplayer");
+            float y = -120;
+            InputField Row(string label, string placeholder, string value)
+            {
+                var l = UIKit.Label(card.transform, label, 24, UIKit.Dim); l.rectTransform.Place(0, 1, 70, y, 760, 30);
+                var f = UIKit.Field(card.transform, placeholder, value); ((RectTransform)f.transform).Place(0, 1, 70, y - 36, 760, 64);
+                y -= 126;
+                return f;
+            }
+            _joinName = Row("Your name (1-16 letters, numbers, - or _)", "Name", PlayerPrefs.GetString("mp_name", ""));
+            _joinName.characterLimit = Core.Net.MaxNameLength;
+            _joinAddr = Row("Server address (host or host:port)", "play.example.com:25600", PlayerPrefs.GetString("mp_addr", ""));
+            _joinPass = Row("Password (only if the server has one)", "none", "");
+            _joinPass.contentType = InputField.ContentType.Password;
+            _joinStatus = UIKit.Label(card.transform, "", 24, UIKit.Dim, TextAnchor.MiddleCenter);
+            _joinStatus.rectTransform.Place(0.5f, 0, 0, 136, 800, 70);
+            _joinBtn = UIKit.Button(card.transform, "Join Server", DoJoin, 30, true);
+            ((RectTransform)_joinBtn.transform).Place(0.5f, 0, 170, 36, 320, 72);
+            var back = UIKit.Button(card.transform, "Back", () => { if (_joining) CancelJoin?.Invoke(); _joining = false; ShowMain(); }, 30);
+            ((RectTransform)back.transform).Place(0.5f, 0, -170, 36, 320, 72);
+        }
+
+        void DoJoin()
+        {
+            if (_joining) return;
+            var name = _joinName.text.Trim();
+            if (!Core.Net.ValidName(name)) { SetJoinStatus("Pick a name of 1-16 letters, numbers, spaces, - or _.", true); return; }
+            if (!NetClient.ParseAddress(_joinAddr.text, out _, out _)) { SetJoinStatus("Type the server's address, like play.example.com:25600.", true); return; }
+            PlayerPrefs.SetString("mp_name", name);
+            PlayerPrefs.SetString("mp_addr", _joinAddr.text.Trim());
+            PlayerPrefs.Save();
+            _joining = true;
+            _joinBtn.interactable = false;
+            SetJoinStatus("Connecting...", false);
+            Join?.Invoke(name, _joinAddr.text.Trim(), _joinPass.text);
+        }
+
+        // Shows the join screen; with a message (why the last attempt or game ended) when there is one.
+        public void ShowJoin(string status)
+        {
+            Show(_join, true);
+            _joining = false;
+            _joinBtn.interactable = true;
+            SetJoinStatus(status ?? "Play on a Stratum server with friends.", status != null);
+        }
+
+        public void SetJoinStatus(string text, bool bad)
+        {
+            _joinStatus.text = text;
+            _joinStatus.color = bad ? UIKit.Bad : UIKit.Dim;
+        }
+
+        // Pause and blackout read a little differently on a server.
+        public void SetOnline(bool online, string info)
+        {
+            _quitBtn.SetText(online ? "Disconnect" : "Save and Quit to Title");
+            _pauseInfo.text = online ? info : "";
+            _deathSub.text = online ? "You wake at the server's spawn, your pack still with you." : "You wake where you first came ashore, your pack still with you.";
+        }
+
         public void HideAll()
         {
-            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading }) g.SetActive(false);
+            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join }) g.SetActive(false);
             _shade.gameObject.SetActive(false);
         }
 
@@ -310,12 +385,13 @@ namespace Stratum.Game
             _loadBar.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(p), 1);
             if (text != null) _loadText.text = text;
         }
-        public bool OnMainOrSub => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowMain;
+        public bool OnMainOrSub => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _join.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowMain;
         public void Back()
         {
             if (_settings.activeSelf) { PlayerPrefs.Save(); _settingsBack?.Invoke(); }
             else if (_new.activeSelf) ShowWorlds();
             else if (_worlds.activeSelf) ShowMain();
+            else if (_join.activeSelf) { if (_joining) CancelJoin?.Invoke(); _joining = false; ShowMain(); }
             else if (_pause.activeSelf) Resume?.Invoke();
         }
     }

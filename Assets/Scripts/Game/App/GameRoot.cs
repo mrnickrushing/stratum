@@ -87,7 +87,9 @@ namespace Stratum.Game
             _menus.Create = (name, seed, creative) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative)));
             _menus.Delete = WorldStore.Delete;
             _menus.Resume = Resume;
-            _menus.SaveAndQuit = () => { Save(); ToTitle(); };
+            _menus.SaveAndQuit = () => { if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
+            _menus.Join = JoinServer;
+            _menus.CancelJoin = CancelJoin;
             _menus.Respawn = Respawn;
             _menus.Quit = () => { Application.Quit(); };
             _menus.SettingsChanged = OnSettingsChanged;
@@ -95,6 +97,7 @@ namespace Stratum.Game
             Step("title");
             ToTitle();
             MaybeSmokeTest();
+            MaybeMultiplayerTest();
         }
 
         static void ApplyDisplaySettings()
@@ -170,6 +173,8 @@ namespace Stratum.Game
             _sky.Time01 = 0.29f; _sky.Frozen = true;
             _cam.transform.SetParent(null);
             _cam.fieldOfView = 62;
+            Time.timeScale = 1;
+            _menus.SetOnline(false, "");
             Sfx.I.InGame = false;
             _menus.ShowMain();
             SetCursor(false);
@@ -177,6 +182,7 @@ namespace Stratum.Game
 
         void Teardown()
         {
+            TeardownNet();
             if (_hud != null) Destroy(_hud.gameObject);
             if (_player != null) { _cam.transform.SetParent(null); Destroy(_player.gameObject); }
             if (_world != null) Destroy(_world.gameObject);
@@ -269,6 +275,7 @@ namespace Stratum.Game
             for (int y = Chunk.Height - 2; y > 1; y--)
             {
                 var b = Blocks.Get(_world.Get(x, y, z));
+                if (b.Sway || b.Name.EndsWith(" Log")) continue;      // a new world starts on the ground, not in a tree
                 if (b.Solid || b.Id == Blocks.Water)
                 {
                     _player.Feet = new Vector3(x + 0.5f, y + 1, z + 0.5f);
@@ -283,6 +290,7 @@ namespace Stratum.Game
         void Update()
         {
             var kb = Keyboard.current;
+            if (Online && _state != State.Loading) PumpNet();
             switch (_state)
             {
                 case State.Title:
@@ -311,7 +319,16 @@ namespace Stratum.Game
             Sfx.I.Daylight = _sky.DayFactor;
             float depth = Mathf.Clamp01((Chunk.SeaLevel - 6 - _player.Feet.y) / 30f);
             Sfx.I.Depth = depth;
-            _meta.minutesPlayed += Time.unscaledDeltaTime / 60.0;
+            if (_meta != null) _meta.minutesPlayed += Time.unscaledDeltaTime / 60.0;
+
+            // Typing in chat: the keys are for the line, not for walking.
+            if (_hud.ChatOpen)
+            {
+                _player.InputEnabled = false; _act.InputEnabled = false;
+                if (kb != null && kb.escapeKey.wasPressedThisFrame) _hud.CloseChat();
+                return;
+            }
+            if (!_hud.InventoryOpen && !_player.InputEnabled) { _player.InputEnabled = true; _act.InputEnabled = true; }
 
             if (kb != null)
             {
@@ -321,6 +338,8 @@ namespace Stratum.Game
                     else Pause();
                     return;
                 }
+                if (_hud.CanChat && !_hud.InventoryOpen && _hud.ChatClosedFrame != Time.frameCount && (kb.tKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame)) { _hud.OpenChat(); return; }
+                if (_hud.CanChat && !_hud.InventoryOpen && kb.slashKey.wasPressedThisFrame) { _hud.OpenChat("/"); return; }
                 if (kb.eKey.wasPressedThisFrame || kb.tabKey.wasPressedThisFrame)
                 {
                     if (_hud.InventoryOpen) CloseInventory(); else OpenInventory(null);
@@ -356,8 +375,10 @@ namespace Stratum.Game
             _state = State.Paused;
             _player.InputEnabled = false; _act.InputEnabled = false;
             _menus.ShowPause();
+            if (Online) _menus.SetOnline(true, OnlineLine());
             SetCursor(false);
-            Time.timeScale = 0;
+            // A server's world goes on while we're in the menu.
+            if (!Online) Time.timeScale = 0;
             Save();
         }
 
@@ -381,7 +402,8 @@ namespace Stratum.Game
 
         void Respawn()
         {
-            _player.Respawn(new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz));
+            if (Online) { _player.Respawn(GroundAt(_netSpawn) + new Vector3(0, 0.01f, 0)); SendMove(true); SendKeep(); }
+            else _player.Respawn(new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz));
             _menus.HideAll();
             _state = State.Playing;
             _player.InputEnabled = true; _act.InputEnabled = true;
@@ -449,11 +471,12 @@ namespace Stratum.Game
         // Alt-tabbing away opens the pause menu (the game keeps running in the background otherwise).
         void OnApplicationFocus(bool focused)
         {
-            if (!focused && _state == State.Playing && _smokeDir == null && !Application.isEditor) Pause();
+            if (!focused && _state == State.Playing && _smokeDir == null && !Application.isEditor && !(_hud != null && _hud.ChatOpen)) Pause();
         }
 
         void OnApplicationQuit()
         {
+            if (Online) { SendMove(true); SendKeep(); _net.Close(200); System.Threading.Thread.Sleep(250); }
             if (_state == State.Playing || _state == State.Paused || _state == State.Dead) Save();
         }
 

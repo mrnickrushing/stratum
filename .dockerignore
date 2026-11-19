@@ -1,0 +1,7 @@
+# Only the server and the game's Core code go into the server image.
+*
+!Assets/Scripts/Core/**
+!Server/**
+Server/bin/
+Server/obj/
+**/*.meta

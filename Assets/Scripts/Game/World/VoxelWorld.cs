@@ -18,19 +18,30 @@ namespace Stratum.Game
             public Chunk Chunk;
             public GameObject Go;
             public Mesh Mesh;
-            public bool GenQueued, MeshQueued, Dirty = true, HasMesh;
+            public bool GenQueued, MeshQueued, Dirty = true, HasMesh, Arrived;
+            public float AskedAt;                       // multiplayer: when it was last asked for
             public byte[] Light;                        // from its last meshing (pooled)
             public void DropLight() { if (Light != null) System.Buffers.ArrayPool<byte>.Shared.Return(Light); Light = null; }
         }
 
         abstract class Job { public int Priority; }
-        sealed class GenJob : Job { public Slot S; }
+        sealed class GenJob : Job { public Slot S; public byte[] Data; }     // Data: blocks sent by a server
         sealed class MeshJob : Job { public Slot S; public Chunk[] N; }
 
         public WorldGen Gen { get; private set; }
         public string SaveDir { get; private set; }
         public int ViewDistance = 10;
         public Material BlockMaterial, WaterMaterial;
+
+        // Multiplayer: chunks come from the server instead of being made here. Set before the first Update.
+        // RequestChunks gets the chunks wanted (nearest first); the answers arrive through ReceiveChunk.
+        public Action<List<(int x, int z)>> RequestChunks;
+        public bool Remote => RequestChunks != null;
+        // Edits the player made here (not those the server sent), for the client to pass on.
+        public event Action<int, int, int, byte, byte> Edited;
+        readonly List<(int x, int z)> _want = new List<(int, int)>();
+        readonly List<(int x, int y, int z, byte id)> _early = new List<(int, int, int, byte)>();
+        Water _waterSim;
 
         readonly Dictionary<long, Slot> _slots = new Dictionary<long, Slot>();
         readonly List<Job> _jobs = new List<Job>();
@@ -61,6 +72,7 @@ namespace Stratum.Game
             w.BlockMaterial = block; w.WaterMaterial = water;
             w.ViewDistance = viewDistance;
             if (saveDir != null) Directory.CreateDirectory(Path.Combine(saveDir, "chunks"));
+            w._waterSim = new Water(w.Get, w.SetWater);
             w.StartWorkers();
             return w;
         }
@@ -92,7 +104,11 @@ namespace Stratum.Game
                 if (job == null) { _wake.WaitOne(50); continue; }
                 try
                 {
-                    if (job is GenJob g) Generate(g.S.Chunk);
+                    if (job is GenJob g)
+                    {
+                        if (g.Data != null) FromServer(g.S.Chunk, g.Data);
+                        else Generate(g.S.Chunk);
+                    }
                     else if (job is MeshJob m)
                     {
                         _mesher ??= new Mesher();
@@ -126,6 +142,43 @@ namespace Stratum.Game
             }
             Gen.Generate(c);
         }
+
+        void FromServer(Chunk c, byte[] data)
+        {
+            Net.Decompress(data, c.Blocks);
+            c.RecalcMaxY();
+            Gen.TintOnly(c);
+            c.Ready = true;
+        }
+
+        // A chunk from the server (or a fresh copy of one already here).
+        public void ReceiveChunk(int x, int z, byte[] data)
+        {
+            if (!_slots.TryGetValue(Chunk.Key(x, z), out var s)) return;   // out of range by now
+            bool again = s.Arrived;
+            s.Arrived = true;
+            if (again && !s.Chunk.Ready) return;                           // the first copy is still unpacking
+            if (s.Chunk.Ready)
+            {
+                // A resend: swap the blocks in place and remesh.
+                Net.Decompress(data, s.Chunk.Blocks);
+                s.Chunk.RecalcMaxY();
+                MarkDirty(x * 16 + 8, z * 16 + 8);
+                return;
+            }
+            Enqueue(new GenJob { S = s, Data = data, Priority = -500 });
+        }
+
+        // A block the server says changed. Edits to a chunk still on its way wait until it has arrived.
+        public void ApplyRemote(int x, int y, int z, byte id)
+        {
+            var s = SlotAt(x, z);
+            if (s == null) return;                                        // not loaded: we'll get it whole later
+            if (!s.Chunk.Ready) { _early.Add((x, y, z, id)); return; }
+            _fromServer = true;
+            try { Set(x, y, z, id); } finally { _fromServer = false; }
+        }
+        bool _fromServer;
 
         void Enqueue(Job j)
         {
@@ -161,7 +214,18 @@ namespace Stratum.Game
                 Schedule();
             }
             Upload();
-            FluidTick();
+            if (_early.Count > 0)
+                for (int i = _early.Count - 1; i >= 0; i--)
+                {
+                    var (x, y, z, id) = _early[i];
+                    var s = SlotAt(x, z);
+                    if (s == null) { _early.RemoveAt(i); continue; }
+                    if (!s.Chunk.Ready) continue;
+                    _early.RemoveAt(i);
+                    _fromServer = true;
+                    try { Set(x, y, z, id); } finally { _fromServer = false; }
+                }
+            if (!Remote) _waterSim.Tick(Time.deltaTime);
         }
 
         void Schedule()
@@ -175,8 +239,22 @@ namespace Stratum.Game
                     int x = _cx + dx, z = _cz + dz;
                     long k = Chunk.Key(x, z);
                     if (!_slots.TryGetValue(k, out var s)) { s = new Slot { Chunk = new Chunk(x, z) }; _slots[k] = s; }
-                    if (!s.GenQueued) { s.GenQueued = true; Enqueue(new GenJob { S = s, Priority = PriorityFor(x, z) }); }
+                    if (s.GenQueued)
+                    {
+                        // A chunk asked for but not sent (the server thought we were somewhere else): ask again.
+                        if (Remote && !s.Arrived && Time.unscaledTime - s.AskedAt > 6) { s.AskedAt = Time.unscaledTime; _want.Add((x, z)); }
+                        continue;
+                    }
+                    s.GenQueued = true;
+                    if (Remote) { s.AskedAt = Time.unscaledTime; _want.Add((x, z)); }
+                    else Enqueue(new GenJob { S = s, Priority = PriorityFor(x, z) });
                 }
+            if (_want.Count > 0)
+            {
+                _want.Sort((a, b) => PriorityFor(a.x, a.z).CompareTo(PriorityFor(b.x, b.z)));
+                RequestChunks(_want);
+                _want.Clear();
+            }
             for (int dz = -R; dz <= R; dz++)
                 for (int dx = -R; dx <= R; dx++)
                 {
@@ -333,61 +411,20 @@ namespace Stratum.Game
                     }
                 }
             Changed?.Invoke(x, y, z, old, id);
-            if (id == 0) WakeWater(x, y, z);
+            if (!_fromServer) Edited?.Invoke(x, y, z, old, id);
+            if (id == 0 && !Remote) _waterSim.Wake(x, y, z);
             return true;
         }
 
         // ------------------------------------------------------------------ water filling holes
 
-        readonly Queue<Vector3Int> _water = new Queue<Vector3Int>();
-        float _waterTimer;
-        int _waterBudget;
-
-        void WakeWater(int x, int y, int z)
+        void SetWater(int x, int y, int z, byte id)
         {
-            if (Get(x, y + 1, z) == Blocks.Water || Get(x + 1, y, z) == Blocks.Water || Get(x - 1, y, z) == Blocks.Water ||
-                Get(x, y, z + 1) == Blocks.Water || Get(x, y, z - 1) == Blocks.Water)
-            {
-                if (_water.Count == 0) _waterBudget = 1500;
-                _water.Enqueue(new Vector3Int(x, y, z));
-            }
-        }
-
-        void FluidTick()
-        {
-            if (_water.Count == 0) return;
-            _waterTimer -= Time.deltaTime;
-            if (_waterTimer > 0) return;
-            _waterTimer = 0.2f;
-            int n = Math.Min(_water.Count, 48);
-            for (int i = 0; i < n && _waterBudget > 0; i++)
-            {
-                var p = _water.Dequeue();
-                if (Get(p.x, p.y, p.z) != 0) continue;
-                bool fed = Get(p.x, p.y + 1, p.z) == Blocks.Water;
-                if (!fed)
-                {
-                    // Sideways only over something to rest on.
-                    byte below = Get(p.x, p.y - 1, p.z);
-                    bool held = below == Blocks.Water || Blocks.Get(below).Solid;
-                    bool side = Get(p.x + 1, p.y, p.z) == Blocks.Water || Get(p.x - 1, p.y, p.z) == Blocks.Water ||
-                                Get(p.x, p.y, p.z + 1) == Blocks.Water || Get(p.x, p.y, p.z - 1) == Blocks.Water;
-                    fed = side && (held || p.y <= Chunk.SeaLevel);
-                }
-                if (!fed) continue;
-                var s = SlotAt(p.x, p.z);
-                if (s == null || !s.Chunk.Ready) continue;
-                s.Chunk.Set(p.x & 15, p.y, p.z & 15, Blocks.Water);
-                s.Chunk.Modified = true;
-                MarkDirty(p.x, p.z);
-                _waterBudget--;
-                foreach (var d in new[] { Vector3Int.down, Vector3Int.left, Vector3Int.right, new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1) })
-                {
-                    var q = p + d;
-                    if (Get(q.x, q.y, q.z) == 0) _water.Enqueue(q);
-                }
-            }
-            if (_waterBudget <= 0) _water.Clear();
+            var s = SlotAt(x, z);
+            if (s == null || !s.Chunk.Ready) return;
+            s.Chunk.Set(x & 15, y, z & 15, id);
+            s.Chunk.Modified = true;
+            MarkDirty(x, z);
         }
 
         void MarkDirty(int x, int z)

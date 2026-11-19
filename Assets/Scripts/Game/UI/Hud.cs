@@ -10,7 +10,7 @@ namespace Stratum.Game
 {
     // The in-game screen: crosshair, hotbar, health and air, messages, the F3 readout, and the backpack with
     // crafting (E).
-    public sealed class Hud : MonoBehaviour
+    public sealed partial class Hud : MonoBehaviour
     {
         public Player P; public Interaction Act; public Sky Sky; public VoxelWorld World;
         Canvas _canvas;
@@ -104,6 +104,7 @@ namespace Stratum.Game
             _fps.rectTransform.Place(1, 1, -16, -12, 300, 30);
 
             BuildInventory();
+            BuildChat();
             P.Hurt += amt => { _hurtFlash = Mathf.Clamp01(0.25f + amt * 0.06f); };
             Act.Toast = Toast;
         }
@@ -151,6 +152,7 @@ namespace Stratum.Game
             if (ShowDebug) _debug.text = DebugText();
 
             if (InventoryOpen) UpdateInventory(dt);
+            UpdateChat();
         }
 
         string DebugText()
@@ -166,7 +168,8 @@ namespace Stratum.Game
                    $"Looking at {target}\n" +
                    $"{Sky.Clock()}   seed {World.Gen.Seed}\n" +
                    $"Chunks {World.LoadedChunks}  jobs {World.PendingJobs}   view {World.ViewDistance}\n" +
-                   (P.Creative ? "Creative" + (P.Flying ? " (flying)" : "") : "Survival");
+                   (P.Creative ? "Creative" + (P.Flying ? " (flying)" : "") : "Survival") +
+                   (OnlineInfo != null ? "\n" + OnlineInfo() : "");
         }
 
         // ------------------------------------------------------------------ backpack and crafting
