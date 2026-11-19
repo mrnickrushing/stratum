@@ -280,7 +280,7 @@ namespace Stratum.Game
                 _sway = Vector2.Lerp(_sway, md * 0.0008f, 1 - Mathf.Exp(-dt * 10));
                 var it = Items.Get(_heldItem);
                 bool block = it != null && it.Block != 0 && !BlockMesh.IsFlat(it.Block);
-                var basePos = block ? new Vector3(0.50f, -0.42f, 0.90f) : new Vector3(0.44f, -0.36f, 0.70f);
+                var basePos = block ? new Vector3(0.46f, -0.33f, 0.88f) : new Vector3(0.44f, -0.36f, 0.70f);   // the block clears the hotbar
                 _held.transform.localPosition = basePos + new Vector3(-_sway.x - s * 0.12f, -_sway.y - s * 0.18f, s * 0.1f);
                 var baseRot = block ? Quaternion.Euler(8, 40, 0) : Quaternion.Euler(0, -95, 25);
                 _held.transform.localRotation = Quaternion.Euler(-s * 45, 0, 0) * baseRot;
@@ -299,7 +299,7 @@ namespace Stratum.Game
             {
                 _heldMf.sharedMesh = BlockMesh.Cube(it.Block);
                 _heldMr.sharedMaterial = _heldBlockMat;
-                _held.transform.localScale = Vector3.one * 0.24f;
+                _held.transform.localScale = Vector3.one * 0.21f;
             }
             else
             {
@@ -315,6 +315,8 @@ namespace Stratum.Game
         Vector4 LightAt(Vector3 p)
         {
             int x = Mathf.FloorToInt(p.x), y = Mathf.FloorToInt(p.y), z = Mathf.FloorToInt(p.z);
+            if (World.LightAt(x, y, z, out float ls, out float lb)) return new Vector4(ls, lb, 0, 1);
+            // Not meshed yet: a rough guess from the blocks overhead and torches nearby.
             float sky = 1;
             for (int yy = y + 1; yy < Mathf.Min(y + 64, Chunk.Height); yy++)
             {

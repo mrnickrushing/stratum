@@ -19,6 +19,8 @@ namespace Stratum.Game
             public GameObject Go;
             public Mesh Mesh;
             public bool GenQueued, MeshQueued, Dirty = true, HasMesh;
+            public byte[] Light;                        // from its last meshing (pooled)
+            public void DropLight() { if (Light != null) System.Buffers.ArrayPool<byte>.Shared.Return(Light); Light = null; }
         }
 
         abstract class Job { public int Priority; }
@@ -198,6 +200,7 @@ namespace Stratum.Game
                     if (s.Chunk.Modified) SaveChunk(s.Chunk);
                     if (s.Go != null) Destroy(s.Go);
                     if (s.Mesh != null) Destroy(s.Mesh);
+                    s.DropLight();
                     _slots.Remove(k);
                 }
         }
@@ -225,6 +228,7 @@ namespace Stratum.Game
                 s.MeshQueued = false;
                 if (!_slots.TryGetValue(Chunk.Key(s.Chunk.X, s.Chunk.Z), out var cur) || cur != s) { md.Release(); continue; }
                 Apply(s, md);
+                s.DropLight(); s.Light = md.Light; md.Light = null;
                 md.Release();
                 if (s.Dirty) TryMesh(s, 0);
             }
@@ -279,6 +283,20 @@ namespace Stratum.Game
             var s = SlotAt(x, z);
             if (s == null || !s.Chunk.Ready) return 0;
             return s.Chunk.Blocks[(x & 15) | ((z & 15) << 4) | (y << 8)];
+        }
+
+        // Sky and block light (0..1) of a cell as the mesher last worked it out; false until its chunk is meshed.
+        public bool LightAt(int x, int y, int z, out float sky, out float block)
+        {
+            sky = 1; block = 0;
+            if (y >= Chunk.Height) return true;
+            if (y < 0) return false;
+            var s = SlotAt(x, z);
+            var l = s?.Light;
+            if (l == null) return false;
+            byte v = l[(x & 15) | ((z & 15) << 4) | (y << 8)];
+            sky = (v >> 4) / 15f; block = (v & 15) / 15f;
+            return true;
         }
 
         // For collision: a chunk that isn't there yet counts as solid, so nothing falls out of the world.
@@ -427,7 +445,7 @@ namespace Stratum.Game
             _stop = true;
             _wake.Set();
             if (_workers != null) foreach (var t in _workers) t.Join(500);
-            foreach (var s in _slots.Values) if (s.Mesh != null) Destroy(s.Mesh);
+            foreach (var s in _slots.Values) { if (s.Mesh != null) Destroy(s.Mesh); s.DropLight(); }
             while (_done.TryDequeue(out var r)) r.md.Release();
         }
     }

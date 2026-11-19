@@ -357,9 +357,18 @@ namespace Stratum.Game
             _craftTitle.text = furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "furnace" && furnace))
-                .OrderByDescending(x => x.here && x.can).ThenByDescending(x => x.here).ThenBy(x => x.r.Station ?? "").ToList();
-            foreach (var (r, can, here) in list)
+                .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
+                .OrderBy(x => x.sec).ThenByDescending(x => x.can).ToList();
+            int shown = -1;
+            bool several = list.Select(x => x.sec).Distinct().Count() > 1;
+            foreach (var (r, can, here, sec) in list)
             {
+                if (several && sec != shown)
+                {
+                    shown = sec;
+                    var head = UIKit.Label(_craftList, sec == 3 ? "By hand" : sec == 4 ? "Needs a station nearby" : r.Station == "furnace" ? "Furnace" : "Workbench", 20, UIKit.Accent, TextAnchor.LowerLeft, FontStyle.Bold);
+                    head.rectTransform.sizeDelta = new Vector2(0, 34);
+                }
                 var row = UIKit.Panel(_craftList, "Recipe", new Color(0.16f, 0.17f, 0.21f, here ? 0.95f : 0.5f), UIKit.RoundSmall);
                 row.rectTransform.sizeDelta = new Vector2(0, 84);
                 var icon = UIKit.Icon(row.transform, Icons.Get(r.Out)); icon.rectTransform.Place(0, 0.5f, 10, 0, 64, 64);
@@ -384,6 +393,9 @@ namespace Stratum.Game
                 }
             }
         }
+
+        // The open station's recipes first, then any other station in reach, by hand, and what needs a station.
+        int Section(Recipe r, bool here) => !here ? 4 : r.Station == null ? 3 : r.Station == _station ? 0 : r.Station == "workbench" ? 1 : 2;
 
         void Craft(Recipe r)
         {

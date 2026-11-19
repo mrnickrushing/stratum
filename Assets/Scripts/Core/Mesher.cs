@@ -26,11 +26,13 @@ namespace Stratum.Core
         public Vertex[] Verts; public int VertCount;
         public int[] Index; public int SolidCount, WaterCount;   // solid indices first, then water
         public int MinY, MaxY;
+        public byte[] Light;    // the chunk's own cells, sky << 4 | block light, indexed like Chunk.Blocks (pooled)
         public void Release()
         {
             if (Verts != null) ArrayPool<Vertex>.Shared.Return(Verts);
             if (Index != null) ArrayPool<int>.Shared.Return(Index);
-            Verts = null; Index = null;
+            if (Light != null) ArrayPool<byte>.Shared.Return(Light);
+            Verts = null; Index = null; Light = null;
         }
     }
 
@@ -86,7 +88,25 @@ namespace Stratum.Core
             _top = Math.Min(_top + 2, Chunk.Height);
             Copy(n);
             Light();
-            return Mesh(c);
+            var md = Mesh(c);
+            md.Light = KeepLight();
+            return md;
+        }
+
+        // The worked-out light of the chunk itself (the middle of the region), so the game can light things that
+        // aren't part of a chunk mesh, like the block in hand, exactly as the world around them.
+        byte[] KeepLight()
+        {
+            var a = ArrayPool<byte>.Shared.Rent(16 * 16 * Chunk.Height);
+            for (int y = 0; y < Chunk.Height; y++)
+                for (int z = 0; z < 16; z++)
+                {
+                    int o = (z << 4) | (y << 8);
+                    if (y >= _top) { for (int x = 0; x < 16; x++) a[o + x] = 0xF0; continue; }
+                    int i = 16 + (16 + z) * R + y * RA;
+                    for (int x = 0; x < 16; x++) a[o + x] = (byte)((_sky[i + x] << 4) | _lit[i + x]);
+                }
+            return a;
         }
 
         void Copy(Chunk[] n)
