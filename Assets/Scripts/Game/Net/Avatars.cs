@@ -19,6 +19,8 @@ namespace Stratum.Game
             public float Phase, Speed, Swing;
             public Vector2 Light = new Vector2(1, 0);
             public RectTransform Tag;
+            public Image Plate;
+            public bool Talking;
         }
 
         public VoxelWorld World;
@@ -51,6 +53,16 @@ namespace Stratum.Game
         public IEnumerable<string> Names { get { foreach (var a in _all.Values) yield return a.Name; } }
 
         public bool TryGet(int id, out Vector3 pos) { pos = default; if (!_all.TryGetValue(id, out var a)) return false; pos = a.Pos; return true; }
+
+        public string NameOf(int id) => _all.TryGetValue(id, out var a) ? a.Name : null;
+
+        // A speaking player's name plate turns green.
+        public void SetTalking(int id, bool on)
+        {
+            if (!_all.TryGetValue(id, out var a) || a.Talking == on || a.Plate == null) return;
+            a.Talking = on;
+            a.Plate.color = on ? new Color(0.16f, 0.62f, 0.30f, 0.85f) : new Color(0, 0, 0, 0.5f);
+        }
 
         public void Add(int id, string name, Vector3 pos, float yaw)
         {
@@ -211,6 +223,7 @@ namespace Stratum.Game
             bg.transform.SetAsFirstSibling();
             label.rectTransform.Fill();
             bg.raycastTarget = false; label.raycastTarget = false;
+            a.Plate = bg;
             return a;
         }
 

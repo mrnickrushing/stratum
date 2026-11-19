@@ -12,7 +12,7 @@ namespace Stratum.Core
     // player moves themselves and keeps their own backpack, which the server saves for them.
     public static class Net
     {
-        public const int Protocol = 1;
+        public const int Protocol = 2;                  // 2: accounts (Hello carries a login, Welcome a token), voice chat
         public const int DefaultPort = 25600;
         public const int MaxMessage = 1 << 20;          // a chunk is ~4-12 KB compressed; nothing should come near
         public const int MaxNameLength = 16;
@@ -21,9 +21,9 @@ namespace Stratum.Core
         public enum Msg : byte
         {
             // client -> server
-            Hello = 1, Move = 2, WantChunks = 3, SetBlock = 4, Chat = 5, Keep = 6, Ping = 7,
+            Hello = 1, Move = 2, WantChunks = 3, SetBlock = 4, Chat = 5, Keep = 6, Ping = 7, Voice = 8,
             // server -> client
-            Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73,
+            Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73, Heard = 74,
         }
 
         // Player flags in Move/Moved.

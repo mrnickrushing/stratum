@@ -63,10 +63,16 @@ xvfb-run -a -s "-screen 0 1600x900x24" Builds/Linux/Stratum.x86_64 -force-glcore
 
 ## Multiplayer
 
-Main menu > **Multiplayer**: a name, the server's address (`host` or `host:port`, default port 25600) and its
-password if it has one. The server owns the world: it makes the land, keeps every change and checks each edit (in
-reach, agreeing on what was there). Each copy of the game keeps a secret key, and the server knows the player by its
-hash, keeping their place, health and backpack between visits. Chat with T.
+Main menu > **Multiplayer**: the server's address (`host` or `host:port`, default port 25600), then **Create Account**
+(username, password twice, and the server's invite code if it has one) or **Log In**. Accounts live on the server
+(`accounts.json` in the world folder, passwords as salted PBKDF2 hashes); the server keeps each account's place,
+health and backpack, so a player can log in from any computer. A login leaves a "remember me" token on that computer
+(Forget me removes it), so the password can stay blank next time. Five wrong passwords lock an account for a minute.
+
+The server owns the world: it makes the land, keeps every change and checks each edit (in reach, agreeing on what was
+there). Chat with T. **Voice chat:** hold V to talk (Settings > Voice chat: Hold V / Open mic / Off, plus voice volume
+and microphone boost). Voices are 16 kHz IMA ADPCM (~8 KB/s while talking), relayed by the server and played from the
+speaker's figure (60% placed in the world, so a friend far away is still heard); a speaker's name tag turns green.
 
 ### Running a server
 
@@ -79,8 +85,10 @@ docker run -p 25600:25600 -v stratum-world:/data stratum-server
 
 Settings are environment variables (or `--flag value`): `STRATUM_PORT`, `STRATUM_DATA` (world folder; `/data` in
 Docker), `STRATUM_SEED` (a new world only; text works like the New World box), `STRATUM_NAME`, `STRATUM_MOTD`,
-`STRATUM_MAX_PLAYERS` (10), `STRATUM_PASSWORD`, `STRATUM_CREATIVE` (1), `STRATUM_VIEW` (most chunks seen each way,
-10). The world saves every minute and on SIGTERM.
+`STRATUM_MAX_PLAYERS` (10), `STRATUM_PASSWORD` (the invite code needed to make an account; logging in never needs it),
+`STRATUM_RESET` (`Name1,Name2`: clears those accounts' passwords once, and each owner's next login sets a new one;
+their things are kept), `STRATUM_CREATIVE` (1), `STRATUM_VIEW` (most chunks seen each way, 10). The world saves every
+minute and on SIGTERM.
 
 **Railway:** a service from this repository built from `Server/Dockerfile` (the service's Dockerfile path), a volume
 mounted at `/data`, and a TCP proxy to port 25600. Players join at the proxy's
@@ -88,6 +96,7 @@ mounted at `/data`, and a TCP proxy to port 25600. Players join at the proxy's
 
 ### Testing two players
 
-`-mptest <folder> -connect host:port -name X -mprole host|guest`: two copies of the game join one server; the host
+`-mptest <folder> -connect host:port -name X -password P [-create] [-voicetone] -mprole host|guest`: two copies of the game join one server; the host
 builds a sunstone pillar by the spawn, the guest finds it and breaks its top block, and each takes screenshots of the
-other and logs what it saw to `smoke.txt`. `-connect host:port -name X` alone joins straight from the command line.
+other and logs what it saw to `smoke.txt` (with `-voicetone`, a made-up voice instead of the microphone, and the voice
+frames sent and heard). `-connect host:port -name X -password P [-create]` alone logs in straight from the command line.

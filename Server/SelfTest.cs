@@ -16,7 +16,7 @@ namespace Stratum.Server
         readonly NetworkStream _s;
         readonly BlockingCollection<Reader> _in = new BlockingCollection<Reader>();
         readonly List<Reader> _seen = new List<Reader>();
-        public int Id, Seed; public bool HasPos; public float X, Y, Z; public int SX, SY, SZ; public Stack[] Slots;
+        public int Id, Seed; public bool HasPos; public string Name, Token; public float X, Y, Z; public int SX, SY, SZ; public Stack[] Slots;
         public readonly Dictionary<long, byte[]> Chunks = new Dictionary<long, byte[]>();
 
         public Bot(int port)
@@ -43,8 +43,12 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
-        public void Hello(string name, string secret, int proto = Net.Protocol, string pass = "") =>
-            Send(new Packet(Net.Msg.Hello).I32(proto).Str(name).Str(secret).Str(pass).Str("selftest"));
+        public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol) =>
+            Send(new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest"));
+        public void Create(string name, string pw, string invite = "") => Hello(Accounts.Mode.Create, name, pw, invite);
+        public void Login(string name, string pw) => Hello(Accounts.Mode.Login, name, pw);
+
+        public string Refused(int ms = 5000) { var r = Wait(Net.Msg.Refuse, null, ms); return r?.Str(); }
 
         // Waits for a message of this type that `match` accepts (messages read on the way are kept).
         public Reader Wait(Net.Msg type, Func<Reader, bool> match = null, int ms = 5000)
@@ -68,6 +72,7 @@ namespace Stratum.Server
             SX = r.I32(); SY = r.I32(); SZ = r.I32();
             HasPos = r.Bool(); X = r.F32(); Y = r.F32(); Z = r.F32(); r.F32(); r.F32(); r.F32(); r.U8();
             Slots = r.Stacks();
+            Name = r.Str(); Token = r.Str();
             return true;
         }
 
@@ -107,16 +112,18 @@ namespace Stratum.Server
             {
                 var srv = new GameServer(cfg); srv.Start();
                 int port = srv.Port;
-                const string secretA = "0123456789abcdef0123456789abcdef";
+                const string pwA = "sunflower";
                 int px, py, pz; float ax, ay, az;
+                string tokenA;
 
                 using (var a = new Bot(port))
                 using (var b = new Bot(port))
                 {
-                    a.Hello("Ada", secretA);
-                    Check(a.Welcome() && a.Seed == 20261119 && !a.HasPos, "Ada joins, gets the seed and is new here");
-                    b.Hello("Bea", "fedcba9876543210fedcba9876543210");
-                    Check(b.Welcome(), "Bea joins");
+                    a.Create("Ada", pwA);
+                    Check(a.Welcome() && a.Seed == 20261119 && !a.HasPos && a.Name == "Ada" && a.Token.Length == 64, "Ada makes an account, joins, gets the seed and a remember-me token");
+                    tokenA = a.Token;
+                    b.Create("Bea", "bea-password");
+                    Check(b.Welcome(), "Bea makes an account and joins");
                     Check(a.Wait(Net.Msg.Joined, r => { r.I32(); return r.Str() == "Bea"; }) != null, "Ada hears that Bea joined");
 
                     int scx = a.SX >> 4, scz = a.SZ >> 4;
@@ -143,6 +150,22 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
+                    var tone = new float[Voice.FrameSamples];
+                    for (int i = 0; i < tone.Length; i++) tone[i] = 0.4f * (float)Math.Sin(2 * Math.PI * 440 * i / Voice.Rate);
+                    var enc = new Voice.Encoder();
+                    enc.Encode(tone);                                   // settle the coder like a running microphone would
+                    a.Send(new Packet(Net.Msg.Voice).Blob(enc.Encode(tone)));
+                    var heard = b.Wait(Net.Msg.Heard, r => r.I32() == a.Id);
+                    var back = new float[Voice.FrameSamples];
+                    bool decoded = heard != null && Voice.Decode(heard.Blob(), back);
+                    double err = 0; for (int i = 0; i < back.Length; i++) err += (back[i] - tone[i]) * (back[i] - tone[i]);
+                    double snr = decoded ? 10 * Math.Log10(back.Length * 0.08 / Math.Max(err, 1e-12)) : 0;
+                    Check(decoded && snr > 20, $"Bea hears Ada's voice ({snr:0} dB signal to noise)");
+                    for (int i = 0; i < 40; i++) a.Send(new Packet(Net.Msg.Voice).Blob(enc.Encode(tone)));
+                    Thread.Sleep(400);
+                    int got = 0; while (b.Wait(Net.Msg.Heard, null, 300) != null) got++;
+                    Check(got <= Voice.MaxFramesPerSecond && got >= 20, $"a voice flood is cut to {Voice.MaxFramesPerSecond} frames a second ({got} of 40 passed)");
+
                     ax = a.X + 1.25f; ay = a.Y; az = a.Z - 0.5f;
                     a.Move(ax, ay, az);
                     Check(b.Wait(Net.Msg.Moved, r => r.I32() == a.Id && Math.Abs(r.F32() - ax) < 0.01f) != null, "Bea sees Ada move");
@@ -150,35 +173,47 @@ namespace Stratum.Server
                     var inv = new Stack[Inventory.Size]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
                     a.Send(new Packet(Net.Msg.Keep).F32(17).U8(3).Stacks(inv));
 
-                    using (var c = new Bot(port))
-                    {
-                        c.Hello("ada", "11111111111111111111111111111111");
-                        Check(c.Wait(Net.Msg.Refuse) != null, "a second player can't take a name in use");
-                    }
-                    using (var d = new Bot(port))
-                    {
-                        d.Hello("Old", "22222222222222222222222222222222", Net.Protocol - 1);
-                        Check(d.Wait(Net.Msg.Refuse) != null, "an older game is told to update");
-                    }
+                    using (var c = new Bot(port)) { c.Create("ada", "another-pass"); Check(c.Refused()?.Contains("already an account") == true, "nobody can make a second account called ada"); }
+                    using (var c = new Bot(port)) { c.Login("Bea", "wrong-password"); Check(c.Refused() == "Wrong password.", "a wrong password is refused"); }
+                    using (var c = new Bot(port)) { c.Login("Nobody", "whatever1"); Check(c.Refused()?.Contains("no account") == true, "logging in to an account that doesn't exist is refused"); }
+                    using (var c = new Bot(port)) { c.Create("Cyd", "123"); Check(c.Refused()?.Contains("Passwords are") == true, "a too-short password is refused"); }
+                    using (var c = new Bot(port)) { c.Hello(Accounts.Mode.Token, "Ada", new string('0', 64)); Check(c.Refused() != null, "a made-up token is refused"); }
+                    using (var d = new Bot(port)) { d.Hello(Accounts.Mode.Login, "Old", "whatever1", "", Net.Protocol - 1); Check(d.Refused()?.Contains("newer") == true, "an older game is told to update"); }
                     Thread.Sleep(300);
                 }
                 Thread.Sleep(500);
                 srv.Stop();
+                Check(!File.ReadAllText(Path.Combine(dir, "accounts.json")).Contains(pwA), "accounts.json never holds a password");
 
-                // Back again: the world and Ada are as she left them.
+                // Back again, now with an invite code: the world and Ada are as she left them.
+                cfg.Password = "open sesame";
                 var srv2 = new GameServer(cfg); srv2.Start();
                 using (var a = new Bot(srv2.Port))
                 {
-                    a.Hello("Ada", secretA);
+                    a.Hello(Accounts.Mode.Token, "Ada", tokenA);
                     bool w = a.Welcome();
-                    Check(w && a.HasPos && Math.Abs(a.X - ax) < 0.01f && Math.Abs(a.Z - az) < 0.01f, "after a restart Ada is where she stood");
+                    Check(w && a.Token == "", "after a restart Ada gets in with her remember-me token (no invite needed to log in)");
+                    Check(w && a.HasPos && Math.Abs(a.X - ax) < 0.01f && Math.Abs(a.Z - az) < 0.01f, "and is where she stood");
                     Check(w && a.Slots.Length == Inventory.Size && a.Slots[0].Item == "cobble" && a.Slots[0].Count == 5 && a.Slots[3].Count == 12,
                           "and her backpack came back");
                     a.Want(new[] { (px >> 4, pz >> 4) });
                     a.Wait(Net.Msg.Chunk, null, 15000);
                     Check(a.BlockAt(px, py, pz) == Blocks.Stone, "and the stone she placed is still there");
+                    using (var b = new Bot(srv2.Port)) { b.Login("ADA", pwA); Check(b.Welcome() && b.Name == "Ada", "logging in on another computer (any capitals) works"); }
                 }
+                using (var c = new Bot(srv2.Port)) { c.Create("Cyd", "cy-password"); Check(c.Refused()?.Contains("invite code") == true, "with an invite code set, a new account needs it"); }
+                using (var c = new Bot(srv2.Port)) { c.Create("Cyd", "cy-password", "open sesame"); Check(c.Welcome(), "and the right code makes one"); }
                 srv2.Stop();
+
+                // A forgotten password: STRATUM_RESET clears it once, the next login sets a new one.
+                cfg.Reset = "Ada";
+                var srv3 = new GameServer(cfg); srv3.Start();
+                using (var a = new Bot(srv3.Port)) { a.Hello(Accounts.Mode.Token, "Ada", tokenA); Check(a.Refused() != null, "after a reset the old token no longer works"); }
+                using (var a = new Bot(srv3.Port)) { a.Login("Ada", "new-password"); Check(a.Welcome() && a.Slots[3].Count == 12, "Ada sets a new password by logging in, and keeps her things"); }
+                srv3.Stop();
+                var srv4 = new GameServer(cfg); srv4.Start();
+                using (var a = new Bot(srv4.Port)) { a.Login("Ada", "someone-else"); Check(a.Refused() == "Wrong password.", "the same reset isn't applied twice"); }
+                srv4.Stop();
             }
             catch (Exception e) { Check(false, "threw " + e); }
             finally { try { Directory.Delete(dir, true); } catch { } }
