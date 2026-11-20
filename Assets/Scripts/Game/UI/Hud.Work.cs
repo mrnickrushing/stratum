@@ -113,6 +113,7 @@ namespace Stratum.Game
         {
             if (!_cursor.Empty && !P.Creative) yield return _cursor;
             foreach (var s in _work) if (!s.Empty) yield return s;
+            foreach (var s in _grid) if (!s.Empty) yield return s;
         }
 
         int Put(Stack s)

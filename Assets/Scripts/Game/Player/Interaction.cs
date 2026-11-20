@@ -446,7 +446,7 @@ namespace Stratum.Game
             if (!sneak)
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
-                if (tdef.BaseId == Blocks.Furnace) { OpenStation?.Invoke("furnace"); return; }
+                if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }
                 if (tdef.BaseId == Blocks.Chest) { OpenBox?.Invoke(Target); return; }

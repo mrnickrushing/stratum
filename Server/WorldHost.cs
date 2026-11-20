@@ -52,6 +52,7 @@ namespace Stratum.Server
         readonly MobSim _mobs;
         readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
         readonly Containers _boxes = new Containers();
+        Furnaces _furnaces;
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
         readonly List<(float, float)> _near = new List<(float, float)>();
@@ -77,6 +78,16 @@ namespace Stratum.Server
             World.Changed += (x, y, z, id) => Broadcast(BlockPacket(x, y, z, id, 0));
             try { _boxes.Load(BoxFile); }
             catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
+            _furnaces = new Furnaces(_boxes);
+            _furnaces.WakeSaved();
+            // Whoever has the furnace open watches it work.
+            _furnaces.Changed = (x, y, z, slot, st) =>
+            {
+                byte[] f = null;
+                foreach (var o in _players.Values)
+                    if (o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
+                        o.Conn.Send(f ??= new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes());
+            };
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
             _mobs.VillageNear = (x, z) => World.Gen.Villages.Near(x, z, 96);
@@ -161,6 +172,7 @@ namespace Stratum.Server
 
                     World.Water.Tick(dt);
                     _weather.Tick(dt);
+                    _furnaces.Tick(dt);
                     _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
                     World.Growth.Tick(dt, _near);
                     _bodies.Clear();
@@ -407,7 +419,7 @@ namespace Stratum.Server
             World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
-                foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
+                foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty && !Smelting.Hidden(st.Item)) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
         }
 
         void Chat(Player p, Reader r)
@@ -536,7 +548,10 @@ namespace Stratum.Server
             if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
             if (!Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
+            bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
+            if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;              // the fire and the progress are the furnace's own
             _boxes.Set(x, y, z, slot, st);
+            if (furnace) _furnaces.Wake(x, y, z);
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
             foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
         }

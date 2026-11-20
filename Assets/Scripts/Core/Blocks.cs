@@ -216,6 +216,7 @@ namespace Stratum.Core
             {
                 b = Add(f == 0 ? "furnace" : "furnace_" + f, "Furnace", Tex.FurnaceTop, Tex.FurnaceSide, Tex.FurnaceTop);
                 b.Front = Tex.FurnaceFront; b.HasFront = true; b.Facing = f; b.Hardness = 3; b.Tool = Tool.Pickaxe; b.TierNeeded = 1;
+                b.Container = true;          // what's smelting, the fuel and what's done (Smelting)
                 if (f == 0) first = b.Id; else { b.Creative = false; Palette.Remove(b.Id); b.DropItem = "furnace"; }
                 b.BaseId = first;
             }
