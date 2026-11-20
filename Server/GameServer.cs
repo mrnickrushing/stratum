@@ -288,7 +288,7 @@ namespace Stratum.Server
         void Hello(Player p, Reader r)
         {
             int proto = r.I32();
-            if (proto != Net.Protocol) { Refuse(p, proto < Net.Protocol ? "This server needs a newer Stratum. Download the latest version." : "This server runs an older Stratum."); return; }
+            if (proto != Net.Protocol) { Refuse(p, proto < Net.Protocol ? "This server needs a newer Stratum. Get it at stratum.rushingtechnologies.com" : "This server runs an older Stratum."); return; }
             if (p.Checking) return;                        // already checking this connection's login
             var mode = (Accounts.Mode)r.U8();
             string name = r.Str().Trim(), secret = r.Str(), invite = r.Str(), version = r.Str();
