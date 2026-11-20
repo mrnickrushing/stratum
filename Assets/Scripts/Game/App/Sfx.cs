@@ -88,6 +88,7 @@ namespace Stratum.Game
             _cave = Loop(CaveDrone(), 0.0f);
             _rain = Loop(RainNoise(), 0.0f);
             _clips["thunder"] = Thunder();
+            _clips["portal"] = PortalHum();
             _music = gameObject.AddComponent<AudioSource>(); _music.playOnAwake = false;
         }
 
@@ -339,6 +340,24 @@ namespace Stratum.Game
         }
 
         // Thunder: a crack, then a long low roll.
+        // A portal: a deep wavering drone under a rising, shimmering whoosh.
+        AudioClip PortalHum()
+        {
+            int n = (int)(Rate * 2.4f);
+            var d = new float[n];
+            var rng = new System.Random(31);
+            var f = new Svf();
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)Rate, k = t / 2.4f;
+                float env = Mathf.Sin(Mathf.PI * k) * (1 - k * 0.3f);
+                float drone = Mathf.Sin(2 * Mathf.PI * (55 + 6 * Mathf.Sin(t * 3.1f)) * t) * 0.5f + Mathf.Sin(2 * Mathf.PI * 82.5f * t + Mathf.Sin(t * 7) * 2) * 0.3f;
+                f.Step((float)rng.NextDouble() * 2 - 1, 300 + 2600 * k * k, 4);
+                d[i] = (drone * 0.55f + f.Band * 0.6f) * env * 0.6f;
+            }
+            return Make("portal", d);
+        }
+
         AudioClip Thunder()
         {
             int n = Rate * 5; var d = new float[n]; var f = new Svf(); var g = new Svf();

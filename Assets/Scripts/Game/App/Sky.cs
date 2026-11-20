@@ -20,11 +20,13 @@ namespace Stratum.Game
         ColorAdjustments _grade;
         public float ViewDistanceMeters = 160;
         public bool Underwater;
+        public bool Deep;                       // in the Ember Deep: no sun or weather, a red haze, the rock glowing faintly
         public int Day = 1;
         public int Weather;                     // WeatherSim state
         public float Rain { get; private set; } // 0..1, eased toward the weather
         public float Flash;                     // lightning: 1 at the strike, fading
 
+        static readonly int CaveGlow = Shader.PropertyToID("_CaveGlow");
         static readonly int SkyAmbient = Shader.PropertyToID("_SkyAmbient"), TorchColor = Shader.PropertyToID("_TorchColor"),
             SkyZenith = Shader.PropertyToID("_SkyZenith"), SkyHorizon = Shader.PropertyToID("_SkyHorizon"),
             SunGlow = Shader.PropertyToID("_SunGlow"), SunDir = Shader.PropertyToID("_SunDir"), Night = Shader.PropertyToID("_Night"),
@@ -123,7 +125,7 @@ namespace Stratum.Game
 
         void Update()
         {
-            float wantRain = Weather == 0 ? 0 : Weather == 2 ? 1 : 0.75f;
+            float wantRain = Weather == 0 || Deep ? 0 : Weather == 2 ? 1 : 0.75f;
             Rain = Mathf.MoveTowards(Rain, wantRain, UnityEngine.Time.deltaTime / 12f);
             Flash = Mathf.Max(0, Flash - UnityEngine.Time.deltaTime * 3.5f);
             if (!Frozen)
@@ -201,6 +203,21 @@ namespace Stratum.Game
                 RenderSettings.fogEndDistance = end * Mathf.Lerp(1, 0.75f, overcast);
             }
             if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f - overcast * (Weather == 2 ? 0.75f : 0.5f) + Flash * 0.8f;
+            Shader.SetGlobalColor(CaveGlow, Deep ? new Color(0.46f, 0.20f, 0.11f) : Color.black);
+            if (Deep)
+            {
+                var haze = new Color(0.20f, 0.06f, 0.035f);
+                Shader.SetGlobalColor(SkyZenith, haze * 0.6f); Shader.SetGlobalColor(SkyHorizon, haze);
+                Shader.SetGlobalColor(SunGlow, Color.black); Shader.SetGlobalFloat(Night, 0);
+                Sun.intensity = 0;
+                RenderSettings.fogColor = haze;
+                RenderSettings.fogStartDistance = 8; RenderSettings.fogEndDistance = Mathf.Min(90, Mathf.Max(40, ViewDistanceMeters - 24));
+                if (_grade != null) _grade.postExposure.value = 0.35f;
+                if (_cloudPlane != null) _cloudPlane.gameObject.SetActive(false);
+                var c0 = Camera.main; if (c0 != null) c0.backgroundColor = haze;
+                return;
+            }
+            if (_cloudPlane != null && !_cloudPlane.gameObject.activeSelf) _cloudPlane.gameObject.SetActive(true);
 
             var cam = Camera.main;
             if (cam != null && _cloudPlane != null)

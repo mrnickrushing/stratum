@@ -336,6 +336,9 @@ namespace Stratum.Game
                 case Net.Msg.Mobs:
                     (_link as RemoteLink)?.Received(r);
                     break;
+                case Net.Msg.Arrived:
+                    Land(new Vector3(r.F32(), r.F32() + 0.01f, r.F32()));
+                    break;
                 case Net.Msg.Mounted:
                 {
                     var k = (MobKind)r.U8(); var at = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32();

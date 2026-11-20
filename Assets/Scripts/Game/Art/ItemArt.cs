@@ -225,6 +225,17 @@ namespace Stratum.Game
                     });
                     c.Poly(new[] { new Vector2(46, 52), new Vector2(52, 42), new Vector2(40, 42) }, (x, y) => Hex(0xffffff));
                     break;
+                case "flint":
+                    c.Poly(new[] { new Vector2(30, 20), new Vector2(66, 16), new Vector2(76, 46), new Vector2(58, 78), new Vector2(26, 62) },
+                        (x, y) => Color.Lerp(Hex(0x2a2a30), Hex(0x6a6a74), Mathf.Clamp01((y - 16) / 70f + (x - 30) / 120f)));
+                    c.Line(new Vector2(40, 30), new Vector2(60, 64), 2, (t, ss) => Hex(0x8a8a96));
+                    break;
+                case "fire_striker":
+                    // A C-shaped steel striker and a chip of flint.
+                    for (float a2 = 0.6f; a2 < 5.7f; a2 += 0.05f) c.Disc(new Vector2(42 + Mathf.Cos(a2) * 22, 52 + Mathf.Sin(a2) * 22), 5, (x, y) => Color.Lerp(Hex(0x6a6e76), Hex(0xc4c8d0), (y - 30) / 44f));
+                    c.Poly(new[] { new Vector2(60, 28), new Vector2(84, 20), new Vector2(88, 44), new Vector2(70, 52) }, (x, y) => Color.Lerp(Hex(0x2a2a30), Hex(0x5a5a64), (y - 20) / 32f));
+                    c.Disc(new Vector2(64, 60), 4, (x, y) => Hex(0xffb040)); c.Disc(new Vector2(70, 68), 2.5f, (x, y) => Hex(0xffe08a));
+                    break;
                 case "spark":
                 {
                     // A little heap of glittering red dust.

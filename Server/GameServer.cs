@@ -92,6 +92,7 @@ namespace Stratum.Server
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
             _mobs.VillageNear = (x, z) => World.Gen.Villages.Near(x, z, 96);
+            _mobs.Seed = World.Meta.seed;
             _weather = new WeatherSim(World.Meta.seed ^ Environment.TickCount);
             _weather.Set(World.Meta.weather, World.Meta.weatherLeft);
             _weather.Changed += s => { _mobs.Weather = s; Broadcast(ClockPacket()); Broadcast(SaidPacket("", s == 0 ? "The weather clears." : s == 2 ? "A thunderstorm rolls in." : "It starts to rain.")); };
@@ -271,6 +272,7 @@ namespace Stratum.Server
                     case Net.Msg.Fertilize: Fertilize(p, r); break;
                     case Net.Msg.Mount: Mount(p, r); break;
                     case Net.Msg.Park: Park(p, r); break;
+                    case Net.Msg.Portal: Portal(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
             }
@@ -606,6 +608,20 @@ namespace Stratum.Server
             float dx = x - p.X, dy = y - p.Y, dz = z - p.Z;
             if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
             _mobs.Park(k, x, y, z, yaw);
+        }
+
+        // Through a portal: the player has arrived near (tx, tz) and waited for the land there; find the portal
+        // on this side or build one (too many blocks to send as edits), and tell them where to stand.
+        void Portal(Player p, Reader r)
+        {
+            int tx = r.I32(), tz = r.I32(); bool toEmber = r.Bool(); int surface = r.I32();
+            if (!p.Alive || Math.Abs(tx - p.X) > 64 || Math.Abs(tz - p.Z) > 64) return;
+            if (toEmber != Ember.In(tx)) return;
+            for (int dz = -48; dz <= 48; dz += 16) for (int dx = -48; dx <= 48; dx += 16) if (!World.IsLoaded(tx + dx, tz + dz)) { World.Want((tx + dx) >> 4, (tz + dz) >> 4); }
+            if (!World.IsLoaded(tx, tz)) return;
+            surface = Math.Clamp(surface, 1, Chunk.Height - 8);
+            var (x, y, z) = Ember.Arrive(World.Get, World.Put, tx, tz, toEmber, surface);
+            p.Conn.Send(new Packet(Net.Msg.Arrived).F32(x).F32(y).F32(z));
         }
 
         void Fertilize(Player p, Reader r)

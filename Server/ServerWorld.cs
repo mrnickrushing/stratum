@@ -34,6 +34,9 @@ namespace Stratum.Server
         public readonly Growth Growth;
         public readonly Signal Signal;
 
+        // A change the server makes itself, told to everyone (through Changed).
+        public void Put(int x, int y, int z, byte id) { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); Signal.Wake(x, y, z); } }
+
         readonly Dictionary<long, Chunk> _chunks = new Dictionary<long, Chunk>();
         readonly Dictionary<long, byte[]> _packed = new Dictionary<long, byte[]>();    // compressed copies to send
         readonly HashSet<long> _dirty = new HashSet<long>();

@@ -104,6 +104,36 @@ namespace Stratum.Server
     public static class SelfTest
     {
         static int _fails;
+        // The Ember Deep: its land, lighting a frame, breaking it, and coming out by a portal on the far side.
+        static void EmberChecks()
+        {
+            var gen = new WorldGen(31337);
+            var ch = new Chunk(Ember.Mid / 16, 0); gen.Generate(ch);
+            int lava = 0, rock = 0, roof = 0;
+            for (int i = 0; i < ch.Blocks.Length; i++) { byte id = ch.Blocks[i]; if (id == Blocks.Lava) lava++; else if (id == Blocks.Cinderstone) rock++; if (id == Blocks.Bedrock && i >> 8 >= Ember.Roof) roof++; }
+            Check(ch.Ready && rock > 1000 && roof >= 256, "the Ember Deep is cinderstone under a bedrock roof");
+            Check(Ember.ToOverworld(Ember.ToEmber(800, -400).x, Ember.ToEmber(800, -400).z) == (800f, -400f), "a step in the Deep is eight on the surface, both ways");
+
+            var w = new Dictionary<(int, int, int), byte>();
+            byte Get(int x, int y, int z) => w.TryGetValue((x, y, z), out var b) ? b : (byte)0;
+            void Set(int x, int y, int z, byte b) { if (b == 0) w.Remove((x, y, z)); else w[(x, y, z)] = b; }
+            for (int x = 0; x < 4; x++) { Set(x, 0, 0, Blocks.Obsidian); Set(x, 4, 0, Blocks.Obsidian); }
+            for (int y = 1; y < 4; y++) { Set(0, y, 0, Blocks.Obsidian); Set(3, y, 0, Blocks.Obsidian); }
+            Check(!Ember.Light(Get, Set, 1, 1, 1), "a striker beside the frame (not in it) lights nothing");
+            Check(Ember.Light(Get, Set, 1, 1, 0) && Ember.IsPortal(Get(2, 3, 0)) && w.Count == 14 + 6, "a 4x5 obsidian frame lights");
+            Set(3, 2, 0, 0); Ember.Collapse(Get, Set, 3, 2, 0);
+            Check(!Ember.IsPortal(Get(1, 1, 0)) && !Ember.IsPortal(Get(2, 3, 0)), "breaking the frame puts the portal out");
+            Set(3, 2, 0, Blocks.Obsidian); Set(1, 2, 0, Blocks.Stone);
+            Check(!Ember.Light(Get, Set, 1, 1, 0), "a frame with something in it won't light");
+            Set(1, 2, 0, 0); Ember.Light(Get, Set, 1, 1, 0);
+            int had = w.Count;
+            var (sx, sy, sz) = Ember.Arrive(Get, Set, 6, 3, false, 0);
+            Check(w.Count == had && sx > 0 && sx < 3 && sy == 1 && Math.Abs(sz) <= 1.5f, "coming through, a nearby portal is used rather than a new one built");
+            int before = w.Count;
+            var (ax, ay, az) = Ember.Arrive(Get, Set, 300, 300, false, 70);
+            Check(w.Count > before && Ember.IsPortal(Get(301, 71, 300)) && ay == 71, "with none near, a new frame is built and lit");
+        }
+
         static void Check(bool ok, string what) { Console.WriteLine((ok ? "PASS " : "FAIL ") + what); if (!ok) _fails++; }
 
         public static int Run()
@@ -237,6 +267,7 @@ namespace Stratum.Server
                 var srv4 = new GameServer(cfg); srv4.Start();
                 using (var a = new Bot(srv4.Port)) { a.Login("Ada", "someone-else"); Check(a.Refused() == "Wrong password.", "the same reset isn't applied twice"); }
                 srv4.Stop();
+                EmberChecks();
             }
             catch (Exception e) { Check(false, "threw " + e); }
             finally { try { Directory.Delete(dir, true); } catch { } }

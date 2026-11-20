@@ -196,6 +196,7 @@ namespace Stratum.Core
             {
                 m.Health = 0; m.Dead = m.Def.Vehicle ? 0.05f : 1f;
                 Sound?.Invoke(m, "die");
+                if (m.Kind == MobKind.Colossus) _bossBack[((int)m.HomeX, (int)m.HomeZ)] = _clock + 1200;
                 Died?.Invoke(m, player);
             }
             else Sound?.Invoke(m, "hurt");
@@ -291,6 +292,7 @@ namespace Stratum.Core
         {
             if (dt <= 0) return;
             if (dt > 0.1f) dt = 0.1f;
+            _clock += dt;
             for (int i = All.Count - 1; i >= 0; i--)
             {
                 var m = All[i];
@@ -323,10 +325,10 @@ namespace Stratum.Core
                 Hazards(m, dt);
                 if (Despawn(m, players)) Remove(m);
             }
-            if (VillageNear != null && Dimension == "" && (_villageTimer -= dt) <= 0)
+            if (VillageNear != null && (_villageTimer -= dt) <= 0)
             {
                 _villageTimer = 5;
-                foreach (var p in players) Villagers(p);
+                foreach (var p in players) if (Ember.In(p.X)) Keeper(p); else Villagers(p);
             }
             if (Spawning && players.Count > 0 && (_spawnTimer -= dt) <= 0)
             {
@@ -436,7 +438,7 @@ namespace Stratum.Core
             float far = m.Def.Hostile ? 72 : 110;
             if (best > far * far) return true;
             // Night creatures far from anyone drift away by day.
-            if (m.Def.Hostile && Dimension == "" && IsDay && best > 32 * 32 && m.Age > 30 && Rand() < 0.002f) return true;
+            if (m.Def.Hostile && !Ember.In(m.X) && IsDay && best > 32 * 32 && m.Age > 30 && Rand() < 0.002f) return true;
             return Difficulty == 0 && m.Def.Hostile;
         }
 
@@ -456,7 +458,7 @@ namespace Stratum.Core
                 {
                     if (!p.Alive || p.Creative) continue;
                     float sight = d.Sight * (p.Sneaking ? 0.5f : 1) * (m.Angry || m.Target == p.Id ? 1.6f : 1);
-                    if (m.Kind == MobKind.Crawler && IsDay && Dimension == "" && !m.Angry) sight = 0;   // drowsy by day
+                    if (m.Kind == MobKind.Crawler && IsDay && !Ember.In(m.X) && !m.Angry) sight = 0;   // drowsy by day
                     float dd = Dist2(m, p);
                     if (dd < sight * sight && dd < best && (m.Target == p.Id || See(m, p))) { best = dd; target = p; }
                 }
@@ -657,7 +659,7 @@ namespace Stratum.Core
             var d = m.Def;
             // The undead burn in sunshine (but not in water or under cover).
             bool burning = false;
-            if (d.Burns && Dimension == "" && IsDay && Weather == 0 && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
+            if (d.Burns && !Ember.In(m.X) && IsDay && Weather == 0 && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
             if (m.InLava && !d.Fireproof) burning = true;
             if (burning) m.Burn = 1.5f; else m.Burn = Math.Max(0, m.Burn - dt);
             if (m.Burn > 0 && !d.Fireproof && m.Hurt <= 0) Hurt(m, m.InLava ? 4 : 1, m.X + 0.01f, m.Z, 0, 0.1f);
@@ -733,7 +735,7 @@ namespace Stratum.Core
                 if (m.Def.Hostile) hostile++; else passive++;
             }
             int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : HostileCap;
-            if (Dimension == "ember") { if (hostile < hostileCap) TrySpawnEmber(p, players); return; }
+            if (Ember.In(p.X)) { if (hostile < hostileCap) TrySpawnEmber(p, players); return; }
             if (passive < PassiveCap && Rand() < 0.35f) TrySpawnAnimals(p, players);
             if (hostile < hostileCap) TrySpawnMonster(p, players);
         }
@@ -779,6 +781,25 @@ namespace Stratum.Core
                 if (m.Job >= Trades.Jobs.Length) m.Job = 0;
                 return;
             }
+        }
+
+        // The Cinder Colossus guards each keep in the Deep; once beaten, it's twenty minutes before another comes.
+        public int Seed;
+        float _clock;
+        readonly Dictionary<(int, int), float> _bossBack = new Dictionary<(int, int), float>();
+
+        void Keeper(in Seen p)
+        {
+            if (Difficulty == 0) return;
+            var k = Ember.KeepNear(p.X, p.Z, 48, Seed);
+            if (k == null) return;
+            var (kx, ky, kz) = k.Value;
+            if (!Loaded(kx, kz)) return;
+            foreach (var m in All) if (m.Kind == MobKind.Colossus && m.Dead <= 0 && Math.Abs(m.X - kx) < 90 && Math.Abs(m.Z - kz) < 90) return;
+            if (_bossBack.TryGetValue((kx, kz), out float back) && back > _clock) return;
+            var boss = Spawn(MobKind.Colossus, kx + 0.5f, ky, kz + 0.5f);
+            boss.HomeX = kx; boss.HomeZ = kz;
+            Sound?.Invoke(boss, "say");
         }
 
         void TrySpawnAnimals(in Seen p, List<Seen> players)

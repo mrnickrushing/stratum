@@ -24,7 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
-        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail, SparkOre, WireOff, WireOn, Lever, SparkTorchOn, SparkTorchOff, LampOff, LampOn, RepeaterOff, RepeaterOn,
+        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail, SparkOre, WireOff, WireOn, Lever, SparkTorchOn, SparkTorchOff, LampOff, LampOn, RepeaterOff, RepeaterOn, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
@@ -107,7 +107,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater,
+            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -169,7 +169,7 @@ namespace Stratum.Core
             b = Add("grass", "Grass", Tex.GrassTop, Tex.GrassSide, Tex.Dirt); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Grass; b.DropItem = "dirt"; Grass = b.Id;
             b = Add("snowy_grass", "Snowy Grass", Tex.Snow, Tex.SnowSide, Tex.Dirt); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; b.DropItem = "dirt"; SnowyGrass = b.Id;
             b = Add("sand", "Sand", Tex.Sand); b.Hardness = 0.5f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; Sand = b.Id;
-            b = Add("gravel", "Gravel", Tex.Gravel); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; Gravel = b.Id;
+            b = Add("gravel", "Gravel", Tex.Gravel); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; b.Bonus = "flint"; b.BonusChance = 0.1f; Gravel = b.Id;
             b = Add("sandstone", "Sandstone", Tex.SandstoneTop, Tex.SandstoneSide, Tex.SandstoneTop); b.Hardness = 0.8f; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; Sandstone = b.Id;
             b = Add("snow", "Snow", Tex.Snow); b.Hardness = 0.3f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; Snow = b.Id;
             b = Add("ice", "Ice", Tex.Ice); b.Hardness = 0.5f; b.Tool = Tool.Pickaxe; b.Opaque = false; b.Opacity = 2; b.Sound = Sound.Glass; b.DropItem = ""; Ice = b.Id;
@@ -454,6 +454,19 @@ namespace Stratum.Core
                 d.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16), Box.Px(7, 2, 3, 9, 6, 5), Box.Px(7, 2, 9, 9, 6, 11) };
                 if ((i & 1) == 1) d.Emit = 4;
             }, i => i / 2);
+
+            // ---------------------------------------------------------------- 0.2: the Ember Deep
+            Portal = Facings("ember_portal", "Ember Portal", 2, (d, i) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Emit = 11; d.Hardness = 0; d.Sound = Sound.Glass;
+                d.Top = d.Side = d.Bottom = Tex.Portal; d.Creative = false; d.DropItem = ""; d.FlatIcon = true;
+                d.Boxes = new[] { Box.Px(0, 0, 6, 16, 16, 10) };
+            });
+            Palette.Remove(Portal); Defs[Portal].DropItem = "";
+            b = Rock("cinderstone", "Cinderstone", Tex.Cinderstone, 0.5f, 1); Cinderstone = b.Id;
+            b = Add("ash", "Ash", Tex.Ash); b.Hardness = 0.5f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; Ash = b.Id;
+            b = Rock("cinder_bricks", "Cinder Bricks", Tex.CinderBricks, 2, 1); CinderBricks = b.Id;
+            b = Rock("ember_ore", "Ember Ore", Tex.EmberOre, 3, 1); b.DropItem = "ember"; b.DropCount = 2; b.Emit = 5; EmberOre = b.Id;
 
             // ---------------------------------------------------------------- 0.2: enchanting
             b = Add("enchanting_table", "Enchanting Table", Tex.EnchantTop, Tex.EnchantSide, Tex.Obsidian);

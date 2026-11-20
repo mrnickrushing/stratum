@@ -20,7 +20,8 @@ Shader "Stratum/Block"
         CBUFFER_START(UnityPerMaterial)
             float4 _LightOverride;
         CBUFFER_END
-        float4 _SkyAmbient;     // rgb ambient from the sky at full sky light
+        float4 _SkyAmbient;
+        float4 _CaveGlow;       // a faint glow everywhere (the Ember Deep's burning rock)     // rgb ambient from the sky at full sky light
         float4 _TorchColor;
         float _Wind;
 
@@ -121,7 +122,7 @@ Shader "Stratum/Block"
                 float faceShade = plant ? 0.85 : (n.y > 0.5 ? 1.0 : (n.y < -0.5 ? 0.55 : (abs(n.x) > 0.5 ? 0.82 : 0.72)));
                 float aoF = lerp(0.38, 1.0, ao);
 
-                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + float3(0.026, 0.030, 0.038) * faceShade;
+                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + float3(0.026, 0.030, 0.038) * faceShade + _CaveGlow.rgb * faceShade;
 
                 float4 shadowCoord = TransformWorldToShadowCoord(i.positionWS);
                 Light sun = GetMainLight(shadowCoord);

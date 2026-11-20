@@ -127,6 +127,8 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
             Add(new ItemDef { Id = "spark", Name = "Spark Dust", Block = Blocks.SparkWire });
+            Add(new ItemDef { Id = "flint", Name = "Flint" });
+            Add(new ItemDef { Id = "fire_striker", Name = "Fire Striker", MaxStack = 1, Durability = 64 });
             Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
             Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
@@ -204,6 +206,8 @@ namespace Stratum.Core
             R("rail", 16, "workbench", ("iron_ingot", 6), ("stick", 1));
             R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("spark", 1));
             R("spark_torch", 1, null, ("spark", 1), ("stick", 1));
+            R("fire_striker", 1, null, ("iron_ingot", 1), ("flint", 1));
+            R("cinder_bricks", 1, "furnace", ("cinderstone", 2));
             R("lever", 1, null, ("cobble", 1), ("stick", 1));
             R("button", 1, null, ("stone", 1));
             R("pressure_plate", 1, "workbench", ("stone", 2));
@@ -448,7 +452,7 @@ namespace Stratum.Core
         }
 
         public static int XpFor(BlockDef b, Random r) =>
-            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : 0;
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
 
         public static (string item, int count) Drop(BlockDef b)
         {

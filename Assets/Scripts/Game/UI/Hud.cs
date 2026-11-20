@@ -60,6 +60,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
 
             _water = UIKit.Panel(_root, "Underwater", new Color(0.05f, 0.25f, 0.45f, 0.35f), UIKit.White); _water.rectTransform.Fill(); _water.raycastTarget = false;
+            _portal = UIKit.Panel(_root, "Portal", new Color(1f, 0.38f, 0.12f, 0), UIKit.White); _portal.rectTransform.Fill(); _portal.raycastTarget = false;
             _hurt = UIKit.Panel(_root, "Hurt", new Color(0.7f, 0.05f, 0.02f, 0), UIKit.White); _hurt.rectTransform.Fill(); _hurt.raycastTarget = false;
 
             // Crosshair
@@ -161,6 +162,16 @@ namespace Stratum.Game
             _sleeping = on; _sleepLine = line;
         }
 
+        Image _portal;
+        // The swirl of a portal taking hold (0 none, 1 about to go).
+        public void PortalGlow(float k)
+        {
+            if (_portal == null) return;
+            k = Mathf.Clamp01(k);
+            _portal.color = new Color(1f, 0.38f + Mathf.Sin(Time.time * 5) * 0.06f, 0.12f, k * k * 0.75f);
+            _portal.gameObject.SetActive(k > 0.001f);
+        }
+
         public void Toast(string s) { if (_toasts.Count < 4 && !_toasts.Contains(s)) _toasts.Enqueue(s); }
 
         void Update()
@@ -168,7 +179,7 @@ namespace Stratum.Game
             float dt = Time.unscaledDeltaTime;
             _root.gameObject.SetActive(true);
             bool show = !Hidden && !InventoryOpen;
-            foreach (Transform t in _root) if (t.gameObject != _inv && t.gameObject != _signPanel && !Held(t)) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform || t == _sleep.transform);
+            foreach (Transform t in _root) if (t.gameObject != _inv && t.gameObject != _signPanel && !Held(t)) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform || t == _sleep.transform || t == _portal.transform);
             UpdateHeld(dt, Enchants.BaseOf(P.Inv.Held.Item), show);
 
             // Hotbar

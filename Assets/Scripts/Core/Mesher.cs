@@ -72,7 +72,8 @@ namespace Stratum.Core
                     if (t == Tex.GrassSide) fl |= Flag.TintMask;
                     if (d.Cutout) fl |= Flag.Clip;
                     if (d.Sway) fl |= Flag.Sway;
-                    if (t == Tex.Sunstone || t == Tex.Torch || t == Tex.Lava || t == Tex.LampOn || t == Tex.SparkTorchOn) fl |= Flag.Glow;
+                    if (t == Tex.Sunstone || t == Tex.Torch || t == Tex.Lava || t == Tex.LampOn || t == Tex.SparkTorchOn || t == Tex.Portal) fl |= Flag.Glow;
+                    if (t == Tex.EmberOre) fl |= Flag.GlowMask;
                     if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) fl |= Flag.GlowMask;
                     FlagsOf[i * 6 + f] = fl;
                 }

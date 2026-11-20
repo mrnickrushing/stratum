@@ -91,6 +91,7 @@ namespace Stratum.Core
 
         public void Generate(Chunk ch)
         {
+            if (Ember.InChunk(ch.X)) { Ember.Generate(ch, _cave1, _cave2, Seed); ch.RecalcMaxY(); ch.Ready = true; return; }
             var cols = _cols ??= new Column[W * W];
             int bx = ch.X * Chunk.Size, bz = ch.Z * Chunk.Size;
             for (int z = 0; z < W; z++)

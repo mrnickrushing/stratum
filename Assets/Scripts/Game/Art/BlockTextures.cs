@@ -124,6 +124,11 @@ namespace Stratum.Game
                 case Tex.IronBars: Bars(p); return 2f;
                 case Tex.EnchantTop: EnchantTop(p); return 3f;
                 case Tex.SparkOre: Ore(p, Hex(0xff3a2a), Hex(0x9a1208), false); return 4f;
+                case Tex.Cinderstone: Rock(p, Hex(0x7a2e26), Hex(0x4e1a16), 0.25f, true); return 3f;
+                case Tex.Ash: Sand(p, Hex(0x5a4e48), Hex(0x3e3430)); return 1.5f;
+                case Tex.CinderBricks: Bricks(p, 4, 2, Hex(0x4a1c1a), Hex(0x221010), 2); return 5f;
+                case Tex.EmberOre: EmberOreTex(p); return 4f;
+                case Tex.Portal: PortalTex(p); return 0.5f;
                 case Tex.WireOff: Dust(p, Hex(0x6a0e0a), Hex(0x3a0604)); return 0.5f;
                 case Tex.WireOn: Dust(p, Hex(0xff3a1a), Hex(0xb81208)); return 0.5f;
                 case Tex.Lever: LeverTex(p); return 2f;
@@ -597,6 +602,38 @@ namespace Stratum.Game
                     float edge = rail ? Mathf.Min(x - (x < 32 ? 6 : 50), (x < 32 ? 13 : 57) - x) : Mathf.Min(y % 16 - 5, 9 - y % 16);
                     Color c = Paint.Mul(wood, (0.75f + grain * 0.3f) * (edge < 1 ? 0.7f : 1)); c.a = 1;
                     p.Set(x, y, c, rail ? 0.9f : 0.7f);
+                }
+        }
+
+        // Cinderstone shot through with glowing ember flecks.
+        static void EmberOreTex(Paint p)
+        {
+            Rock(p, Hex(0x7a2e26), Hex(0x4e1a16), 0.25f, false);
+            for (int k = 0; k < 9; k++)
+            {
+                float cx = p.Hash(k, 1) * 56 + 4, cy = p.Hash(k, 2) * 56 + 4, r = 2.5f + p.Hash(k, 3) * 3.5f;
+                for (int y = 0; y < 64; y++)
+                    for (int x = 0; x < 64; x++)
+                    {
+                        float d = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / r;
+                        if (d > 1) continue;
+                        Color c = Color.Lerp(Hex(0xffe08a), Hex(0xff5a14), d); c.a = 1;
+                        p.Set(x, y, c, 0.8f - d * 0.3f);
+                    }
+            }
+        }
+
+        // The inside of a portal: a slow swirl of ember orange and deep violet.
+        static void PortalTex(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float dx = x - 31.5f, dy = y - 31.5f, r = Mathf.Sqrt(dx * dx + dy * dy) / 32f, a = Mathf.Atan2(dy, dx);
+                    float swirl = Mathf.Sin(a * 3 + r * 9 + p.Fbm(x, y, 6, 2) * 4) * 0.5f + 0.5f;
+                    Color c = Color.Lerp(Hex(0x3a0a4a), Hex(0xff6a1a), swirl * 0.8f + p.Fbm(x + 9, y, 8, 2) * 0.3f);
+                    c = Color.Lerp(c, Hex(0xffd08a), Mathf.Pow(swirl, 6) * 0.6f); c.a = 1;
+                    p.Set(x, y, c, 0.2f);
                 }
         }
 

@@ -334,6 +334,7 @@ namespace Stratum.Game
             Sfx.I.Depth = depth;
             if (_meta != null) _meta.minutesPlayed += Time.unscaledDeltaTime / 60.0;
             TickSurvival(kb);
+            TickPortal(Time.deltaTime);
             if (_player.Asleep) return;
 
             // Writing on a sign.

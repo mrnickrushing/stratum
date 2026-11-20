@@ -401,6 +401,7 @@ namespace Stratum.Game
                 var other = def.Variant == 0 ? p + Dir4[def.Facing] : p - Dir4[def.Facing];
                 if (Blocks.Get(World.Get(other.x, other.y, other.z)).BaseId == Blocks.Bed) World.Set(other.x, other.y, other.z, 0);
             }
+            if (id == Blocks.Obsidian || Ember.IsPortal(id)) Ember.Collapse(World.Get, (x, y, z, b) => World.Set(x, y, z, b), p.x, p.y, p.z);
             Sfx.I?.Block("break", id, 0.9f);
             Burst(p, def);
             _swing = 0;
@@ -468,6 +469,18 @@ namespace Stratum.Game
                     if (!P.Creative) P.Inv.WearHeld();
                     _swing = 0;
                 }
+                return;
+            }
+            if (item.Id == "fire_striker")
+            {
+                var spot = Target + TargetNormal;
+                if (target == Blocks.Obsidian && Ember.Light(World.Get, (x, y, z, b) => World.Set(x, y, z, b), spot.x, spot.y, spot.z))
+                {
+                    Sfx.I?.Play("portal", 0.7f, 1.2f);
+                    if (!P.Creative) P.Inv.WearHeld();
+                }
+                else Sfx.I?.Play("swish", 0.3f, 1.6f);
+                _swing = 0;
                 return;
             }
             if (item.Id == "bone_meal")

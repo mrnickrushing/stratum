@@ -36,6 +36,7 @@ Shader "Stratum/Avatar"
             #pragma multi_compile_fog
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             float4 _SkyAmbient;
+            float4 _CaveGlow;
             float4 _TorchColor;
             struct A { float3 positionOS : POSITION; float3 normalOS : NORMAL; };
             struct V { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 normalWS : TEXCOORD1; float3 positionOS : TEXCOORD2; };
@@ -68,7 +69,7 @@ Shader "Stratum/Avatar"
                 float sky = _Light.x, blk = _Light.y;
                 float skyB = LevelToBrightness(sky), blkB = LevelToBrightness(blk);
                 float faceShade = lerp(0.72, 1.0, saturate(n.y)) * lerp(1.0, 0.76, saturate(-n.y));
-                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + float3(0.026, 0.030, 0.038) * faceShade;
+                float3 ambient = _SkyAmbient.rgb * skyB * faceShade + _TorchColor.rgb * blkB * (0.75 + 0.25 * faceShade) + float3(0.026, 0.030, 0.038) * faceShade + _CaveGlow.rgb * faceShade;
                 Light sun = GetMainLight(TransformWorldToShadowCoord(i.positionWS));
                 float ndl = saturate(dot(n, sun.direction));
                 float3 direct = sun.color * ndl * sun.shadowAttenuation * smoothstep(0.55, 0.95, sky);
