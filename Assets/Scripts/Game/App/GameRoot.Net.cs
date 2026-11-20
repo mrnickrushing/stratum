@@ -282,7 +282,7 @@ namespace Stratum.Game
         void SendKeep()
         {
             if (_net == null || _player == null) return;
-            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(_player.Inv.Slots)
+            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(SaveSlots())
                 .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints));
         }
 

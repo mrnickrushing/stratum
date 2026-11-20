@@ -260,8 +260,7 @@ namespace Stratum.Core
         {
             var tmp = path + ".tmp";
             using (var w = new System.IO.BinaryWriter(System.IO.File.Create(tmp))) Write(w);
-            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
-            System.IO.File.Move(tmp, path);
+            SafeFile.Swap(tmp, path);
         }
 
         public void LoadFile(string path)

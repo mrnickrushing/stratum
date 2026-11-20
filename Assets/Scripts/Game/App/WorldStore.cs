@@ -78,8 +78,7 @@ namespace Stratum.Game
             var path = Path.Combine(m.Folder, "world.json");
             var tmp = path + ".tmp";
             File.WriteAllText(tmp, JsonUtility.ToJson(m, true));
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
+            Core.SafeFile.Swap(tmp, path, keep: true);
         }
 
         public static void Delete(WorldMeta m)

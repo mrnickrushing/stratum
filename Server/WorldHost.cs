@@ -35,6 +35,7 @@ namespace Stratum.Server
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public bool HasSafe; public float SX, SY, SZ;  // where they last stood on something (a satchel after a fall into the sky goes there)
             public bool Alive => (Flags & Net.Dead) == 0;
             public bool Asleep => (Flags & Net.Asleep) != 0;
         }
@@ -343,6 +344,11 @@ namespace Stratum.Server
             p.X = x; p.Y = y; p.Z = z; p.Yaw = yaw; p.Pitch = Math.Clamp(pitch, -90, 90); p.Flags = flags;
             p.Held = held.Length > 40 ? "" : held;
             p.Moved = true;
+            if (y > 1 && y < Chunk.Height)
+            {
+                int bx = (int)Math.Floor(x), bz = (int)Math.Floor(z), by = (int)Math.Floor(y - 0.2f);
+                if (World.IsLoaded(bx, bz) && Blocks.Get(World.Get(bx, by, bz)).Solid) { p.HasSafe = true; p.SX = x; p.SY = y; p.SZ = z; }
+            }
         }
 
         void WantChunks(Player p, Reader r)
@@ -514,15 +520,20 @@ namespace Stratum.Server
         {
             int x = r.I32(), y = r.I32(), z = r.I32();
             if (!InReach(p, x, y, z) || !Blocks.Get(World.Get(x, y, z)).Container) return;
-            p.HasBox = true; p.BX = x; p.BY = y; p.BZ = z;
+            // One pair of hands in a chest at a time: two people moving the same stack at once could copy or lose it.
+            foreach (var o in _players.Values)
+                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
+                { p.Conn.Send(SaidPacket("", $"{o.Name} is using that. Wait for them to close it.")); return; }
+                        p.HasBox = true; p.BX = x; p.BY = y; p.BZ = z;
             p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
         }
 
         void BoxSlot(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
-            if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.ChestSlots) return;
+            if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
             if (!Blocks.Get(World.Get(x, y, z)).Container) return;
+            if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             _boxes.Set(x, y, z, slot, st);
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
             foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
@@ -532,7 +543,10 @@ namespace Stratum.Server
         void Drop(Player p, Reader r)
         {
             float x = r.F32(), y = r.F32(), z = r.F32(); var st = r.Stacks();
-            if (Math.Abs(x - p.X) > 8 || Math.Abs(z - p.Z) > 8 || Math.Abs(y - p.Y) > 12) { x = p.X; y = p.Y; z = p.Z; }
+            bool here = Math.Abs(x - p.X) <= 8 && Math.Abs(z - p.Z) <= 8 && Math.Abs(y - p.Y) <= 12;
+            // After a fall off a sky island the things wait where the player last stood, which is far above them.
+            bool safe = p.HasSafe && Math.Abs(x - p.SX) <= 8 && Math.Abs(z - p.SZ) <= 8 && Math.Abs(y - p.SY) <= 12;
+            if (!here && !safe) { if (p.Y < 1 && p.HasSafe) { x = p.SX; y = p.SY; z = p.SZ; } else { x = p.X; y = p.Y; z = p.Z; } }
             bool any = false; foreach (var s in st) if (!s.Empty) any = true;
             if (!any) return;
             int ix = (int)Math.Floor(x), iz = (int)Math.Floor(z);

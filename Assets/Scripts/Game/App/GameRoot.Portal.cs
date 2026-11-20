@@ -11,6 +11,7 @@ namespace Stratum.Game
         float _inPortal;
         bool _leftPortal = true;
         Vector3? _arrive;
+        Vector3 _departed;
         bool _arriveEmber;
         float _arriveWait;
         bool _asked;
@@ -39,6 +40,7 @@ namespace Stratum.Game
             bool toEmber = !Ember.In(f.x);
             var (tx, tz) = toEmber ? Ember.ToEmber(f.x, f.z) : Ember.ToOverworld(f.x, f.z);
             _player.GetOut();
+            _departed = f;
             _arrive = new Vector3(Mathf.Floor(tx) + 0.5f, toEmber ? 70 : 140, Mathf.Floor(tz) + 0.5f);
             _arriveEmber = toEmber; _arriveWait = 0; _asked = false;
             _player.Feet = _arrive.Value; _player.Velocity = Vector3.zero;
@@ -53,7 +55,18 @@ namespace Stratum.Game
             _player.Feet = a; _player.Velocity = Vector3.zero;
             _arriveWait += dt;
             _hud.PortalGlow(Mathf.Clamp01(1 - _arriveWait * 0.5f) * 0.8f + 0.2f);
-            if (_asked) { if (_arriveWait > 20) { _arrive = null; _hud.PortalGlow(0); } return; }    // the server never answered
+            if (_asked)
+            {
+                // The server never answered: back to the portal we left from, not loose in the holding place.
+                if (_arriveWait > 20)
+                {
+                    _arrive = null; _hud.PortalGlow(0); _leftPortal = false;
+                    _player.Feet = _departed; _player.Velocity = Vector3.zero; _world.SetFocus(_departed);
+                    if (Online) SendMove(true);
+                    _hud.Toast("The portal didn't open. Step out and try again.");
+                }
+                return;
+            }
             int ax = Mathf.FloorToInt(a.x), az = Mathf.FloorToInt(a.z);
             int R = _arriveEmber ? 24 : 44;
             bool ready = _world.IsReady(ax, az);

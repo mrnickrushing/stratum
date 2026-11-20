@@ -273,6 +273,13 @@ namespace Stratum.Server
                 {
                     a.Create("Sky", "sky-password", world: "sky");
                     Check(a.Welcome() && a.Kind == WorldKind.Sky && a.SY > 60, "joining Sky Islands says so, and the spawn is up on an island");
+                    // Falling off: the things wait on the island where she last stood, not down in the sky.
+                    a.Want(new[] { (a.SX >> 4, a.SZ >> 4) }); a.Wait(Net.Msg.Chunk);
+                    a.Move(a.SX + 0.5f, a.SY, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
+                    a.Move(a.SX + 40.5f, -30, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
+                    a.Send(new Packet(Net.Msg.Drop).F32(a.SX + 0.5f).F32(a.SY + 0.5f).F32(a.SZ + 0.5f).Stacks(new[] { new Stack("torch", 4) }));
+                    var fell = a.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); return r.U8() == Blocks.Satchel && Math.Abs(qx - a.SX) <= 2 && Math.Abs(qz - a.SZ) <= 2 && Math.Abs(qy - a.SY) <= 3; });
+                    Check(fell != null, "after a fall into the sky the satchel is left on the island she fell from");
                 }
                 using (var old = new Bot(srv.Port) { Features = 0 })
                 {
@@ -452,17 +459,41 @@ namespace Stratum.Server
                     a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     var box = a.Wait(Net.Msg.Box);
                     Check(box != null && box.I32() == px && box.I32() == py + 1 && box.I32() == pz && box.Stacks().Length == Containers.ChestSlots, "she opens it: 27 empty slots");
-                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz)); b.Wait(Net.Msg.Box);
+                    // Only one of them in the chest at a time, so the same stack can't be taken twice.
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    Check(b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().StartsWith("Ada is using that")) != null, "Bea is told Ada is using the chest");
                     a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)));
-                    var set = b.Wait(Net.Msg.BoxSet);
-                    Check(set != null && set.I32() == px && set.I32() == py + 1 && set.I32() == pz && set.U8() == 2 && set.Slot().Count == 9, "Bea, looking in too, sees the cobble go in");
-                    a.Send(new Packet(Net.Msg.CloseBox)); b.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(Stack.None));      // Bea can't empty it from outside
+                    a.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    var bbox = b.Wait(Net.Msg.Box); Stack[] inBox = null;
+                    if (bbox != null) { bbox.I32(); bbox.I32(); bbox.I32(); inBox = bbox.Stacks(); }
+                    Check(inBox != null && inBox[2].Item == "cobble" && inBox[2].Count == 9, "once Ada closes it Bea opens it and finds the cobble");
+                    b.Send(new Packet(Net.Msg.CloseBox));
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
                     var give = a.Wait(Net.Msg.Give);
                     Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
                     Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
                     a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
                     Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
+
+                    // A whole pack (40 slots and the XP) in one satchel: every stack can be reached.
+                    var pack = new Stack[41]; for (int i = 0; i < pack.Length; i++) pack[i] = new Stack(i % 2 == 0 ? "cobble" : "torch", i + 1);
+                    b.Move(b.X + 3, b.Y, b.Z); System.Threading.Thread.Sleep(150);
+                    b.Send(new Packet(Net.Msg.Drop).F32(b.X + 3).F32(b.Y).F32(b.Z).Stacks(pack));
+                    int tx = 0, ty = 0, tz = 0;
+                    b.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); if (r.U8() != Blocks.Satchel) return false; tx = qx; ty = qy; tz = qz; return true; });
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
+                    var sbox = b.Wait(Net.Msg.Box); Stack[] held = null;
+                    if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
+                    Check(held != null && held.Length >= 41 && held[40].Count == 41, $"a satchel holds a full pack of 41 stacks ({held?.Length} slots)");
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(tx).I32(ty).I32(tz).U8(40).Slot(Stack.None));
+                    b.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
+                    sbox = b.Wait(Net.Msg.Box); held = null;
+                    if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
+                    Check(held != null && held.Length > 40 && held[40].Empty && held[39].Count == 40, "and the last stack can be taken out of it");
+                    b.Send(new Packet(Net.Msg.CloseBox));
 
                     var tone = new float[Voice.FrameSamples];
                     for (int i = 0; i < tone.Length; i++) tone[i] = 0.4f * (float)Math.Sin(2 * Math.PI * 440 * i / Voice.Rate);
