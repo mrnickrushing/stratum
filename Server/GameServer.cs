@@ -50,7 +50,8 @@ namespace Stratum.Server
         public WorldKind Kind;
 
         // "id|Name|survival or creative|peaceful, easy or normal|seed|what it's like|kind" separated by ";", where kind
-        // is normal, sky, frozen, dunes, islands, peaks or flat. Blank parts take the defaults; the first world is where
+        // is normal, sky, frozen, dunes, islands, peaks, flat, towering, vast, or "all <biome>" (meadow, oakwood, birch,
+        // pine, frost, dunes, peaks). Blank parts take the defaults; the first world is where
         // old clients (that can't choose) go.
         public static List<WorldDef> Parse(string text, Func<string, int> seedFrom)
         {
@@ -226,7 +227,8 @@ namespace Stratum.Server
             });
         }
 
-        public const int KnowsKinds = 1;
+        public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
+        public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
         void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features)
         {
@@ -234,7 +236,8 @@ namespace Stratum.Server
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
             var host = Worlds.FirstOrDefault(w => w.Def.Id == world) ?? Worlds[0];
             // An older game would draw a themed world's land right but get its look and creatures wrong.
-            if (host.World.Gen.Kind != WorldKind.Normal && (features & KnowsKinds) == 0)
+            var hk = host.World.Gen.Kind;
+            if (hk != WorldKind.Normal && (features & (hk > WorldKind.Flat ? KnowsTypes : KnowsKinds)) == 0)
             { Refuse(p.Conn, $"{host.Def.Name} needs the newest Stratum. Get it at stratum.rushingtechnologies.com"); return; }
             // Coming back replaces the old session wherever it is; a full server only turns away someone new.
             int others = Worlds.Sum(w => w.OnlineExcept(res.Key));

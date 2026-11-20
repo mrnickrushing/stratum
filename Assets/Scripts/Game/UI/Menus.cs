@@ -178,12 +178,23 @@ namespace Stratum.Game
             // The sort of world: click to go through them (right-click or Shift goes back).
             _kindBtn = UIKit.Button(card.transform, "World: Normal", () =>
             {
-                int n = (int)Core.WorldKind.Count;
+                // The single-biome worlds share one stop here; the button beside it picks the biome.
+                int first = (int)Core.WorldGen.FirstOnly, n = first + 1;
                 bool back = UnityEngine.InputSystem.Keyboard.current?.shiftKey.isPressed == true;
-                _newKind = (Core.WorldKind)(((int)_newKind + (back ? n - 1 : 1)) % n);
+                int at = Core.WorldGen.IsOnly(_newKind) ? first : (int)_newKind;
+                at = (at + (back ? n - 1 : 1)) % n;
+                _newKind = at == first ? _lastOnly : (Core.WorldKind)at;
                 UpdateMode();
             }, 28);
             ((RectTransform)_kindBtn.transform).Place(0, 1, 70, -378, 760, 68);
+            _biomeBtn = UIKit.Button(card.transform, "Biome", () =>
+            {
+                int first = (int)Core.WorldGen.FirstOnly, n = (int)Core.WorldGen.LastOnly - first + 1;
+                bool back = UnityEngine.InputSystem.Keyboard.current?.shiftKey.isPressed == true;
+                _newKind = _lastOnly = (Core.WorldKind)(first + ((int)_newKind - first + (back ? n - 1 : 1)) % n);
+                UpdateMode();
+            }, 28);
+            ((RectTransform)_biomeBtn.transform).Place(0, 1, 458, -378, 372, 68);
             _modeBtn = UIKit.Button(card.transform, "Mode: Survival", () => { _newCreative = !_newCreative; UpdateMode(); }, 28);
             ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -462, 372, 68);
             _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 3; UpdateMode(); }, 28);
@@ -197,12 +208,16 @@ namespace Stratum.Game
             UpdateMode();
         }
 
-        Button _kindBtn;
-        Core.WorldKind _newKind;
+        Button _kindBtn, _biomeBtn;
+        Core.WorldKind _newKind, _lastOnly = Core.WorldGen.FirstOnly;
 
         void UpdateMode()
         {
-            _kindBtn.SetText("World:  " + Core.WorldGen.KindName(_newKind) + "    ›");
+            bool one = Core.WorldGen.IsOnly(_newKind);
+            _kindBtn.SetText(one ? "World:  One Biome  ›" : "World:  " + Core.WorldGen.KindName(_newKind) + "    ›");
+            ((RectTransform)_kindBtn.transform).Place(0, 1, 70, -378, one ? 372 : 760, 68);
+            _biomeBtn.gameObject.SetActive(one);
+            if (one) _biomeBtn.SetText("Biome:  " + Core.WorldGen.BiomeNames[(int)Core.WorldGen.OnlyBiome(_newKind)] + "  ›");
             _modeBtn.SetText(_newCreative ? "Mode: Creative" : "Mode: Survival");
             _diffBtn.SetText("Difficulty: " + GameRoot.DifficultyNames[_newDifficulty]);
             _diffBtn.gameObject.SetActive(!_newCreative);

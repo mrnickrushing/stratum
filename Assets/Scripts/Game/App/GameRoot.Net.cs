@@ -100,7 +100,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(1));    // 1: knows the world kinds
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(3));    // 1: knows the world kinds
 
             Reader welcome = null; t = 0;
             while (welcome == null)

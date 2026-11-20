@@ -6,7 +6,9 @@ namespace Stratum.Core
     // What sort of world a seed grows into. Saved with the world (single player WorldMeta.kind, the server's
     // world.json), so a world keeps its kind whatever the settings say later.
     // Themed worlds reshape the normal land (Frozen, Dunes, Islands, Peaks, Flat); Sky Islands is its own generator.
-    public enum WorldKind : byte { Normal = 0, Sky = 1, Frozen = 2, Dunes = 3, Islands = 4, Peaks = 5, Flat = 6, Count }
+    public enum WorldKind : byte { Normal = 0, Sky = 1, Frozen = 2, Dunes = 3, Islands = 4, Peaks = 5, Flat = 6,
+        // 0.5: everything taller and wilder; the same land with every region four times as wide; one biome everywhere.
+        Towering = 7, Vast = 8, OnlyMeadow = 9, OnlyOakwood = 10, OnlyBirch = 11, OnlyPine = 12, OnlyFrost = 13, OnlyDunes = 14, OnlyPeaks = 15, Count }
 
     // Sky Islands: floating islands over open sky. Each island has its own climate (a snowy one beside a desert one),
     // a grassy top with a little dome, and a rocky underside that tapers to a ragged point. Big islands may hold a
@@ -15,7 +17,8 @@ namespace Stratum.Core
     public sealed partial class WorldGen
     {
         public readonly WorldKind Kind;
-        public static readonly string[] KindNames = { "Normal", "Sky Islands", "Frozen Wilds", "Endless Dunes", "Archipelago", "Giant Peaks", "Flatlands" };
+        public static readonly string[] KindNames = { "Normal", "Sky Islands", "Frozen Wilds", "Endless Dunes", "Archipelago", "Giant Peaks", "Flatlands",
+            "Towering Wilds", "Vast Lands", "All Meadow", "All Oakwood", "All Birch Grove", "All Pinewood", "All Frostland", "All Dunes", "All High Peaks" };
         public static readonly string[] KindHints =
         {
             "Hills, forests, rivers and seas, deserts and snowy peaks.",
@@ -25,13 +28,41 @@ namespace Stratum.Core
             "Warm seas full of little islands and sandy beaches.",
             "Enormous mountains, cliffs and deep valleys.",
             "Perfectly flat grassland, made for building.",
+            "Everything stretched skyward: huge cliffs, overhangs and arches.",
+            "The normal world, but every forest, desert and sea is four times as wide.",
+            "Open grassland with flowers, everywhere. Few trees.",
+            "Oak forest everywhere.",
+            "Birch forest everywhere.",
+            "Pine forest everywhere.",
+            "Snowfields everywhere, with frozen rivers. Few trees.",
+            "Desert everywhere. No trees: bring what you need, or play creative.",
+            "Bare rock and snow everywhere. No trees: one for creative builders.",
         };
+        public const WorldKind FirstOnly = WorldKind.OnlyMeadow, LastOnly = WorldKind.OnlyPeaks;
+        static readonly Biome[] OnlyBiomes = { Biome.Plains, Biome.Forest, Biome.BirchWood, Biome.Taiga, Biome.Tundra, Biome.Desert, Biome.Peaks };
+        public static bool IsOnly(WorldKind k) => k >= FirstOnly && k <= LastOnly;
+        // The one biome of a single-biome world.
+        public static Biome OnlyBiome(WorldKind k) => OnlyBiomes[(int)k - (int)FirstOnly];
         public const int FlatTop = Chunk.SeaLevel + 3;   // just above where the rules call the ground beach
 
         // "sky", "frozen", "dunes"/"desert", "islands"/"archipelago", "peaks"/"mountains", "flat"; anything else: normal.
         public static WorldKind ParseKind(string s)
         {
             s = (s ?? "").Trim().ToLowerInvariant();
+            foreach (var pre in new[] { "all", "only", "single", "one" })
+                if (s.StartsWith(pre) && s.Length > pre.Length)
+                {
+                    string b = s.Substring(pre.Length).TrimStart(' ', '-', '_');
+                    if (b.StartsWith("meadow") || b.StartsWith("plain")) return WorldKind.OnlyMeadow;
+                    if (b.StartsWith("oak") || b.StartsWith("forest")) return WorldKind.OnlyOakwood;
+                    if (b.StartsWith("birch")) return WorldKind.OnlyBirch;
+                    if (b.StartsWith("pine") || b.StartsWith("taiga")) return WorldKind.OnlyPine;
+                    if (b.StartsWith("frost") || b.StartsWith("snow") || b.StartsWith("tundra")) return WorldKind.OnlyFrost;
+                    if (b.StartsWith("dune") || b.StartsWith("desert")) return WorldKind.OnlyDunes;
+                    if (b.StartsWith("peak") || b.StartsWith("high") || b.StartsWith("mountain")) return WorldKind.OnlyPeaks;
+                }
+            if (s.StartsWith("tower") || s.StartsWith("ampl")) return WorldKind.Towering;
+            if (s.StartsWith("vast") || s.StartsWith("large") || s.StartsWith("wide")) return WorldKind.Vast;
             if (s.StartsWith("sky")) return WorldKind.Sky;
             if (s.StartsWith("frozen") || s.StartsWith("snow") || s.StartsWith("ice")) return WorldKind.Frozen;
             if (s.StartsWith("dune") || s.StartsWith("desert")) return WorldKind.Dunes;
