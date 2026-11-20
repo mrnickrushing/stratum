@@ -10,7 +10,6 @@ namespace Stratum.Game
     // "remember me" token on this computer (Logins), so next time the password can stay blank.
     public sealed partial class Menus
     {
-        public const string DefaultAddress = "switchback.proxy.rlwy.net:46511";
         public const byte ModeLogin = 0, ModeCreate = 1, ModeToken = 2;     // Server/Accounts.Mode
         const int MinName = 3, MinPassword = 6;
 
@@ -43,8 +42,7 @@ namespace Stratum.Game
                 y -= 108;
                 return (f, row.gameObject, l);
             }
-            string addr = PlayerPrefs.GetString("mp_addr", "");
-            _joinAddr = Row("Server address", "host:port", addr == "" ? DefaultAddress : addr).f;
+            _joinAddr = Row("Server address", "host:port", SavedAddress()).f;
             _joinUser = Row($"Username ({MinName}-{Core.Net.MaxNameLength} letters, numbers, - or _)", "Username", PlayerPrefs.GetString("mp_user", PlayerPrefs.GetString("mp_name", ""))).f;
             _joinUser.characterLimit = Core.Net.MaxNameLength;
             (_joinPass, _, _joinPassLabel) = Row("Password", "Password", "");
@@ -145,7 +143,8 @@ namespace Stratum.Game
             else mode = ModeLogin;
 
             PlayerPrefs.SetString("mp_user", user);
-            PlayerPrefs.SetString("mp_addr", addr);
+            // Only an address the player typed is remembered; the default one keeps following DefaultServer.
+            if (addr == DefaultServer.Address) PlayerPrefs.DeleteKey("mp_addr"); else PlayerPrefs.SetString("mp_addr", addr);
             PlayerPrefs.Save();
             _joining = true;
             _joinBtn.interactable = false;
@@ -154,6 +153,30 @@ namespace Stratum.Game
         }
 
         // Shows the join screen; with a message (why the last attempt or game ended) when there is one.
+        // The address to show: one the player chose, else the default server. Before 0.2.1 every join saved the
+        // address, so a saved copy of the built-in default counts as no choice.
+        static string SavedAddress()
+        {
+            string a = PlayerPrefs.GetString("mp_addr", "").Trim();
+            return a == "" || a == DefaultServer.BuiltIn ? DefaultServer.Address : a;
+        }
+
+        // The site says the default server has moved: follow it, unless the player picked a server of their own.
+        // It's the same server under a new address, so a remembered login comes along.
+        public void DefaultServerChanged(string old, string now)
+        {
+            string user = PlayerPrefs.GetString("mp_user", "");
+            string token = Logins.Token(old, user);
+            if (user != "" && token != "") Logins.Remember(now, user, token);
+            string saved = PlayerPrefs.GetString("mp_addr", "").Trim();
+            if (saved == old || saved == DefaultServer.BuiltIn) { PlayerPrefs.DeleteKey("mp_addr"); PlayerPrefs.Save(); }
+            if (_joinAddr != null && !_joining)
+            {
+                string shown = _joinAddr.text.Trim();
+                if (shown == "" || shown == old || shown == DefaultServer.BuiltIn) _joinAddr.text = now;
+            }
+        }
+
         public void ShowJoin(string status)
         {
             Show(_join, true);
