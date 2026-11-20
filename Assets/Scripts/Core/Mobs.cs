@@ -37,9 +37,12 @@ namespace Stratum.Core
         public float Baby;                    // seconds until grown (0: grown up)
         public float Love, BreedCool;         // fed: looking for a mate; resting after
         public bool Kept;                     // fed or born here: stays when no one is about, saved with the world
+        public byte Job;                      // villagers: farmer, smith, librarian, shepherd, butcher
+        public float HomeX, HomeZ;            // villagers: the middle of their village
 
         public const byte MBaby = 1, MLove = 2;
-        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0));
+        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2));
+        public static int JobOf(byte more) => (more >> 2) & 7;
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
 
@@ -124,7 +127,9 @@ namespace Stratum.Core
         public bool TryGet(int id, out Mob m) => _byId.TryGetValue(id, out m);
 
         public bool IsDay => Time01 > 0.27f && Time01 < 0.73f;
-        public int Weather;                                       // WeatherSim state: no sunburn in rain, storms are dark enough for monsters
+        public int Weather;
+        public Func<int, int, Villages.Plan> VillageNear;         // the village (if any) near a spot
+        float _villageTimer = 3;                                       // WeatherSim state: no sunburn in rain, storms are dark enough for monsters
 
         float Rand() => (float)_r.NextDouble();
 
@@ -287,6 +292,11 @@ namespace Stratum.Core
                 Hazards(m, dt);
                 if (Despawn(m, players)) Remove(m);
             }
+            if (VillageNear != null && Dimension == "" && (_villageTimer -= dt) <= 0)
+            {
+                _villageTimer = 5;
+                foreach (var p in players) Villagers(p);
+            }
             if (Spawning && players.Count > 0 && (_spawnTimer -= dt) <= 0)
             {
                 _spawnTimer = 1.5f;
@@ -358,7 +368,7 @@ namespace Stratum.Core
         // The animals worth keeping between visits: anything fed or born to a player.
         public void Write(System.IO.BinaryWriter w)
         {
-            w.Write(1);
+            w.Write(2);
             int n = 0; foreach (var m in All) if (m.Kept && m.Dead <= 0) n++;
             w.Write(n);
             foreach (var m in All)
@@ -366,12 +376,14 @@ namespace Stratum.Core
                 if (!m.Kept || m.Dead > 0) continue;
                 w.Write((byte)m.Kind); w.Write(m.X); w.Write(m.Y); w.Write(m.Z); w.Write(m.Yaw); w.Write(m.Health);
                 w.Write(m.Baby); w.Write(m.BreedCool); w.Write(m.Sheared); w.Write(m.Regrow);
+                w.Write(m.Job); w.Write(m.HomeX); w.Write(m.HomeZ);
             }
         }
 
         public void Read(System.IO.BinaryReader r)
         {
-            if (r.ReadInt32() != 1) return;
+            int ver = r.ReadInt32();
+            if (ver != 1 && ver != 2) return;
             int n = r.ReadInt32();
             for (int i = 0; i < n; i++)
             {
@@ -380,6 +392,7 @@ namespace Stratum.Core
                 var m = Spawn(k, x, y + 0.05f, z);
                 m.Yaw = r.ReadSingle(); m.Health = r.ReadSingle(); m.Baby = r.ReadSingle(); m.BreedCool = r.ReadSingle();
                 m.Sheared = r.ReadBoolean(); m.Regrow = r.ReadSingle(); m.Kept = true;
+                if (ver >= 2) { m.Job = r.ReadByte(); m.HomeX = r.ReadSingle(); m.HomeZ = r.ReadSingle(); }
             }
         }
 
@@ -497,6 +510,9 @@ namespace Stratum.Core
                     {
                         float a = Rand() * 6.283f, r = 3 + Rand() * 7;
                         m.GoalX = m.X + (float)Math.Cos(a) * r; m.GoalZ = m.Z + (float)Math.Sin(a) * r; m.HasGoal = true;
+                        // Villagers stay about their village.
+                        if (m.Kind == MobKind.Villager && (m.X - m.HomeX) * (m.X - m.HomeX) + (m.Z - m.HomeZ) * (m.Z - m.HomeZ) > 22 * 22)
+                        { m.GoalX = m.HomeX + (Rand() - 0.5f) * 12; m.GoalZ = m.HomeZ + (Rand() - 0.5f) * 12; }
                     }
                     else m.HasGoal = false;
                     if (!d.Hostile && Rand() < 0.25f) Sound?.Invoke(m, "say");
@@ -711,6 +727,27 @@ namespace Stratum.Core
                 return y + 1;
             }
             return int.MinValue;
+        }
+
+        // A village near a player has its people (one or two a house); they're kept with the world after that.
+        void Villagers(in Seen p)
+        {
+            var v = VillageNear((int)p.X, (int)p.Z);
+            if (v == null || !Loaded(v.X, v.Z)) return;
+            int want = Math.Max(2, v.Houses + 1), have = 0;
+            foreach (var m in All) if (m.Kind == MobKind.Villager && Math.Abs(m.HomeX - v.X) < 1 && Math.Abs(m.HomeZ - v.Z) < 1) have++;
+            if (have >= want) return;
+            for (int tries = 0; tries < 6; tries++)
+            {
+                int x = v.X + _r.Next(-10, 11), z = v.Z + _r.Next(-10, 11);
+                if (!Loaded(x, z)) continue;
+                int y = Ground(x, z, v.Y + 12, 24, out byte floor);
+                if (y == int.MinValue || Blocks.Get(floor).Fluid != 0) continue;
+                var m = Spawn(MobKind.Villager, x + 0.5f, y, z + 0.5f);
+                m.Kept = true; m.HomeX = v.X; m.HomeZ = v.Z; m.Job = (byte)((have + (v.X * 31 + v.Z)) % Trades.Jobs.Length & 7);
+                if (m.Job >= Trades.Jobs.Length) m.Job = 0;
+                return;
+            }
         }
 
         void TrySpawnAnimals(in Seen p, List<Seen> players)

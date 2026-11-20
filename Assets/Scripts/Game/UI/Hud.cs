@@ -142,6 +142,7 @@ namespace Stratum.Game
         }
 
         Image _xpBack, _xp; Text _xpLevel, _craftSub;
+        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map);
 
         Image Bar(string name, Color col, float x, float y, float w, out Image fill)
         {
@@ -167,7 +168,8 @@ namespace Stratum.Game
             float dt = Time.unscaledDeltaTime;
             _root.gameObject.SetActive(true);
             bool show = !Hidden && !InventoryOpen;
-            foreach (Transform t in _root) if (t.gameObject != _inv && t.gameObject != _signPanel) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform || t == _sleep.transform);
+            foreach (Transform t in _root) if (t.gameObject != _inv && t.gameObject != _signPanel && !Held(t)) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform || t == _sleep.transform);
+            UpdateHeld(dt, Enchants.BaseOf(P.Inv.Held.Item), show);
 
             // Hotbar
             for (int i = 0; i < 9; i++) _hot[i].Show(P.Inv.Slots[i]);
@@ -573,8 +575,8 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
-            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
-            if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : "Anvil"; return; }
+            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
+            if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
             _craftTitle.text = _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "furnace" && furnace))

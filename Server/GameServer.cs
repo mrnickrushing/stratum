@@ -90,6 +90,7 @@ namespace Stratum.Server
             catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
+            _mobs.VillageNear = (x, z) => World.Gen.Villages.Near(x, z, 96);
             _weather = new WeatherSim(World.Meta.seed ^ Environment.TickCount);
             _weather.Set(World.Meta.weather, World.Meta.weatherLeft);
             _weather.Changed += s => { _mobs.Weather = s; Broadcast(ClockPacket()); Broadcast(SaidPacket("", s == 0 ? "The weather clears." : s == 2 ? "A thunderstorm rolls in." : "It starts to rain.")); };

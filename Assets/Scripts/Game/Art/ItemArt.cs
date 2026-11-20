@@ -197,6 +197,39 @@ namespace Stratum.Game
                         return col;
                     });
                     break;
+                case "compass": case "clock":
+                {
+                    bool clock = id == "clock";
+                    c.Disc(new Vector2(48, 48), 38, (x, y) => clock ? Color.Lerp(Hex(0xa8801c), Hex(0xf0cc5a), (y - 10) / 80f) : Color.Lerp(Hex(0x6a6e78), Hex(0xc8ccd4), (y - 10) / 80f), 38);
+                    c.Disc(new Vector2(48, 48), 30, (x, y) =>
+                    {
+                        if (!clock) return Color.Lerp(Hex(0xe8e2d0), Hex(0xfaf6ea), (y - 18) / 60f);
+                        // Day above, night below: the dial turns with the time.
+                        return y > 48 ? Color.Lerp(Hex(0x6ab0ff), Hex(0xa8d4ff), (y - 48) / 30f) : Color.Lerp(Hex(0x101830), Hex(0x24305a), (y - 18) / 30f);
+                    }, 30);
+                    if (!clock)
+                    {
+                        c.Poly(new[] { new Vector2(48, 74), new Vector2(54, 48), new Vector2(42, 48) }, (x, y) => Hex(0xd23a2a));
+                        c.Poly(new[] { new Vector2(48, 22), new Vector2(54, 48), new Vector2(42, 48) }, (x, y) => Hex(0x4a4e58));
+                    }
+                    else { c.Disc(new Vector2(62, 62), 6, (x, y) => Hex(0xffe060), 6); c.Disc(new Vector2(34, 34), 4, (x, y) => Hex(0xe8ecf4), 4); }
+                    break;
+                }
+                case "map":
+                    c.Poly(new[] { new Vector2(12, 14), new Vector2(84, 10), new Vector2(86, 84), new Vector2(10, 86) }, (x, y) =>
+                    {
+                        float land = Mathf.PerlinNoise(x * 0.07f + 3, y * 0.07f + 1);
+                        Color col = land > 0.5f ? Color.Lerp(Hex(0x7aa04a), Hex(0x4e7a32), (land - 0.5f) * 3) : Color.Lerp(Hex(0x5a8ad0), Hex(0x8ab4e8), land * 2);
+                        if (x < 16 || x > 80 || y < 16 || y > 80) col = Hex(0xd8c8a0);
+                        return col;
+                    });
+                    c.Poly(new[] { new Vector2(46, 52), new Vector2(52, 42), new Vector2(40, 42) }, (x, y) => Hex(0xffffff));
+                    break;
+                case "jade":
+                    c.Poly(new[] { new Vector2(48, 88), new Vector2(76, 62), new Vector2(66, 18), new Vector2(30, 18), new Vector2(20, 62) },
+                        (x, y) => Color.Lerp(Hex(0x147a40), Hex(0x6ae8a4), Mathf.Clamp01((y - 18) / 70f * 0.6f + (76 - x) / 56f * 0.4f)));
+                    c.Poly(new[] { new Vector2(48, 78), new Vector2(62, 60), new Vector2(48, 30), new Vector2(34, 60) }, (x, y) => new Color(0.75f, 1f, 0.85f, 0.55f));
+                    break;
                 case "seeds":
                     for (int i = 0; i < 9; i++)
                     {

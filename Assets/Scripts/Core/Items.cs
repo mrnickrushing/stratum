@@ -125,6 +125,10 @@ namespace Stratum.Core
             foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
+            Add(new ItemDef { Id = "jade", Name = "Jade" });
+            Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
+            Add(new ItemDef { Id = "clock", Name = "Clock", MaxStack = 1 });
+            Add(new ItemDef { Id = "map", Name = "Map", MaxStack = 1 });
             Add(new ItemDef { Id = "xp", Name = "Experience", MaxStack = 1000, Creative = false });
             Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
@@ -192,6 +196,11 @@ namespace Stratum.Core
             R("iron_bars", 16, "workbench", ("iron_ingot", 6));
             R("sign", 3, "workbench", ("@planks", 6), ("stick", 1));
             R("bucket", 1, "workbench", ("iron_ingot", 3));
+            R("jade_block", 1, "workbench", ("jade", 9));
+            R("jade", 9, null, ("jade_block", 1));
+            R("compass", 1, "workbench", ("iron_ingot", 4), ("sunstone_shard", 1));
+            R("clock", 1, "workbench", ("gold_ingot", 4), ("sunstone_shard", 1));
+            R("map", 1, "workbench", ("paper", 8), ("compass", 1));
             R("enchanting_table", 1, "workbench", ("book", 1), ("sunstone_shard", 2), ("obsidian", 4));
             R("anvil", 1, "workbench", ("iron_block", 3), ("iron_ingot", 4));
             // Farming.
@@ -426,7 +435,7 @@ namespace Stratum.Core
         }
 
         public static int XpFor(BlockDef b, Random r) =>
-            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : 0;
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : 0;
 
         public static (string item, int count) Drop(BlockDef b)
         {

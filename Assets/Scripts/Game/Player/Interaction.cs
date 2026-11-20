@@ -147,7 +147,8 @@ namespace Stratum.Game
         readonly System.Random _rng = new System.Random();
         public Vector3 TargetPoint { get; private set; }
         static readonly Vector3Int[] FaceNormal = { new Vector3Int(1, 0, 0), new Vector3Int(-1, 0, 0), new Vector3Int(0, 1, 0), new Vector3Int(0, -1, 0), new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1) };
-        public System.Action<Vector3Int> EditSign;     // a sign was placed or right-clicked
+        public System.Action<Vector3Int> EditSign;
+        public System.Action<int, int> OpenTrade;      // a villager (id, job) was right-clicked     // a sign was placed or right-clicked
 
         // Which way (0 +Z, 1 +X, 2 -Z, 3 -X) a horizontal direction mostly points.
         static int DirOf(Vector3 v) => Mathf.Abs(v.x) > Mathf.Abs(v.z) ? (v.x > 0 ? 1 : 3) : (v.z > 0 ? 0 : 2);
@@ -290,6 +291,7 @@ namespace Stratum.Game
             {
                 _repeat = 0.3f;
                 if (heldDef != null && heldDef.Tool == Tool.Shears) { Link?.UseMob(TargetMob, heldDef.Id); _swing = 0; if (!P.Creative) P.Inv.WearHeld(); }
+                else if (Creatures != null && Creatures.TryGet(TargetMob, out var who) && who.Kind == MobKind.Villager) OpenTrade?.Invoke(TargetMob, Mob.JobOf(who.More));
                 return;
             }
 

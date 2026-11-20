@@ -20,7 +20,11 @@ namespace Stratum.Game
         Text _workInfo;
         int _enchSeed = System.Environment.TickCount & 0x7FFFFFF;
         string _workShown;
-        bool WorkStation => _station == "enchant" || _station == "anvil";
+        bool WorkStation => _station == "enchant" || _station == "anvil" || _station == "trade";
+        int _tradeJob, _tradeSeed;
+        readonly List<(Trades.Offer o, Button b)> _tradeRows = new List<(Trades.Offer, Button)>();
+
+        public void SetTrade(int job, int seed) { _tradeJob = job; _tradeSeed = seed; }
 
         static readonly int[] OfferNeeds = { 5, 15, 30 };
 
@@ -30,7 +34,9 @@ namespace Stratum.Game
             foreach (Transform t in _workGrid) Destroy(t.gameObject);
             _workSlots.Clear(); _offers.Clear(); _workShown = null;
             _workGrid.gameObject.SetActive(WorkStation);
+            _tradeRows.Clear();
             if (!WorkStation) return;
+            if (_station == "trade") { LayoutTrade(); return; }
             bool ench = _station == "enchant";
             const float S = 88;
             string[] labels = ench ? new[] { "Item", "Sunstone" } : new[] { "Item", "Add" };
@@ -99,11 +105,63 @@ namespace Stratum.Game
         void UpdateWork()
         {
             if (!WorkStation || _workGrid == null) return;
+            if (_station == "trade")
+            {
+                foreach (var (o, b) in _tradeRows) b.interactable = CanTrade(o);
+                return;
+            }
             for (int i = 0; i < _workSlots.Count; i++) _workSlots[i].Show(_work[i]);
             string key = _work[0].Item + "|" + _work[0].Wear + "|" + _work[1].Item + "|" + _work[1].Count + "|" + P.XpLevel + "|" + _enchSeed;
             if (key == _workShown) return;
             _workShown = key;
             if (_station == "enchant") ShowOffers(); else ShowCombine();
+        }
+
+        // ------------------------------------------------------------------ trading
+
+        void LayoutTrade()
+        {
+            var title = UIKit.Label(_workGrid, "The " + Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)].ToLowerInvariant() + " will trade:", 22, UIKit.Dim);
+            title.rectTransform.Place(0, 1, 0, -6, 600, 30);
+            int row = 0;
+            foreach (var o in Trades.For(_tradeJob, _tradeSeed))
+            {
+                var bar = UIKit.Panel(_workGrid, "Offer", new Color(0.16f, 0.17f, 0.21f, 0.95f), UIKit.RoundSmall);
+                bar.rectTransform.Place(0, 1, 0, -44 - row * 86, 600, 78);
+                float x = 12;
+                void Thing(string item, int n)
+                {
+                    var ic = UIKit.Icon(bar.transform, Icons.Get(item)); ic.rectTransform.Place(0, 0.5f, x, 0, 56, 56);
+                    var cnt = UIKit.Label(ic.transform, n > 1 ? n.ToString() : "", 20, Color.white, TextAnchor.LowerRight, FontStyle.Bold).Shadowed();
+                    cnt.rectTransform.Fill(-2);
+                    var tipRt = ic.gameObject.AddComponent<SlotHover>(); tipRt.Hover = on => Tip(on ? new Stack(item, n) : Stack.None);
+                    x += 64;
+                }
+                Thing(o.In, o.InN);
+                if (o.In2 != null) Thing(o.In2, o.In2N);
+                var arrow = UIKit.Label(bar.transform, "→", 34, UIKit.Accent, TextAnchor.MiddleCenter, FontStyle.Bold);
+                arrow.rectTransform.Place(0, 0.5f, x, 0, 40, 56); x += 48;
+                Thing(o.Out, o.OutN);
+                var oo = o;
+                var b = UIKit.Button(bar.transform, "TRADE", () => Trade(oo), 22, true);
+                ((RectTransform)b.transform).Place(1, 0.5f, -12, 0, 130, 54);
+                _tradeRows.Add((o, b));
+                row++;
+            }
+        }
+
+        bool CanTrade(Trades.Offer o) => P.Inv.Count(o.In) >= o.InN && (o.In2 == null || P.Inv.Count(o.In2) >= o.In2N);
+
+        void Trade(Trades.Offer o)
+        {
+            if (!CanTrade(o) || Items.Get(o.Out) == null) return;
+            var copy = (Stack[])P.Inv.Slots.Clone();
+            P.Inv.Take(o.In, o.InN);
+            if (o.In2 != null) P.Inv.Take(o.In2, o.In2N);
+            int left = o.Out.Contains("@") ? Put(new Stack(o.Out, 1)) : P.Inv.Add(o.Out, o.OutN);
+            if (left > 0) { System.Array.Copy(copy, P.Inv.Slots, copy.Length); Toast("Your pack is full"); return; }
+            P.AddXp(1 + Random.Range(0, 2));
+            Sfx.I?.Play("trade", 0.6f);
         }
 
         // ------------------------------------------------------------------ enchanting

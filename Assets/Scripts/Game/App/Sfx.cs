@@ -52,6 +52,7 @@ namespace Stratum.Game
             _clips["xp"] = Chime(new[] { 1760f, 2350f }, 0.09f);
             _clips["levelup"] = Chime(new[] { 784f, 988f, 1175f, 1568f }, 0.7f);
             _clips["enchant"] = Chime(new[] { 523f, 659f, 784f, 1046f, 1318f }, 1.1f);
+            _clips["trade"] = Chime(new[] { 880f, 1320f }, 0.25f);
             _clips["anvil"] = Chime(new[] { 1900f, 2650f }, 0.35f);
             _clips["hurt"] = Hurt();
             _clips["splash"] = Splash();

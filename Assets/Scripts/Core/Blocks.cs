@@ -24,7 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
-        EnchantTop, EnchantSide, AnvilTop, AnvilSide,
+        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
@@ -107,7 +107,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            EnchantingTable, Anvil,
+            EnchantingTable, Anvil, JadeOre, JadeBlock,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -383,6 +383,10 @@ namespace Stratum.Core
             Defs[OakLeaves].Bonus2 = "oak_sapling"; Defs[OakLeaves].Bonus2Chance = 0.05f;
             Defs[BirchLeaves].Bonus2 = "birch_sapling"; Defs[BirchLeaves].Bonus2Chance = 0.05f;
             Defs[PineNeedles].Bonus2 = "pine_sapling"; Defs[PineNeedles].Bonus2Chance = 0.05f;
+
+            // ---------------------------------------------------------------- 0.2: villages
+            b = Rock("jade_ore", "Jade Ore", Tex.JadeOre, 3.5f, 4); b.TierNeeded = 3; b.DropItem = "jade"; JadeOre = b.Id;
+            b = Add("jade_block", "Block of Jade", Tex.JadeBlock); b.Hardness = 5; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Stone; JadeBlock = b.Id;
 
             // ---------------------------------------------------------------- 0.2: enchanting
             b = Add("enchanting_table", "Enchanting Table", Tex.EnchantTop, Tex.EnchantSide, Tex.Obsidian);

@@ -28,6 +28,14 @@ namespace Stratum.Game
             _creatures = Creatures.Create(_world, _cam.transform);
             _signs = SignView.Create(_world);
             _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
+            _act.OpenTrade = (id, job) => { _hud.SetTrade(job, id); OpenInventory("trade"); };
+            _hud.SpawnPoint = () => Online ? _netSpawn : new Vector3(_meta.sx, _meta.sy, _meta.sz);
+            _hud.Others = () =>
+            {
+                var l = new List<(string, Vector3)>();
+                if (_avatars != null) foreach (int id in _avatars.Ids) if (_avatars.TryGet(id, out var at)) l.Add((_avatars.NameOf(id) ?? "?", at));
+                return l;
+            };
             link.SignChanged = (at, text) => _signs.Set(at, text);
             _act.EditSign = at =>
             {

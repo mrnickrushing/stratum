@@ -32,6 +32,8 @@ namespace Stratum.Game
         static Sprite _round, _roundSmall, _white;
 
         public static Sprite Round => _round ??= RoundSprite(64, 18);
+        public static Sprite Circle => _circle ??= RoundSprite(64, 32);
+        static Sprite _circle;
         public static Sprite RoundSmall => _roundSmall ??= RoundSprite(32, 8);
         public static Sprite White
         {
@@ -205,6 +207,14 @@ namespace Stratum.Game
     }
 
     // A slot that reports left and right clicks and hovering.
+    // Hover reports for something that isn't a slot (a picture in a trade offer).
+    public sealed class SlotHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        public Action<bool> Hover;
+        public void OnPointerEnter(PointerEventData e) => Hover?.Invoke(true);
+        public void OnPointerExit(PointerEventData e) => Hover?.Invoke(false);
+    }
+
     public sealed class SlotView : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         public Image Back, Icon, Frame; public Text Count; public Image Wear;

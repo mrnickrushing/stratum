@@ -14,8 +14,11 @@ namespace Stratum.Core
         public static readonly string[] BiomeNames =
             { "Ocean", "River", "Beach", "Meadow", "Oakwood", "Birch Grove", "Pinewood", "Frostland", "Dunes", "High Peaks" };
 
+        public readonly Villages Villages;
+
         public WorldGen(int seed)
         {
+            Villages = new Villages(this, seed);
             Seed = seed;
             _cont = new Noise(seed); _eros = new Noise(seed + 1); _peak = new Noise(seed + 2); _hill = new Noise(seed + 3);
             _detail = new Noise(seed + 4); _river = new Noise(seed + 5); _temp = new Noise(seed + 6); _humid = new Noise(seed + 7);
@@ -160,6 +163,8 @@ namespace Stratum.Core
             Ores(ch);
             Trees(ch, cols);
             Flora(ch, cols);
+            int vbx = bx, vbz = bz;
+            Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
             ch.RecalcMaxY();
             ch.Ready = true;
         }
@@ -266,6 +271,7 @@ namespace Stratum.Core
             Vein(ch, ref rng, Blocks.IronOre, 8, 5, 64, 6);
             Vein(ch, ref rng, Blocks.GoldOre, 3, 5, 34, 5);
             Vein(ch, ref rng, Blocks.SunstoneOre, 2, 5, 22, 4);
+            if (rng.Value() < 0.5f) Vein(ch, ref rng, Blocks.JadeOre, 1, 8, 110, 3);
             Vein(ch, ref rng, Blocks.Gravel, 5, 5, 90, 14);
             // Moss grows on rock beside cave air below 50.
         }

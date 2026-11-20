@@ -123,6 +123,8 @@ namespace Stratum.Game
                 case Tex.Ladder: Ladder(p); return 2f;
                 case Tex.IronBars: Bars(p); return 2f;
                 case Tex.EnchantTop: EnchantTop(p); return 3f;
+                case Tex.JadeOre: Ore(p, Hex(0x3cc47a), Hex(0x1e8a4e), false); return 4f;
+                case Tex.JadeBlock: Metal(p, Hex(0x4ad08a), Hex(0x1a7a46)); return 3f;
                 case Tex.EnchantSide: EnchantSide(p); return 3f;
                 case Tex.AnvilTop: Metal(p, Hex(0x4a4c52), Hex(0x2c2d32)); return 3f;
                 case Tex.AnvilSide: Metal(p, Hex(0x3e4046), Hex(0x24252a)); Frame(p, Hex(0x1e1f23), 2); return 3f;

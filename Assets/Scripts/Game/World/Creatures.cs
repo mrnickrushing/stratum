@@ -244,9 +244,11 @@ namespace Stratum.Game
         void Paint(View v, float flash, float fire)
         {
             var m = v.M;
+            bool villager = v.S.Kind == MobKind.Villager;
+            var robe = villager ? JobRobe[Mathf.Clamp(Mob.JobOf(v.S.More), 0, JobRobe.Length - 1)] : default;
             for (int i = 0; i < m.Parts.Count; i++)
             {
-                _mpb.SetColor(BaseColor, m.Colors[i]);
+                _mpb.SetColor(BaseColor, villager && m.Colors[i] == RobeBase ? robe : m.Colors[i]);
                 _mpb.SetVector(LightId, new Vector4(v.Light.x, v.Light.y, 0, 0));
                 _mpb.SetColor(FlashId, fire > 0 && v.Hurt <= 0 ? new Color(1, 0.45f, 0.1f, flash) : new Color(0.9f, 0.08f, 0.05f, flash));
                 _mpb.SetFloat(GlowId, m.Glows[i]);
@@ -562,9 +564,12 @@ namespace Stratum.Game
             m.Swing = 18; m.Stride = 2.2f;
         }
 
+        static readonly Color RobeBase = Hex(0x6a4a2e);
+        static readonly Color[] JobRobe = { Hex(0x9a7a3a), Hex(0x3a3c44), Hex(0xa83232), Hex(0x5a7aa8), Hex(0xe0dcd0) };
+
         void Villager(Model m)
         {
-            Color robe = Hex(0x6a4a2e), skin = Hex(0xc89a7a), sash = Hex(0x2e6a4a);
+            Color robe = RobeBase, skin = Hex(0xc89a7a), sash = Hex(0x2e6a4a);
             foreach (int sx in new[] { -1, 1 })
             {
                 var p = Pivot(m.Root, new Vector3(sx * 0.12f, 0.75f, 0));

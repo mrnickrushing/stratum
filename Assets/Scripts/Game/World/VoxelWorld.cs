@@ -357,6 +357,22 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ blocks
 
+        // The highest thing in a column that isn't air (for maps); false if that column isn't here yet.
+        public bool Top(int x, int z, out int y, out byte id)
+        {
+            y = 0; id = 0;
+            var s = SlotAt(x, z);
+            if (s == null || !s.Chunk.Ready) return false;
+            var b = s.Chunk.Blocks; int lx = x & 15, lz = z & 15;
+            for (int yy = Mathf.Min(Chunk.Height - 1, s.Chunk.MaxY); yy >= 0; yy--)
+            {
+                byte v = b[Chunk.Index(lx, yy, lz)];
+                if (v == 0 || Blocks.Get(v).Shape == Shape.Cross || Blocks.Get(v).Shape == Shape.Torch) continue;
+                y = yy; id = v; return true;
+            }
+            return true;
+        }
+
         Slot SlotAt(int x, int z) => _slots.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var s) ? s : null;
 
         public bool IsReady(int x, int z) { var s = SlotAt(x, z); return s != null && s.Chunk.Ready; }

@@ -60,6 +60,7 @@ namespace Stratum.Game
             if (_file != null) try { Boxes.Load(_file); } catch (Exception e) { Debug.LogWarning("containers unreadable: " + e.Message); }
             Sim = new MobSim(world.Get, seed ^ Environment.TickCount) { Difficulty = difficulty, BiomeAt = world.Gen.BiomeAt };
             Sim.Loaded = (x, z) => world.IsReady(x, z);
+            Sim.VillageNear = (x, z) => world.Gen.Villages.Near(x, z, 96);
             _mobFile = folder != null ? Path.Combine(folder, "creatures.bin") : null;
             if (_mobFile != null) try { Sim.LoadFile(_mobFile); } catch (Exception e) { Debug.LogWarning("creatures unreadable: " + e.Message); }
             Sim.HitPlayer += (id, dmg, fx, fz, from) => Hurt?.Invoke(dmg, new Vector3(fx, _player.Feet.y, fz), from.Kind);

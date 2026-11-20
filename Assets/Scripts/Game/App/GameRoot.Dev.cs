@@ -172,6 +172,23 @@ namespace Stratum.Game
             return "ok";
         }
 
+        // Goes to the nearest village (searching outward from the player).
+        public static string DevVillage()
+        {
+            var g = I; var f = g._player.Feet;
+            for (int r = 0; r < 4000; r += 200)
+                for (int a = 0; a < 16; a++)
+                {
+                    int x = (int)(f.x + Mathf.Cos(a * Mathf.PI / 8) * r), z = (int)(f.z + Mathf.Sin(a * Mathf.PI / 8) * r);
+                    var v = g._world.Gen.Villages.Near(x, z, 400);
+                    if (v == null) continue;
+                    g._player.Feet = new Vector3(v.X + 0.5f, v.Y + 14, v.Z - 16.5f);
+                    g._player.Flying = true; g._player.Yaw = 0; g._player.Pitch = 28;
+                    return $"village at {v.X} {v.Y} {v.Z}, {v.Parts.Count} parts, {v.Houses} houses";
+                }
+            return "no village found";
+        }
+
         public static string DevAfterSleep() => $"time {I._sky.Time01:0.00} day {I._sky.Day} asleep {I._player.Asleep} at {I._player.Feet}";
 
         // Fight: a cow in front, hit it with the sword until it dies.
