@@ -17,6 +17,7 @@ namespace Stratum.Server
         {
             public int version { get; set; } = 1;
             public int seed { get; set; }
+            public int kind { get; set; }           // WorldKind, fixed when the world is made
             public int sx { get; set; }
             public int sy { get; set; }
             public int sz { get; set; }
@@ -45,7 +46,7 @@ namespace Stratum.Server
         readonly ConcurrentQueue<Chunk> _made = new ConcurrentQueue<Chunk>();
         readonly Thread[] _workers;
 
-        public ServerWorld(string dir, int? seed)
+        public ServerWorld(string dir, int? seed, WorldKind kind = WorldKind.Normal)
         {
             Dir = dir;
             Directory.CreateDirectory(Path.Combine(dir, "chunks"));
@@ -54,10 +55,10 @@ namespace Stratum.Server
             if (File.Exists(path)) Meta = JsonSerializer.Deserialize<Info>(File.ReadAllText(path));
             else
             {
-                Meta = new Info { seed = seed ?? new Random().Next(1, int.MaxValue), created = DateTime.UtcNow.Ticks };
-                Log.Info($"new world, seed {Meta.seed}");
+                Meta = new Info { seed = seed ?? new Random().Next(1, int.MaxValue), kind = (int)kind, created = DateTime.UtcNow.Ticks };
+                Log.Info($"new {WorldGen.KindName(kind)} world, seed {Meta.seed}");
             }
-            Gen = new WorldGen(Meta.seed);
+            Gen = new WorldGen(Meta.seed, (uint)Meta.kind < (uint)WorldKind.Count ? (WorldKind)Meta.kind : WorldKind.Normal);
             if (!File.Exists(path))
             {
                 var s = Gen.FindSpawn();

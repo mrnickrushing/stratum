@@ -69,6 +69,11 @@ namespace Stratum.Game
             int n = r.U8();
             for (int i = 0; i < n; i++)
                 list.Add(new Menus.WorldInfo { Id = r.Str(), Name = r.Str(), Desc = r.Str(), Creative = r.Bool(), Difficulty = r.U8(), Online = r.I32() });
+            if (r.More)
+            {
+                int k = r.U8();
+                for (int i = 0; i < k; i++) { var kind = (WorldKind)r.U8(); if (i < list.Count) { var w = list[i]; w.Kind = kind < WorldKind.Count ? kind : WorldKind.Normal; list[i] = w; } }
+            }
             return list;
         }
 
@@ -95,7 +100,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? ""));
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(1));    // 1: knows the world kinds
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -146,16 +151,18 @@ namespace Stratum.Game
             bool hasBed = welcome.Bool(); var bed = new Vector3Int(welcome.I32(), welcome.I32(), welcome.I32());
             int difficulty = welcome.U8();
             int xpLevel = welcome.I32(), xpPoints = welcome.I32();
+            var kind = welcome.More ? (WorldKind)welcome.U8() : WorldKind.Normal;
+            if (kind >= WorldKind.Count) kind = WorldKind.Normal;
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
             yield return null;
 
-            _world = VoxelWorld.Create(seed, null, _blockMat, _waterMat, Mathf.Min(Settings.ViewDistance, _maxView));
+            _world = VoxelWorld.Create(seed, null, _blockMat, _waterMat, Mathf.Min(Settings.ViewDistance, _maxView), kind);
             _world.RequestChunks = SendWant;
             _world.Edited += (x, y, z, old, id) => _net?.Send(new Packet(Net.Msg.SetBlock).I32(x).I32(y).I32(z).U8(id).U8(old));
             _sky.ViewDistanceMeters = _world.ViewDistance * 16;
-            _sky.Frozen = false;
+            _sky.Frozen = false; _sky.Islands = kind == WorldKind.Sky;
             _sky.Time01 = (float)time; _sky.Day = Math.Max(1, day);
             _world.SetFocus(feet);
 

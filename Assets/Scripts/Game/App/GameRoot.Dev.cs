@@ -8,10 +8,20 @@ namespace Stratum.Game
     public sealed partial class GameRoot
     {
         // A fresh survival world named "Dev" (replacing the last one).
-        public static void DevWorld(int difficulty = 2, int seed = 4242)
+        public static void DevWorld(int difficulty = 2, int seed = 4242, int kind = 0)
         {
             foreach (var m in WorldStore.List()) if (m.name == "Dev") WorldStore.Delete(m);
-            I.StartCoroutine(I.Enter(WorldStore.Create("Dev", seed, false, difficulty)));
+            I.StartCoroutine(I.Enter(WorldStore.Create("Dev", seed, false, difficulty, (WorldKind)kind)));
+        }
+
+        // Hover above where the player stands, looking out (for screenshots).
+        public static void DevLift(float up, float yaw, float pitch) { var f = I._player.Feet; DevView(f.x, f.y + up, f.z, yaw, pitch); }
+
+        // Stand somewhere and look (for screenshots): feet position, yaw, pitch; flying so nothing falls.
+        public static void DevView(float x, float y, float z, float yaw, float pitch)
+        {
+            I._player.Creative = true; I._player.Flying = true; I._player.Feet = new Vector3(x, y, z); I._player.Velocity = Vector3.zero;
+            I._player.Yaw = yaw; I._player.Pitch = pitch; I._world.SetFocus(I._player.Feet);
         }
 
         public static string DevState() => I._state + (I._player != null ? $" at {I._player.Feet} hp {I._player.Health} food {I._player.Food}" : "") + (I._link != null ? $" mobs {I._link.Mobs.Count}" : "");

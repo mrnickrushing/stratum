@@ -20,6 +20,8 @@ namespace Stratum.Game
         ColorAdjustments _grade;
         public float ViewDistanceMeters = 160;
         public bool Underwater;
+        public bool Islands;                    // a Sky Islands world: a sea of clouds far below
+        Transform _lowClouds;
         public bool Deep;                       // in the Ember Deep: no sun or weather, a red haze, the rock glowing faintly
         public int Day = 1;
         public int Weather;                     // WeatherSim state
@@ -72,6 +74,14 @@ namespace Stratum.Game
             mr.shadowCastingMode = ShadowCastingMode.Off;
             mr.receiveShadows = false;
             _cloudPlane = plane.transform;
+            var low = new GameObject("Clouds Below");
+            low.transform.SetParent(transform, false);
+            low.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+            var lr = low.AddComponent<MeshRenderer>();
+            lr.sharedMaterial = new Material(_clouds); lr.sharedMaterial.SetFloat("_Below", 1);
+            lr.shadowCastingMode = ShadowCastingMode.Off; lr.receiveShadows = false;
+            _lowClouds = low.transform;
+            low.SetActive(false);
 
             // Colour grading.
             var vgo = new GameObject("Grade");
@@ -214,6 +224,7 @@ namespace Stratum.Game
                 RenderSettings.fogStartDistance = 8; RenderSettings.fogEndDistance = Mathf.Min(90, Mathf.Max(40, ViewDistanceMeters - 24));
                 if (_grade != null) _grade.postExposure.value = 0.35f;
                 if (_cloudPlane != null) _cloudPlane.gameObject.SetActive(false);
+                if (_lowClouds != null) _lowClouds.gameObject.SetActive(false);
                 var c0 = Camera.main; if (c0 != null) c0.backgroundColor = haze;
                 return;
             }
@@ -224,6 +235,8 @@ namespace Stratum.Game
             {
                 var p = cam.transform.position;
                 _cloudPlane.position = new Vector3(p.x, 196, p.z);
+                if (_lowClouds.gameObject.activeSelf != Islands) _lowClouds.gameObject.SetActive(Islands);
+                if (Islands) _lowClouds.position = new Vector3(p.x, 30, p.z);
                 cam.backgroundColor = fog;
             }
         }

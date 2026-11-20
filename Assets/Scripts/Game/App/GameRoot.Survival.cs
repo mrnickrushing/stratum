@@ -219,7 +219,9 @@ namespace Stratum.Game
             int xp = Xp.Dropped(_player.XpLevel);
             if (xp > 0) all.Add(new Core.Stack("xp", xp));
             _player.XpLevel = 0; _player.XpPoints = 0;
-            if (all.Count > 0) _link.Drop(_player.Feet + Vector3.up * 0.5f, all.ToArray());
+            // Fallen off into the sky: the satchel waits where they last stood.
+            var at = _player.Feet.y < 1 ? _player.LastGround : _player.Feet;
+            if (all.Count > 0) _link.Drop(at + Vector3.up * 0.5f, all.ToArray());
         }
 
         // Where to come back: the bed if it's still there and clear, else the world's spawn.

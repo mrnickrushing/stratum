@@ -43,10 +43,12 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
+        public int Features = GameServer.KnowsKinds;     // 0: act like a 0.3 client
+
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
             var pk = new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest");
-            if (world != null) pk.Str(world);         // clients before 0.2.2 don't say which world
+            if (world != null) { pk.Str(world); if (Features != 0) pk.I32(Features); }   // clients before 0.3.0 don't say which world
             Send(pk);
         }
         public void Create(string name, string pw, string invite = "", string world = null) => Hello(Accounts.Mode.Create, name, pw, invite, world: world);
@@ -62,6 +64,8 @@ namespace Stratum.Server
             r.F64(); r.Str(); r.Str(); r.I32(); r.I32();
             int n = r.U8();
             for (int i = 0; i < n; i++) { string id = r.Str(), name = r.Str(); r.Str(); bool c = r.Bool(); int d = r.U8(); l.Add((id, name, c, d, r.I32())); }
+            Kinds = new List<WorldKind>();
+            if (r.More) { int k = r.U8(); for (int i = 0; i < k; i++) Kinds.Add((WorldKind)r.U8()); }
             return l;
         }
 
@@ -88,7 +92,7 @@ namespace Stratum.Server
             return null;
         }
 
-        public float Food; public bool HasBed; public int BX, XpLevel; public string ServerName; public bool Creative; public int Difficulty;
+        public float Food; public bool HasBed; public int BX, XpLevel; public string ServerName; public bool Creative; public int Difficulty; public WorldKind Kind; public List<WorldKind> Kinds;
 
         public bool Welcome()
         {
@@ -100,6 +104,7 @@ namespace Stratum.Server
             Slots = r.Stacks();
             Name = r.Str(); Token = r.Str();
             Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); Difficulty = r.U8(); XpLevel = r.I32(); r.I32();
+            Kind = r.More ? (WorldKind)r.U8() : WorldKind.Normal;
             return true;
         }
 
@@ -128,6 +133,121 @@ namespace Stratum.Server
     public static class SelfTest
     {
         static int _fails;
+        // Themed worlds: what their land is like, and how the server hands them out.
+        static void KindChecks(string dir)
+        {
+            byte Top(Chunk c, int x, int z, out int y) { for (y = Chunk.Height - 1; y > 0; y--) { byte b = c.Get(x, y, z); if (b != 0) return b; } return 0; }
+            Chunk Make(WorldGen g, int cx, int cz) { var c = new Chunk(cx, cz); g.Generate(c); return c; }
+
+            var sky = new WorldGen(4242, WorldKind.Sky);
+            var (sx, sy, sz) = sky.FindSpawn();
+            var home = Make(sky, sx >> 4, sz >> 4);
+            int lx = sx & 15, lz = sz & 15;
+            Check(Blocks.Get(home.Get(lx, sy - 1, lz)).Solid && home.Get(lx, sy, lz) == 0 && home.Get(lx, sy + 1, lz) == 0,
+                  "Sky Islands: the start is on solid ground with room to stand");
+            int under = sy - 1; while (under > 0 && home.Get(lx, under, lz) != 0) under--;
+            bool open = true; for (int y = under; y >= 0; y--) if (home.Get(lx, y, lz) != 0) open = false;
+            Check(under > 20 && open, $"under the start island is open sky (island bottom at {under}, nothing below)");
+            Check(home.Get(0, 0, 0) != Blocks.Bedrock, "and no bedrock floor anywhere");
+            int water = 0, leaks = 0, lava = 0, lavaLeaks = 0, islands = 0, voidCols = 0, ores = 0;
+            var chunks = new Dictionary<(int, int), Chunk>();
+            for (int cz = -6; cz <= 6; cz++) for (int cx = -6; cx <= 6; cx++) chunks[(cx, cz)] = Make(sky, cx, cz);
+            byte At(int x, int y, int z) => (uint)y >= Chunk.Height ? (byte)0 : chunks.TryGetValue((x >> 4, z >> 4), out var c) ? c.Get(x & 15, y, z & 15) : (byte)255;
+            foreach (var kv in chunks)
+            {
+                var c = kv.Value; int bx = c.X * 16, bz = c.Z * 16;
+                for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++)
+                {
+                    if (Top(c, x, z, out _) == 0) voidCols++; else islands++;
+                    for (int y = 1; y < Chunk.Height - 1; y++)
+                    {
+                        byte b = c.Get(x, y, z);
+                        if (b == Blocks.CoalOre || b == Blocks.IronOre || b == Blocks.GoldOre || b == Blocks.CopperOre) ores++;
+                        if (b != Blocks.Water && b != Blocks.Lava) continue;
+                        int wx = bx + x, wz = bz + z;
+                        bool lv = b == Blocks.Lava; if (lv) lava++; else water++;
+                        foreach (var (dx, dy, dz) in new[] { (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1), (0, -1, 0) })
+                        {
+                            byte n = At(wx + dx, y + dy, wz + dz);
+                            if (n == 255 || n == b || n == Blocks.Ice || Blocks.Get(n).Solid) continue;
+                            if (lv && n == 0 && dy == 0 && At(wx + dx, y - 1, wz + dz) != 0) continue;   // the air pocket above the lava
+                            if (lv) lavaLeaks++; else leaks++;
+                        }
+                    }
+                }
+            }
+            Check(islands > 2000 && voidCols > 8000, $"islands with sky between them ({islands} land columns, {voidCols} open)");
+            Check(water > 50 && leaks == 0, $"ponds hold their water ({water} water blocks, {leaks} could spill)");
+            Check(lava > 10 && lavaLeaks == 0, $"lava sits sealed inside the stone ({lava} lava blocks, {lavaLeaks} open edges)");
+            Check(ores > 100, $"ores in the islands ({ores})");
+            var again = Make(sky, 1, -2); Check(again.Blocks.AsSpan().SequenceEqual(chunks[(1, -2)].Blocks), "and the same seed always gives the same islands");
+
+            var flat = new WorldGen(7, WorldKind.Flat);
+            var fc = Make(flat, 3, 5); int fy; Top(fc, 2, 9, out fy);
+            bool level = true; for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++) if (fc.Get(x, WorldGen.FlatTop, z) != Blocks.Grass || fc.Get(x, WorldGen.FlatTop + 1, z) is var a && a != 0 && !Blocks.Get(a).Replaceable && !Blocks.Get(a).Sway && a != Blocks.OakLog && a != Blocks.BirchLog) level = false;
+            Check(level, "Flatlands: grass at the same height everywhere");
+            var frozen = new WorldGen(11, WorldKind.Frozen);
+            int seaIce = 0, seaWater = 0, snow = 0, grass = 0;
+            for (int cz = -4; cz <= 4; cz++) for (int cx = -4; cx <= 4; cx++)
+            {
+                var c = Make(frozen, cx * 3, cz * 3);
+                for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++)
+                {
+                    byte t = c.Get(x, Chunk.SeaLevel, z), top = Top(c, x, z, out _);
+                    if (t == Blocks.Ice) seaIce++; else if (t == Blocks.Water && c.Get(x, Chunk.SeaLevel + 1, z) == 0) seaWater++;
+                    if (top == Blocks.SnowyGrass || top == Blocks.Snow || top == Blocks.PineNeedles) snow++; else if (top == Blocks.Grass) grass++;
+                }
+            }
+            Check(seaIce > 0 && seaWater == 0, $"Frozen Wilds: the seas are frozen over ({seaIce} ice, {seaWater} open water)");
+            Check(snow > grass * 5, $"and it's snowy ({snow} snowy tops, {grass} grass)");
+            var dunes = new WorldGen(13, WorldKind.Dunes); int sand = 0, all = 0;
+            for (int i = 0; i < 400; i++) { var b = dunes.BiomeAt(i * 97 - 20000, i * 61 - 12000); all++; if (b == Biome.Desert) sand++; }
+            Check(sand > all / 2, $"Endless Dunes: mostly desert ({sand} of {all})");
+            var isl = new WorldGen(17, WorldKind.Islands); int sea = 0;
+            for (int i = 0; i < 400; i++) if (isl.HeightAt(i * 97 - 20000, i * 61 - 12000) < Chunk.SeaLevel) sea++;
+            Check(sea > 200 && sea < 360, $"Archipelago: more sea than land, but land ({sea} of 400 sea)");
+            var peaks = new WorldGen(19, WorldKind.Peaks); var norm = new WorldGen(19); int hp = 0, hn = 0;
+            for (int i = 0; i < 400; i++) { if (peaks.HeightAt(i * 97 - 20000, i * 61 - 12000) > 130) hp++; if (norm.HeightAt(i * 97 - 20000, i * 61 - 12000) > 130) hn++; }
+            Check(hp > hn * 2 && hp > 60, $"Giant Peaks: far more high ground than a normal world ({hp} vs {hn} of 400 above 130)");
+
+            // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
+            int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
+            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4,
+                Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat", Seed) };
+            var srv = new GameServer(cfg); srv.Start();
+            try
+            {
+                using (var q = new Bot(srv.Port)) { q.Worlds(); Check(q.Kinds?.Count == 3 && q.Kinds[1] == WorldKind.Sky && q.Kinds[2] == WorldKind.Flat, "a ping says what sort each world is"); }
+                using (var a = new Bot(srv.Port))
+                {
+                    a.Create("Sky", "sky-password", world: "sky");
+                    Check(a.Welcome() && a.Kind == WorldKind.Sky && a.SY > 60, "joining Sky Islands says so, and the spawn is up on an island");
+                }
+                using (var old = new Bot(srv.Port) { Features = 0 })
+                {
+                    old.Login("Sky", "sky-password", world: "sky");
+                    Check(old.Refused()?.Contains("newest Stratum") == true, "a 0.3 game is asked to update before going to Sky Islands");
+                }
+                using (var old = new Bot(srv.Port) { Features = 0 })
+                {
+                    old.Login("Sky", "sky-password", world: "main");
+                    Check(old.Welcome() && old.Kind == WorldKind.Normal, "but can still play in a normal world");
+                }
+            }
+            finally { srv.Stop(); }
+            cfg.Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Changed my mind|frozen", Seed);
+            var srv2 = new GameServer(cfg); srv2.Start();
+            try
+            {
+                using (var a = new Bot(srv2.Port))
+                {
+                    a.Login("Sky", "sky-password", world: "sky");
+                    Check(a.Welcome() && a.Kind == WorldKind.Sky, "a world keeps the sort it was made as, whatever the settings say later");
+                }
+            }
+            finally { srv2.Stop(); }
+        }
+
         // Several worlds on one server: the list, choosing one, each keeping its own things, moving between them.
         static void WorldChecks(string dir)
         {
@@ -346,6 +466,7 @@ namespace Stratum.Server
                 srv4.Stop();
                 EmberChecks();
                 WorldChecks(Path.Combine(dir, "worlds-test"));
+                KindChecks(Path.Combine(dir, "kinds-test"));
             }
             catch (Exception e) { Check(false, "threw " + e); }
             finally { try { Directory.Delete(dir, true); } catch { } }

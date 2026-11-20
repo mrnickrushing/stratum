@@ -6,7 +6,7 @@ namespace Stratum.Core
 
     // Turns a seed into terrain. Everything here is a pure function of the seed and world position, so any chunk
     // can be made in any order on any thread and always comes out the same.
-    public sealed class WorldGen
+    public sealed partial class WorldGen
     {
         public readonly int Seed;
         readonly Noise _cont, _eros, _peak, _hill, _detail, _river, _temp, _humid, _cave1, _cave2, _cheese, _strata, _patch;
@@ -16,8 +16,9 @@ namespace Stratum.Core
 
         public readonly Villages Villages;
 
-        public WorldGen(int seed)
+        public WorldGen(int seed, WorldKind kind = WorldKind.Normal)
         {
+            Kind = kind;
             Villages = new Villages(this, seed);
             Seed = seed;
             _cont = new Noise(seed); _eros = new Noise(seed + 1); _peak = new Noise(seed + 2); _hill = new Noise(seed + 3);
@@ -41,18 +42,25 @@ namespace Stratum.Core
             return ys[ys.Length - 1];
         }
 
-        public struct Column { public float Height, Temp, Humid, River, Mountain; }
+        // Bottom and Water are for Sky Islands (the underside, and a pond's surface); Sky marks its columns.
+        public struct Column { public float Height, Temp, Humid, River, Mountain, Bottom; public int Water; public bool Sky; }
 
         public Column Sample(int x, int z)
         {
+            if (Kind == WorldKind.Sky) return SkySample(x, z);
+            if (Kind == WorldKind.Flat) return new Column { Height = FlatTop, Temp = 0.15f, Humid = 0.1f };
             float fx = x + 0.5f, fz = z + 0.5f;
-            float c = Clamp(_cont.Fbm2(fx / 1100f, fz / 1100f, 4) * 1.7f, -1, 1);
+            float c = Kind == WorldKind.Islands
+                ? Clamp(_cont.Fbm2(fx / 420f, fz / 420f, 4) * 1.7f, -1, 1) * 0.8f - 0.24f    // small islands in warm sea
+                : Clamp(_cont.Fbm2(fx / 1100f, fz / 1100f, 4) * 1.7f, -1, 1);
+            if (Kind == WorldKind.Dunes || Kind == WorldKind.Peaks) c = Math.Min(1, c * 0.7f + 0.3f);     // mostly land
             float e = Clamp(_eros.Fbm2(fx / 700f, fz / 700f, 3) * 1.7f, -1, 1) * 0.5f + 0.5f;
+            if (Kind == WorldKind.Peaks) e *= 0.55f;                                                     // mountains everywhere
             float land = Smooth(-0.12f, 0.15f, c);
             float mountain = Smooth(0.25f, 0.85f, 1 - e) * land;
             float peaks = _peak.Ridge2(fx / 420f, fz / 420f, 4);
             float h = Spline(ContX, ContY, c);
-            h += mountain * (float)Math.Pow(peaks, 1.5) * 115f;
+            h += mountain * (float)Math.Pow(peaks, 1.5) * (Kind == WorldKind.Peaks ? 175f : 115f);
             h += _hill.Fbm2(fx / 150f, fz / 150f, 4) * (4f + 12f * land) * (1 - mountain * 0.5f);
             h += _detail.Fbm2(fx / 37f, fz / 37f, 2) * 2.2f;
 
@@ -63,11 +71,18 @@ namespace Stratum.Core
             float t = Clamp(_temp.Fbm2(fx / 1500f + 31.3f, fz / 1500f - 12.7f, 3) * 1.8f, -1, 1);
             t -= Math.Max(0, h - 95) / 90f;
             float u = Clamp(_humid.Fbm2(fx / 1100f - 70.1f, fz / 1100f + 44.9f, 3) * 1.8f, -1, 1);
+            switch (Kind)
+            {
+                case WorldKind.Frozen: t = -0.48f + t * 0.3f; break;                         // snowfields and pinewoods
+                case WorldKind.Dunes: t = 0.62f + t * 0.25f; u = -0.32f + u * 0.4f; break;     // sand, and dry grass by the rivers
+                case WorldKind.Islands: t = 0.22f + t * 0.3f; u = 0.2f + u * 0.5f; break;      // warm and green
+            }
             return new Column { Height = Clamp(h, 6, 245), Temp = t, Humid = u, River = river, Mountain = mountain };
         }
 
         public static Biome BiomeOf(in Column col)
         {
+            if (col.Sky) return SkyBiome(col);
             int h = (int)col.Height;
             if (h < Chunk.SeaLevel) return col.River > 0.4f ? Biome.River : Biome.Ocean;
             if (h > 150) return Biome.Peaks;
@@ -93,6 +108,7 @@ namespace Stratum.Core
         {
             if (Ember.InChunk(ch.X)) { Ember.Generate(ch, _cave1, _cave2, Seed); ch.RecalcMaxY(); ch.Ready = true; return; }
             var cols = _cols ??= new Column[W * W];
+            if (Kind == WorldKind.Sky) { GenerateSky(ch, cols); return; }
             int bx = ch.X * Chunk.Size, bz = ch.Z * Chunk.Size;
             for (int z = 0; z < W; z++)
                 for (int x = 0; x < W; x++)
@@ -139,7 +155,7 @@ namespace Stratum.Core
                     {
                         top = h > 165 ? Blocks.Snow : Blocks.Stone; fill = Blocks.Stone;
                     }
-                    if (biome == Biome.Taiga && h > 120) top = Blocks.SnowyGrass;
+                    if (biome == Biome.Taiga && (h > 120 || Kind == WorldKind.Frozen)) top = Blocks.SnowyGrass;
 
                     int ci = x | (z << 4);
                     b[ci] = Blocks.Bedrock;
@@ -156,11 +172,11 @@ namespace Stratum.Core
                         b[ci | (y << 8)] = id;
                     }
                     for (int y = h + 1; y <= Chunk.SeaLevel; y++)
-                        b[ci | (y << 8)] = (y == Chunk.SeaLevel && biome == Biome.Tundra) ? Blocks.Ice : Blocks.Water;
+                        b[ci | (y << 8)] = (y == Chunk.SeaLevel && (biome == Biome.Tundra || Kind == WorldKind.Frozen)) ? Blocks.Ice : Blocks.Water;
                 }
 
             ch.MaxY = Math.Max(maxH, Chunk.SeaLevel);
-            Caves(ch, cols);
+            if (Kind != WorldKind.Flat) Caves(ch, cols);
             Ores(ch);
             Trees(ch, cols);
             Flora(ch, cols);
@@ -318,7 +334,7 @@ namespace Stratum.Core
                     float chance = biome switch
                     {
                         Biome.Forest => 0.62f, Biome.BirchWood => 0.58f, Biome.Taiga => 0.55f, Biome.Plains => 0.035f,
-                        Biome.Tundra => 0.06f, Biome.Desert => 0.05f, Biome.Peaks => 0.0f, _ => 0f
+                        Biome.Tundra => Kind == WorldKind.Frozen ? 0.16f : 0.06f, Biome.Desert => 0.05f, Biome.Peaks => 0.0f, _ => 0f
                     };
                     // Woods thin out toward their edges and in clearings.
                     if (biome == Biome.Forest || biome == Biome.BirchWood || biome == Biome.Taiga)
@@ -482,7 +498,7 @@ namespace Stratum.Core
                     else if (ground == Blocks.SnowyGrass && r < 0.04f) plant = Blocks.Fern;
                     else if (ground == Blocks.Sand && biome == Biome.Desert && r < 0.012f) plant = Blocks.DeadBush;
                     // Sugar cane by the water's edge.
-                    if ((ground == Blocks.Grass || ground == Blocks.Sand) && h == Chunk.SeaLevel && x > 0 && x < 15 && z > 0 && z < 15
+                    if ((ground == Blocks.Grass || ground == Blocks.Sand) && (h == Chunk.SeaLevel || Kind == WorldKind.Sky) && x > 0 && x < 15 && z > 0 && z < 15
                         && Noise.Hash01(bx + x, 17, bz + z, Seed) < 0.1f
                         && (ch.Get(x + 1, h, z) == Blocks.Water || ch.Get(x - 1, h, z) == Blocks.Water || ch.Get(x, h, z + 1) == Blocks.Water || ch.Get(x, h, z - 1) == Blocks.Water))
                     {
@@ -494,9 +510,23 @@ namespace Stratum.Core
                 }
         }
 
+        // In the Archipelago, start on an island with room on it, not a rock with one tree.
+        bool Roomy(int x, int z)
+        {
+            int land = 0;
+            for (int r = 12; r <= 36; r += 12)
+                for (int a = 0; a < 8; a++)
+                {
+                    double ang = a * Math.PI / 4 + r;
+                    if (Sample(x + (int)(Math.Cos(ang) * r), z + (int)(Math.Sin(ang) * r)).Height > Chunk.SeaLevel) land++;
+                }
+            return land >= 20;
+        }
+
         // A dry spot near the origin to start on.
         public (int x, int y, int z) FindSpawn()
         {
+            if (Kind == WorldKind.Sky) return SkySpawn();
             for (int ring = 0; ring < 4096; ring += 16)
                 for (int a = 0; a < 16; a++)
                 {
@@ -504,7 +534,8 @@ namespace Stratum.Core
                     int x = (int)(Math.Cos(ang) * ring), z = (int)(Math.Sin(ang) * ring);
                     var col = Sample(x, z);
                     var bio = BiomeOf(col);
-                    if (col.Height > Chunk.SeaLevel + 1 && col.Height < 110 && bio != Biome.Desert && bio != Biome.Peaks && bio != Biome.Beach)
+                    if (col.Height > Chunk.SeaLevel + 1 && col.Height < 110 && bio != (Kind == WorldKind.Dunes ? Biome.Ocean : Biome.Desert) && bio != Biome.Peaks && bio != Biome.Beach
+                        && (Kind != WorldKind.Islands || Roomy(x, z)))
                         return (x, (int)col.Height + 1, z);
                 }
             return (0, 100, 0);

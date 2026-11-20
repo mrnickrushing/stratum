@@ -32,6 +32,7 @@ namespace Stratum.Game
         public int Difficulty = 2;                            // 0 peaceful, 1 easy, 2 normal
         public bool Asleep;
         public System.Action<string> Toast;
+        public Vector3 LastGround;            // where the feet last stood on something (for a satchel after a fall into the sky)
         public float Yaw, Pitch;
         public System.Action Died;
         public System.Action<float> Hurt;
@@ -377,7 +378,14 @@ namespace Stratum.Game
 
         void Survival(float dt)
         {
-            if (Creative) { Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet; return; }
+            if (OnGround && Feet.y > 1) LastGround = Feet;
+            if (Creative)
+            {
+                Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet;
+                // Building can't kill you, and neither can a slip off a sky island: back to the last ground.
+                if (Feet.y < -40) { Feet = LastGround + Vector3.up * 0.5f; Velocity = Vector3.zero; _fallStart = Feet.y; Toast?.Invoke("Caught you!"); }
+                return;
+            }
             _sinceHurt += dt;
             if (HeadInWater)
             {
@@ -481,7 +489,7 @@ namespace Stratum.Game
 
         byte CollideGet(int x, int y, int z)
         {
-            if (y < 0) return Blocks.Bedrock;
+            if (y < 0) return World.Gen.Kind == WorldKind.Sky ? (byte)0 : Blocks.Bedrock;    // under the sky islands there's nothing
             if (y >= Chunk.Height) return 0;
             // A chunk that isn't here yet counts as solid, so nothing falls out of the world.
             return World.IsReady(x, z) ? World.Get(x, y, z) : Blocks.Bedrock;
