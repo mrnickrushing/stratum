@@ -62,7 +62,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
             _shade = UIKit.Panel(_root, "Shade", new Color(0, 0, 0, 0.45f), UIKit.White); _shade.rectTransform.Fill();
 
-            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin(); BuildBackups();
+            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin(); BuildBackups(); BuildExtras();
             HideAll();
         }
 
@@ -95,7 +95,7 @@ namespace Stratum.Game
 
             float y = 20;
             foreach (var (label, act, primary) in new (string, Action, bool)[]
-                     { ("Play", ShowWorlds, true), ("Multiplayer", () => ShowJoin(null), false), ("Settings", () => ShowSettings(ShowMain), false), ("Quit", () => Quit?.Invoke(), false) })
+                     { ("Play", ShowWorlds, true), ("Multiplayer", () => ShowJoin(null), false), ("Extras", ShowExtras, false), ("Settings", () => ShowSettings(ShowMain), false), ("Quit", () => Quit?.Invoke(), false) })
             {
                 var b = UIKit.Button(_main.transform, label, act, 34, primary);
                 ((RectTransform)b.transform).Place(0, 0.5f, 148, y, 420, 76);
@@ -438,7 +438,7 @@ namespace Stratum.Game
 
         public void HideAll()
         {
-            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups }) g.SetActive(false);
+            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups, _extras }) g.SetActive(false);
             _shade.gameObject.SetActive(false);
         }
 

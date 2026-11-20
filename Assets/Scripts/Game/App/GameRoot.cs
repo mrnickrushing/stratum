@@ -85,6 +85,7 @@ namespace Stratum.Game
             _menus.ListWorlds = WorldStore.List;
             _menus.Play = m => StartCoroutine(Enter(m));
             _menus.Create = (name, seed, creative, difficulty, kind, keep) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty, kind, keep)));
+            _menus.UseWorld = UsePack;
             _menus.ListBackups = WorldStore.Backups;
             _menus.Restore = WorldStore.Restore;
             _menus.Delete = WorldStore.Delete;
@@ -455,6 +456,20 @@ namespace Stratum.Game
         }
 
         bool _keepInv;      // this world lets players keep their things when they die
+
+        // A world pack from the Extras page: open the world made from it before, or make it now with its starting things.
+        void UsePack(WorldPack pack)
+        {
+            var have = WorldStore.List().Find(w => w.name == pack.Name && w.seed == pack.Seed && w.kind == (int)pack.Kind);
+            if (have == null)
+            {
+                have = WorldStore.Create(pack.Name, pack.Seed, pack.Creative, pack.Difficulty, pack.Kind, pack.Keep && !pack.Creative);
+                foreach (var (item, n) in pack.Kit)
+                    if (Items.Get(item) != null) have.slots.Add(new SlotSave { item = item, count = n });
+                WorldStore.Save(have);
+            }
+            StartCoroutine(Enter(have));
+        }
 
         // ------------------------------------------------------------------ saving
 

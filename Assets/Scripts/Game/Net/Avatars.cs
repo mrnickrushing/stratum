@@ -64,10 +64,10 @@ namespace Stratum.Game
             a.Plate.color = on ? new Color(0.16f, 0.62f, 0.30f, 0.85f) : new Color(0, 0, 0, 0.5f);
         }
 
-        public void Add(int id, string name, Vector3 pos, float yaw)
+        public void Add(int id, string name, Vector3 pos, float yaw, int outfit = 0)
         {
             Remove(id);
-            var a = Build(id, name);
+            var a = Build(id, name, outfit);
             a.Pos = a.Target = pos; a.Yaw = a.TargetYaw = yaw;
             _all[id] = a;
             Place(a, 0);
@@ -180,7 +180,7 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ building a figure
 
-        Avatar Build(int id, string name)
+        Avatar Build(int id, string name, int outfit = 0)
         {
             var a = new Avatar { Id = id, Name = name };
             uint h = 2166136261; foreach (char ch in name) h = (h ^ ch) * 16777619;
@@ -193,6 +193,11 @@ namespace Stratum.Game
             var trousers = new Color(0.20f, 0.19f, 0.23f);
             var boots = new Color(0.30f, 0.20f, 0.13f);
             var dark = new Color(0.08f, 0.07f, 0.07f);
+            if (outfit > 0 && outfit < Extras.Outfits.Length)         // an outfit from the Extras page
+            {
+                var o = Extras.Outfits[outfit];
+                tunic = o.Tunic; hood = o.Hood; trim = o.Trim; trousers = o.Trousers; boots = o.Boots;
+            }
 
             var parts = new List<Renderer>(); var cols = new List<Color>();
             a.Root = new GameObject("Player " + name).transform;
