@@ -26,6 +26,12 @@ namespace Stratum.Game
         public int selected;
         public List<SlotSave> slots = new List<SlotSave>();
         public long created, lastPlayed;
+        public float food = 20, saturation = 5;
+        public int difficulty = 2;
+        public bool hasBed;
+        public int xpLevel, xpPoints;
+        public int weather; public float weatherLeft = 900;
+        public int bx, by, bz;
         public double minutesPlayed;
         [NonSerialized] public string Folder;
     }
@@ -53,7 +59,7 @@ namespace Stratum.Game
             return list.OrderByDescending(m => m.lastPlayed).ToList();
         }
 
-        public static WorldMeta Create(string name, int seed, bool creative)
+        public static WorldMeta Create(string name, int seed, bool creative, int difficulty = 2)
         {
             Directory.CreateDirectory(Root);
             string safe = new string((name ?? "World").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '_').ToArray()).Trim();
@@ -61,7 +67,7 @@ namespace Stratum.Game
             string folder = Path.Combine(Root, safe);
             for (int i = 2; Directory.Exists(folder); i++) folder = Path.Combine(Root, safe + " " + i);
             Directory.CreateDirectory(folder);
-            var m = new WorldMeta { name = string.IsNullOrWhiteSpace(name) ? "New World" : name.Trim(), seed = seed, creative = creative, created = DateTime.UtcNow.Ticks, lastPlayed = DateTime.UtcNow.Ticks, Folder = folder };
+            var m = new WorldMeta { name = string.IsNullOrWhiteSpace(name) ? "New World" : name.Trim(), seed = seed, creative = creative, difficulty = difficulty, created = DateTime.UtcNow.Ticks, lastPlayed = DateTime.UtcNow.Ticks, Folder = folder };
             Save(m);
             return m;
         }

@@ -99,6 +99,10 @@ namespace Stratum.Game
             int selected = welcome.U8();
             var slots = welcome.Stacks();
             string name = welcome.Str(), token = welcome.Str();
+            float food = welcome.F32(), sat = welcome.F32();
+            bool hasBed = welcome.Bool(); var bed = new Vector3Int(welcome.I32(), welcome.I32(), welcome.I32());
+            int difficulty = welcome.U8();
+            int xpLevel = welcome.I32(), xpPoints = welcome.I32();
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
@@ -117,6 +121,10 @@ namespace Stratum.Game
             _player.Feet = feet;
             _player.Yaw = yaw; _player.Pitch = pitch;
             _player.Health = hasPos ? Mathf.Clamp(health, 1, 20) : 20;
+            _player.Food = hasPos ? Mathf.Clamp(food, 0, 20) : 20;
+            _player.Saturation = hasPos ? Mathf.Clamp(sat, 0, 20) : 5;
+            _hasBed = hasBed; _bed = bed;
+            _player.XpLevel = xpLevel; _player.XpPoints = xpPoints;
             _player.Inv.Selected = Mathf.Clamp(selected, 0, 8);
             for (int i = 0; i < slots.Length && i < Inventory.Size; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _player.Inv.Slots[i] = slots[i];
@@ -128,12 +136,13 @@ namespace Stratum.Game
             _act.InputEnabled = false;
             _act.OpenStation = s => OpenInventory(s);
             _hud = Hud.Create(_player, _act, _sky, _world);
-            _hud.SendChat = text => _net?.Send(new Packet(Net.Msg.Chat).Str(text));
+            _hud.SendChat = text => { if (text.StartsWith("/") && Command(text)) return; _net?.Send(new Packet(Net.Msg.Chat).Str(text)); };
             _hud.OnlineInfo = OnlineLine;
             _hud.gameObject.SetActive(false);
             _avatars = Avatars.Create(_world, _sky, _cam);
             _voice = VoiceChat.Create(_avatars, _cam.transform);
             _voice.Send = f => _net?.Send(new Packet(Net.Msg.Voice).Blob(f));
+            SetupSurvival(new RemoteLink(() => _net, difficulty), creative ? 0 : difficulty);
             _voice.CanTalk = () => _state == State.Playing && _hud != null && !_hud.ChatOpen && !_menus.AnyOpen;
             _sinceHeard = 0; _pingTimer = 0; _keepTimer = 10; _moveTimer = 0; _forceMove = 0;
             SendMove(true);
@@ -208,6 +217,10 @@ namespace Stratum.Game
             if (_player.Flying) flags |= Net.Flying;
             if (_act != null && _act.Swinging) flags |= Net.Swinging;
             if (_player.InWater) flags |= Net.InWater;
+            if (_player.Health <= 0) flags |= Net.Dead;
+            if (_player.Asleep) flags |= Net.Asleep;
+            if (_player.Riding == MobKind.Boat) flags |= Net.InBoat;
+            if (_player.Riding == MobKind.Cart) flags |= Net.InCart;
             bool same = (f - _lastSentPos).sqrMagnitude < 0.0004f && Mathf.Abs(Mathf.DeltaAngle(_player.Yaw, _lastSentYaw)) < 0.5f &&
                         Mathf.Abs(_player.Pitch - _lastSentPitch) < 0.5f && flags == _lastSentFlags;
             if (same && !force) return;
@@ -219,7 +232,8 @@ namespace Stratum.Game
         void SendKeep()
         {
             if (_net == null || _player == null) return;
-            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).U8((byte)_player.Inv.Selected).Stacks(_player.Inv.Slots));
+            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(_player.Inv.Slots)
+                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints));
         }
 
         // Reads what the server sent and keeps it up to date with us. Runs every frame while connected.
@@ -292,6 +306,7 @@ namespace Stratum.Game
                 case Net.Msg.Clock:
                 {
                     float time = (float)r.F64(); int day = r.I32();
+                    _sky.Weather = r.U8();
                     if (Mathf.Abs(Mathf.DeltaAngle(_sky.Time01 * 360, time * 360)) > 0.5f) _sky.Time01 = time;
                     _sky.Day = Math.Max(1, day);
                     break;
@@ -312,6 +327,61 @@ namespace Stratum.Game
                 case Net.Msg.Refuse:
                     LeaveServer(r.Str());
                     break;
+                case Net.Msg.Sign:
+                {
+                    var at = new Vector3Int(r.I32(), r.I32(), r.I32());
+                    _link?.SignChanged?.Invoke(at, r.Str());
+                    break;
+                }
+                case Net.Msg.Mobs:
+                    (_link as RemoteLink)?.Received(r);
+                    break;
+                case Net.Msg.Arrived:
+                    Land(new Vector3(r.F32(), r.F32() + 0.01f, r.F32()));
+                    break;
+                case Net.Msg.Mounted:
+                {
+                    var k = (MobKind)r.U8(); var at = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32();
+                    _link?.Mounted?.Invoke(k, at, yaw);
+                    break;
+                }
+                case Net.Msg.Hurt:
+                {
+                    float dmg = r.F32(), fx = r.F32(), fz = r.F32(); var kind = (MobKind)r.U8();
+                    _link?.Hurt?.Invoke(dmg, new Vector3(fx, _player.Feet.y, fz), kind);
+                    break;
+                }
+                case Net.Msg.Give:
+                {
+                    string item = r.Str(); int count = r.U16(), wear = r.U16();
+                    _link?.Gave?.Invoke(item, count, wear);
+                    break;
+                }
+                case Net.Msg.Box:
+                {
+                    var at = new Vector3Int(r.I32(), r.I32(), r.I32());
+                    _link?.BoxOpened?.Invoke(at, r.Stacks());
+                    break;
+                }
+                case Net.Msg.BoxSet:
+                {
+                    var at = new Vector3Int(r.I32(), r.I32(), r.I32()); int slot = r.U8();
+                    _link?.BoxChanged?.Invoke(at, slot, r.Slot());
+                    break;
+                }
+                case Net.Msg.Sleepers:
+                {
+                    int asleep = r.U8(), total = r.U8();
+                    _link?.Sleepers?.Invoke(asleep, total);
+                    break;
+                }
+                case Net.Msg.MobSound:
+                {
+                    r.I32(); var kind = (MobKind)r.U8(); int code = r.U8();
+                    var at = new Vector3(r.F32(), r.F32(), r.F32());
+                    if (code < Net.MobSounds.Length) _link?.MobSound?.Invoke(kind, Net.MobSounds[code], at);
+                    break;
+                }
             }
         }
 

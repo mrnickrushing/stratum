@@ -17,6 +17,7 @@ namespace Stratum.Server
     //                                  sets a new one (for a forgotten password; everything they own is kept)
     //   STRATUM_CREATIVE / --creative  1 for creative mode
     //   STRATUM_VIEW / --view          most chunks a player sees in each direction (default 10)
+    //   STRATUM_DIFFICULTY / --difficulty  peaceful (no monsters, no hunger), easy, or normal (default)
     // `--selftest` starts a private server with two scripted players and checks they see each other's world.
     public static class Program
     {
@@ -58,6 +59,8 @@ namespace Stratum.Server
             var cr = Get("STRATUM_CREATIVE", "--creative");
             c.Creative = cr == "1" || string.Equals(cr, "true", StringComparison.OrdinalIgnoreCase);
             if (int.TryParse(Get("STRATUM_VIEW", "--view"), out int view)) c.MaxView = Math.Clamp(view, 4, 16);
+            var diff = (Get("STRATUM_DIFFICULTY", "--difficulty") ?? "normal").ToLowerInvariant();
+            c.Difficulty = diff.StartsWith("p") || diff == "0" ? 0 : diff.StartsWith("e") || diff == "1" ? 1 : 2;
             return c;
         }
 

@@ -17,7 +17,10 @@ namespace Stratum.Game
         RectTransform _root;
         readonly SlotView[] _hot = new SlotView[9];
         RectTransform _select;
-        Image _health, _healthBack, _air, _airBack, _water, _hurt;
+        Image _health, _healthBack, _air, _airBack, _water, _hurt, _food, _foodBack, _armour, _armourBack, _use, _useBack, _mobBar, _mobBack, _bossBar, _bossBack, _sleep;
+        Text _mobName, _bossName, _sleepText;
+        public Link Link;
+        float _sleepFade; bool _sleeping; string _sleepLine = "";
         Text _name, _debug, _fps, _toast;
         float _nameTimer, _toastTimer, _hurtFlash;
         int _lastSel = -1; string _lastHeld;
@@ -34,6 +37,10 @@ namespace Stratum.Game
         Text _tip;
         Stack _cursor;
         string _station;
+        // An open chest: where, and what's in it (kept in step with the host).
+        Vector3Int _boxAt; Stack[] _box; RectTransform _boxGrid; readonly List<SlotView> _boxSlots = new List<SlotView>(); GameObject _craftArea;
+        readonly List<SlotView> _armSlots = new List<SlotView>(); Text _armText;
+        public System.Action CloseBoxed;
         float _rebuildTimer;
         public bool InventoryOpen => _inv != null && _inv.activeSelf;
 
@@ -53,6 +60,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
 
             _water = UIKit.Panel(_root, "Underwater", new Color(0.05f, 0.25f, 0.45f, 0.35f), UIKit.White); _water.rectTransform.Fill(); _water.raycastTarget = false;
+            _portal = UIKit.Panel(_root, "Portal", new Color(1f, 0.38f, 0.12f, 0), UIKit.White); _portal.rectTransform.Fill(); _portal.raycastTarget = false;
             _hurt = UIKit.Panel(_root, "Hurt", new Color(0.7f, 0.05f, 0.02f, 0), UIKit.White); _hurt.rectTransform.Fill(); _hurt.raycastTarget = false;
 
             // Crosshair
@@ -85,18 +93,43 @@ namespace Stratum.Game
             // Health and air above the hotbar
             float bw = (9 * (S + G) + 14) / 2 - 10;
             _healthBack = UIKit.Panel(_root, "HealthBack", new Color(0.05f, 0.05f, 0.06f, 0.7f), UIKit.RoundSmall);
-            _healthBack.rectTransform.Place(0.5f, 0, -bw / 2 - 5, 18 + S + 24, bw, 18);
+            _healthBack.rectTransform.Place(0.5f, 0, -bw / 2 - 5, 18 + S + 40, bw, 18);
             _health = UIKit.Panel(_healthBack.transform, "Health", new Color(0.86f, 0.22f, 0.2f), UIKit.RoundSmall);
             _health.rectTransform.anchorMin = Vector2.zero; _health.rectTransform.anchorMax = new Vector2(1, 1); _health.rectTransform.offsetMin = new Vector2(3, 3); _health.rectTransform.offsetMax = new Vector2(-3, -3);
             _airBack = UIKit.Panel(_root, "AirBack", new Color(0.05f, 0.05f, 0.06f, 0.7f), UIKit.RoundSmall);
-            _airBack.rectTransform.Place(0.5f, 0, bw / 2 + 5, 18 + S + 24, bw, 18);
+            _airBack.rectTransform.Place(0.5f, 0, bw / 2 + 5, 18 + S + 40, bw, 18);
             _air = UIKit.Panel(_airBack.transform, "Air", new Color(0.45f, 0.75f, 1f), UIKit.RoundSmall);
             _air.rectTransform.anchorMin = Vector2.zero; _air.rectTransform.anchorMax = new Vector2(1, 1); _air.rectTransform.offsetMin = new Vector2(3, 3); _air.rectTransform.offsetMax = new Vector2(-3, -3);
+            // Hunger beside health; armour over health; air over hunger when it's needed.
+            _airBack.rectTransform.anchoredPosition = new Vector2(bw / 2 + 5, 18 + S + 40 + 26);
+            _foodBack = Bar("Food", new Color(0.86f, 0.58f, 0.22f), bw / 2 + 5, 18 + S + 40, bw, out _food);
+            _armourBack = Bar("Armour", new Color(0.78f, 0.80f, 0.86f), -bw / 2 - 5, 18 + S + 40 + 26, bw, out _armour);
+            _xpBack = Bar("Xp", new Color(0.45f, 0.9f, 0.25f), 0, 18 + S + 20, bw * 2 + 10, out _xp);
+            _xpBack.rectTransform.sizeDelta = new Vector2(bw * 2 + 10, 12);
+            _xpLevel = UIKit.Label(_xpBack.transform, "", 22, new Color(0.6f, 1f, 0.35f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(2);
+            _xpLevel.rectTransform.Place(0.5f, 0.5f, 0, 2, 120, 30);
+            _useBack = Bar("Use", new Color(1, 1, 1, 0.9f), 0, 0, 120, out _use);
+            _useBack.rectTransform.anchorMin = _useBack.rectTransform.anchorMax = new Vector2(0.5f, 0.5f); _useBack.rectTransform.anchoredPosition = new Vector2(0, -34);
+            _useBack.rectTransform.sizeDelta = new Vector2(120, 12);
+            // What's in the crosshair, and a boss's health along the top.
+            _mobName = UIKit.Label(_root, "", 24, UIKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
+            _mobName.rectTransform.Place(0.5f, 0.5f, 0, 70, 500, 32);
+            _mobBack = Bar("MobHealth", new Color(0.86f, 0.22f, 0.2f), 0, 0, 200, out _mobBar);
+            _mobBack.rectTransform.anchorMin = _mobBack.rectTransform.anchorMax = new Vector2(0.5f, 0.5f); _mobBack.rectTransform.anchoredPosition = new Vector2(0, 48);
+            _mobBack.rectTransform.sizeDelta = new Vector2(200, 12);
+            _bossName = UIKit.Label(_root, "", 28, new Color(1, 0.8f, 0.6f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
+            _bossName.rectTransform.Place(0.5f, 1, 0, -6, 900, 40);
+            _bossBack = Bar("Boss", new Color(0.9f, 0.35f, 0.1f), 0, 0, 900, out _bossBar);
+            _bossBack.rectTransform.anchorMin = _bossBack.rectTransform.anchorMax = new Vector2(0.5f, 1); _bossBack.rectTransform.anchoredPosition = new Vector2(0, -74);
+            _bossBack.rectTransform.sizeDelta = new Vector2(900, 20);
+            _sleep = UIKit.Panel(_root, "Sleep", new Color(0.01f, 0.01f, 0.04f, 0), UIKit.White); _sleep.rectTransform.Fill(); _sleep.raycastTarget = false;
+            _sleepText = UIKit.Label(_sleep.transform, "", 34, new Color(0.85f, 0.88f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
+            _sleepText.rectTransform.Fill();
 
             _name = UIKit.Label(_root, "", 30, UIKit.Ink, TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
-            _name.rectTransform.Place(0.5f, 0, 0, 18 + S + 56, 800, 40);
+            _name.rectTransform.Place(0.5f, 0, 0, 18 + S + 72, 800, 40);
             _toast = UIKit.Label(_root, "", 28, UIKit.Accent, TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
-            _toast.rectTransform.Place(0.5f, 0, 0, 18 + S + 100, 900, 40);
+            _toast.rectTransform.Place(0.5f, 0, 0, 18 + S + 116, 900, 40);
 
             _debug = UIKit.Label(_root, "", 20, Color.white, TextAnchor.UpperLeft).Shadowed(1.5f);
             _debug.rectTransform.Place(0, 1, 16, -12, 900, 400);
@@ -109,6 +142,36 @@ namespace Stratum.Game
             Act.Toast = Toast;
         }
 
+        Image _xpBack, _xp; Text _xpLevel, _craftSub;
+        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map);
+
+        Image Bar(string name, Color col, float x, float y, float w, out Image fill)
+        {
+            var back = UIKit.Panel(_root, name + "Back", new Color(0.05f, 0.05f, 0.06f, 0.7f), UIKit.RoundSmall);
+            back.rectTransform.Place(0.5f, 0, x, y, w, 18);
+            back.raycastTarget = false;
+            fill = UIKit.Panel(back.transform, name, col, UIKit.RoundSmall);
+            fill.rectTransform.anchorMin = Vector2.zero; fill.rectTransform.anchorMax = new Vector2(1, 1); fill.rectTransform.offsetMin = new Vector2(3, 3); fill.rectTransform.offsetMax = new Vector2(-3, -3);
+            fill.raycastTarget = false;
+            return back;
+        }
+
+        // Lying in bed: the screen fades to dark while the night passes.
+        public void Sleeping(bool on, string line = "")
+        {
+            _sleeping = on; _sleepLine = line;
+        }
+
+        Image _portal;
+        // The swirl of a portal taking hold (0 none, 1 about to go).
+        public void PortalGlow(float k)
+        {
+            if (_portal == null) return;
+            k = Mathf.Clamp01(k);
+            _portal.color = new Color(1f, 0.38f + Mathf.Sin(Time.time * 5) * 0.06f, 0.12f, k * k * 0.75f);
+            _portal.gameObject.SetActive(k > 0.001f);
+        }
+
         public void Toast(string s) { if (_toasts.Count < 4 && !_toasts.Contains(s)) _toasts.Enqueue(s); }
 
         void Update()
@@ -116,7 +179,8 @@ namespace Stratum.Game
             float dt = Time.unscaledDeltaTime;
             _root.gameObject.SetActive(true);
             bool show = !Hidden && !InventoryOpen;
-            foreach (Transform t in _root) if (t.gameObject != _inv) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform);
+            foreach (Transform t in _root) if (t.gameObject != _inv && t.gameObject != _signPanel && !Held(t)) t.gameObject.SetActive(show || t == _hurt.transform || t == _water.transform || t == _sleep.transform || t == _portal.transform);
+            UpdateHeld(dt, Enchants.BaseOf(P.Inv.Held.Item), show);
 
             // Hotbar
             for (int i = 0; i < 9; i++) _hot[i].Show(P.Inv.Slots[i]);
@@ -141,6 +205,22 @@ namespace Stratum.Game
             bool airVisible = survival && show && (P.HeadInWater || P.Air < P.MaxAir - 0.01f);
             _airBack.gameObject.SetActive(airVisible);
             _air.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.Air / P.MaxAir), 1);
+            _foodBack.gameObject.SetActive(survival && show);
+            _food.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.Food / 20f), 1);
+            _xpBack.gameObject.SetActive(survival && show);
+            _xp.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.XpPoints / (float)Xp.Next(P.XpLevel)), 1);
+            _xpLevel.text = P.XpLevel > 0 ? P.XpLevel.ToString() : "";
+            _food.color = P.Food <= 6 ? Color.Lerp(new Color(0.86f, 0.58f, 0.22f), new Color(0.5f, 0.3f, 0.1f), Mathf.PingPong(Time.time * 2, 1)) : new Color(0.86f, 0.58f, 0.22f);
+            int arm = P.Inv.ArmourPoints;
+            _armourBack.gameObject.SetActive(survival && show && arm > 0);
+            _armour.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, arm / 20f), 1);
+            float use = Act.EatProgress > 0 ? Act.EatProgress : Act.DrawProgress > 0 ? Act.DrawProgress : Act.AttackReady < 1 && Act.HasMob ? Act.AttackReady : 0;
+            _useBack.gameObject.SetActive(show && use > 0);
+            _use.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, use), 1);
+            MobInfo(show);
+            _sleepFade = Mathf.MoveTowards(_sleepFade, _sleeping ? 1 : 0, dt * (_sleeping ? 0.6f : 2f));
+            _sleep.color = new Color(0.01f, 0.01f, 0.04f, _sleepFade * 0.92f);
+            _sleepText.text = _sleepFade > 0.3f ? _sleepLine : "";
 
             _water.gameObject.SetActive(P.HeadInWater);
             _hurtFlash = Mathf.MoveTowards(_hurtFlash, 0, dt * 1.2f);
@@ -153,6 +233,26 @@ namespace Stratum.Game
 
             if (InventoryOpen) UpdateInventory(dt);
             UpdateChat();
+        }
+
+        void MobInfo(bool show)
+        {
+            bool has = show && Act.HasMob && Act.Creatures != null && Act.Creatures.TryGet(Act.TargetMob, out var ms);
+            MobState m = default;
+            if (has) Act.Creatures.TryGet(Act.TargetMob, out m);
+            _mobName.gameObject.SetActive(has); _mobBack.gameObject.SetActive(has);
+            if (has)
+            {
+                _mobName.text = MobSim.Def(m.Kind).Name;
+                _mobBar.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, m.Health), 1);
+            }
+            // A boss nearby shows its health across the top.
+            MobState boss = default; bool any = false;
+            if (Link != null)
+                foreach (var b in Link.Mobs)
+                    if (b.Kind == MobKind.Colossus && (b.Pos - P.Feet).sqrMagnitude < 80 * 80) { boss = b; any = true; break; }
+            _bossName.gameObject.SetActive(show && any); _bossBack.gameObject.SetActive(show && any);
+            if (any) { _bossName.text = MobSim.Def(boss.Kind).Name; _bossBar.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, boss.Health), 1); }
         }
 
         string DebugText()
@@ -168,6 +268,7 @@ namespace Stratum.Game
                    $"Looking at {target}\n" +
                    $"{Sky.Clock()}   seed {World.Gen.Seed}\n" +
                    $"Chunks {World.LoadedChunks}  jobs {World.PendingJobs}   view {World.ViewDistance}\n" +
+                   $"Creatures {(Link != null ? Link.Mobs.Count : 0)}   food {P.Food:0}/{P.Saturation:0.0}   armour {P.Inv.ArmourPoints}\n" +
                    (P.Creative ? "Creative" + (P.Flying ? " (flying)" : "") : "Survival") +
                    (OnlineInfo != null ? "\n" + OnlineInfo() : "");
         }
@@ -195,9 +296,11 @@ namespace Stratum.Game
             right.rectTransform.Place(1, 1, -40, -30, 640, 800);
             _craftTitle = UIKit.Label(right.transform, "Crafting", 34, UIKit.Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
             _craftTitle.rectTransform.Place(0, 1, 28, -16, 600, 46);
-            var sub = UIKit.Label(right.transform, "Click to make one, Shift-click to make as many as you can.", 19, UIKit.Dim);
-            sub.rectTransform.Place(0, 1, 28, -60, 600, 28);
+            _craftSub = UIKit.Label(right.transform, "", 19, UIKit.Dim);
+            _craftSub.rectTransform.Place(0, 1, 28, -60, 600, 28);
+            _boxGrid = UIKit.Rect(right.transform, "Chest").Place(0, 1, 26, -110, 600, 260);
             var scroll = UIKit.Scroll(right.transform, out _craftList);
+            _craftArea = scroll.gameObject;
             ((RectTransform)scroll.transform).Fill(); ((RectTransform)scroll.transform).offsetMax = new Vector2(-14, -100); ((RectTransform)scroll.transform).offsetMin = new Vector2(14, 14);
             var vl = _craftList.gameObject.AddComponent<VerticalLayoutGroup>();
             vl.spacing = 8; vl.childControlHeight = false; vl.childControlWidth = true; vl.childForceExpandHeight = false; vl.padding = new RectOffset(6, 6, 6, 6);
@@ -208,6 +311,26 @@ namespace Stratum.Game
             _cursorCount.rectTransform.Fill(-4);
             _inv.SetActive(false);
         }
+
+        public void OpenBox(Vector3Int at, Stack[] contents)
+        {
+            _boxAt = at;
+            _box = (Stack[])contents.Clone();
+            if (_box.Length < Containers.ChestSlots) System.Array.Resize(ref _box, Containers.ChestSlots);
+            if (InventoryOpen && _station == "chest") return;
+            OpenInventory("chest");
+            Sfx.I?.Play("chest_open", 0.7f);
+        }
+
+        // Someone else changed a slot of the chest we have open.
+        public void BoxChanged(Vector3Int at, int slot, Stack s)
+        {
+            if (_box == null || at != _boxAt || (uint)slot >= (uint)_box.Length) return;
+            _box[slot] = s;
+        }
+
+        public bool BoxOpen => InventoryOpen && _station == "chest";
+        public Vector3Int BoxAt => _boxAt;
 
         public void OpenInventory(string station)
         {
@@ -224,6 +347,8 @@ namespace Stratum.Game
                 if (!P.Creative) { int left = P.Inv.Add(_cursor.Item, _cursor.Count); if (left > 0) Toast("Your pack is full"); }
                 _cursor = Stack.None;
             }
+            if (_station == "chest") { _box = null; Sfx.I?.Play("chest_close", 0.6f); CloseBoxed?.Invoke(); }
+            if (WorkStation) ReturnWork();
             _inv.SetActive(false);
         }
 
@@ -258,6 +383,47 @@ namespace Stratum.Game
                 v.Hover = on => Tip(on ? P.Inv.Slots[idx] : Stack.None);
                 _invSlots.Add(v);
             }
+            // Armour: head, body, legs, feet.
+            _armSlots.Clear();
+            if (!creative)
+            {
+                var al = UIKit.Label(_invGrid, "Armour", 22, UIKit.Dim);
+                al.rectTransform.Place(0, 1, 0, -432, 300, 30);
+                string[] names = { "Head", "Body", "Legs", "Feet" };
+                for (int i = 0; i < 4; i++)
+                {
+                    int idx = Inventory.ArmourStart + i, slotType = i;
+                    var v = SlotView.Make(_invGrid, S);
+                    v.GetComponent<RectTransform>().Place(0, 1, i * (S + G), -468, S, S);
+                    v.Click = b => ArmourClick(idx, slotType, b);
+                    v.Hover = on => { if (on && P.Inv.Slots[idx].Empty) _tip.text = names[slotType] + " armour goes here"; else Tip(on ? P.Inv.Slots[idx] : Stack.None); };
+                    _armSlots.Add(v);
+                }
+                _armText = UIKit.Label(_invGrid, "", 22, UIKit.Dim);
+                _armText.rectTransform.Place(0, 1, 4 * (S + G) + 10, -490, 400, 40);
+            }
+            // A chest's slots take the crafting panel's place.
+            foreach (Transform t in _boxGrid) Destroy(t.gameObject);
+            _boxSlots.Clear();
+            bool chest = _station == "chest" && _box != null;
+            _boxGrid.gameObject.SetActive(chest);
+            _craftArea.SetActive(!chest && !WorkStation);
+            LayoutWork();
+            if (chest)
+            {
+                const float CS = 62, CG = 5;
+                for (int i = 0; i < Containers.ChestSlots; i++)
+                {
+                    int idx = i;
+                    var v = SlotView.Make(_boxGrid, CS);
+                    v.GetComponent<RectTransform>().Place(0, 1, (i % 9) * (CS + CG), -(i / 9) * (CS + CG), CS, CS);
+                    v.Click = b => BoxClick(idx, b);
+                    v.Hover = on => Tip(on && _box != null ? _box[idx] : Stack.None);
+                    _boxSlots.Add(v);
+                }
+                var hint = UIKit.Label(_boxGrid, "Shift-click moves a stack between the chest and your pack.", 19, UIKit.Dim);
+                hint.rectTransform.Place(0, 1, 0, -3 * (CS + CG) - 10, 600, 30);
+            }
             if (creative)
             {
                 var sc = UIKit.Scroll(_palette, out var content);
@@ -284,27 +450,9 @@ namespace Stratum.Game
             _tip.text = d.Name + (s.Count > 1 ? $" × {s.Count}" : "") + extra;
         }
 
-        void SlotClick(int i, PointerEventData.InputButton button)
+        // What a click does to a slot with whatever the cursor holds (pick up, put down, swap, split, add one).
+        void CursorClick(ref Stack slot, PointerEventData.InputButton button)
         {
-            var kb = Keyboard.current;
-            bool shift = kb != null && kb.leftShiftKey.isPressed;
-            ref var slot = ref P.Inv.Slots[i];
-            if (shift && button == PointerEventData.InputButton.Left && !slot.Empty)
-            {
-                // Quick move between hotbar and pack.
-                var s = slot; slot = Stack.None;
-                int from = i < 9 ? 9 : 0, to = i < 9 ? 36 : 9;
-                for (int k = from; k < to && s.Count > 0; k++)
-                {
-                    ref var t = ref P.Inv.Slots[k];
-                    int max = Items.Get(s.Item).MaxStack;
-                    if (!t.Empty && t.Item == s.Item && t.Count < max) { int n = Mathf.Min(max - t.Count, s.Count); t.Count += n; s.Count -= n; }
-                }
-                for (int k = from; k < to && s.Count > 0; k++) { ref var t = ref P.Inv.Slots[k]; if (t.Empty) { t = s; s.Count = 0; } }
-                if (s.Count > 0) slot = s;
-                Sfx.I?.Play("click", 0.3f);
-                return;
-            }
             if (button == PointerEventData.InputButton.Left)
             {
                 if (_cursor.Empty) { _cursor = slot; slot = Stack.None; }
@@ -326,6 +474,87 @@ namespace Stratum.Game
                 }
             }
             Sfx.I?.Play("click", 0.25f);
+        }
+
+        void ArmourClick(int i, int type, PointerEventData.InputButton button)
+        {
+            ref var slot = ref P.Inv.Slots[i];
+            if (!_cursor.Empty)
+            {
+                var d = Items.Get(_cursor.Item);
+                if (d == null || d.ArmourSlot != type) { Toast("That doesn't go there"); return; }
+                if (button == PointerEventData.InputButton.Right) button = PointerEventData.InputButton.Left;
+            }
+            CursorClick(ref slot, button);
+        }
+
+        void BoxClick(int i, PointerEventData.InputButton button)
+        {
+            if (_box == null) return;
+            var kb = Keyboard.current;
+            bool shift = kb != null && kb.leftShiftKey.isPressed;
+            if (shift && button == PointerEventData.InputButton.Left && !_box[i].Empty)
+            {
+                var s = _box[i];
+                int left;
+                if (s.Wear > 0) { left = s.Count; for (int k = 0; k < Inventory.Main; k++) if (P.Inv.Slots[k].Empty) { P.Inv.Slots[k] = s; left = 0; break; } }
+                else left = P.Inv.Add(s.Item, s.Count);
+                _box[i] = left > 0 ? new Stack(s.Item, left) { Wear = s.Wear } : Stack.None;
+                Sfx.I?.Play("click", 0.3f);
+            }
+            else CursorClick(ref _box[i], button);
+            Link?.BoxSlot(_boxAt, i, _box[i]);
+            RebuildCraftingSoon();
+        }
+
+        // Shift-click in the pack with a chest open: the stack goes into the chest.
+        bool ToBox(int i)
+        {
+            if (_box == null || _station != "chest") return false;
+            ref var slot = ref P.Inv.Slots[i];
+            var s = slot;
+            int max = Items.Get(s.Item).MaxStack;
+            for (int k = 0; k < _box.Length && s.Count > 0; k++)
+            {
+                if (_box[k].Empty || _box[k].Item != s.Item || _box[k].Wear != 0 || s.Wear != 0 || _box[k].Count >= max) continue;
+                int n = Mathf.Min(max - _box[k].Count, s.Count); _box[k].Count += n; s.Count -= n; Link?.BoxSlot(_boxAt, k, _box[k]);
+            }
+            for (int k = 0; k < _box.Length && s.Count > 0; k++)
+                if (_box[k].Empty) { _box[k] = s; s.Count = 0; Link?.BoxSlot(_boxAt, k, _box[k]); }
+            slot = s.Count > 0 ? s : Stack.None;
+            Sfx.I?.Play("click", 0.3f);
+            return true;
+        }
+
+        void SlotClick(int i, PointerEventData.InputButton button)
+        {
+            var kb = Keyboard.current;
+            bool shift = kb != null && kb.leftShiftKey.isPressed;
+            ref var slot = ref P.Inv.Slots[i];
+            if (shift && button == PointerEventData.InputButton.Left && !slot.Empty && ToBox(i)) { RebuildCraftingSoon(); return; }
+            if (shift && button == PointerEventData.InputButton.Left && !slot.Empty && Items.Get(slot.Item).ArmourSlot >= 0 && P.Inv.Slots[Inventory.ArmourStart + Items.Get(slot.Item).ArmourSlot].Empty)
+            {
+                P.Inv.Slots[Inventory.ArmourStart + Items.Get(slot.Item).ArmourSlot] = slot; slot = Stack.None;
+                Sfx.I?.Play("click", 0.3f);
+                return;
+            }
+            if (shift && button == PointerEventData.InputButton.Left && !slot.Empty)
+            {
+                // Quick move between hotbar and pack.
+                var s = slot; slot = Stack.None;
+                int from = i < 9 ? 9 : 0, to = i < 9 ? 36 : 9;
+                for (int k = from; k < to && s.Count > 0; k++)
+                {
+                    ref var t = ref P.Inv.Slots[k];
+                    int max = Items.Get(s.Item).MaxStack;
+                    if (!t.Empty && t.Item == s.Item && t.Count < max) { int n = Mathf.Min(max - t.Count, s.Count); t.Count += n; s.Count -= n; }
+                }
+                for (int k = from; k < to && s.Count > 0; k++) { ref var t = ref P.Inv.Slots[k]; if (t.Empty) { t = s; s.Count = 0; } }
+                if (s.Count > 0) slot = s;
+                Sfx.I?.Play("click", 0.3f);
+                return;
+            }
+            CursorClick(ref slot, button);
             RebuildCraftingSoon();
         }
 
@@ -357,7 +586,9 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
-            _craftTitle.text = furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
+            if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
+            _craftTitle.text = _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "furnace" && furnace))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
@@ -407,6 +638,7 @@ namespace Stratum.Game
             int made = 0;
             do { if (!P.Inv.Craft(r)) break; made++; } while (all && made < 64);
             if (made > 0) Sfx.I?.Play("craft", 0.6f);
+            if (made > 0 && r.Station == "furnace") P.AddXp((made + Random.Range(0, 2)) / 2);
             else Toast("No room for it");
             RebuildCraftingSoon();
         }
@@ -416,6 +648,10 @@ namespace Stratum.Game
             int k = 0;
             if (!P.Creative) for (int i = 9; i < 36; i++) _invSlots[k++].Show(P.Inv.Slots[i]);
             for (int i = 0; i < 9; i++) _invSlots[k++].Show(P.Inv.Slots[i]);
+            for (int i = 0; i < _armSlots.Count; i++) _armSlots[i].Show(P.Inv.Slots[Inventory.ArmourStart + i]);
+            if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
+            if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);
+            UpdateWork();
             var sp = _cursor.Empty ? null : Icons.Get(_cursor.Item);
             _cursorIcon.sprite = sp; _cursorIcon.enabled = sp != null;
             _cursorCount.text = !_cursor.Empty && _cursor.Count > 1 ? _cursor.Count.ToString() : "";

@@ -22,6 +22,7 @@ namespace Stratum.Game
 
         // Tests: a made-up voice instead of the microphone ("-voicetone").
         public static bool TestTone;
+        public static bool Active;                       // a voice chat is running (it owns the microphone)
 
         const float SpatialBlend = 0.6f;
         const int Jitter = 2 * Voice.FrameSamples;      // buffered ahead before playing (80 ms)
@@ -38,6 +39,8 @@ namespace Stratum.Game
         readonly Voice.Encoder _enc = new Voice.Encoder();
         readonly float[] _frame = new float[Voice.FrameSamples];
         string _micProblem;
+        float _deviceCheck = 1.5f; int _deviceCount = -1;
+        public static float MicLevel;                   // how loud the microphone is right now (0..1), for Settings' meter
         float _problemShown;
 
         // ------------------------------------------------------------------ speakers
@@ -86,6 +89,20 @@ namespace Stratum.Game
             foreach (var g in _ui.GetComponentsInChildren<Graphic>()) g.raycastTarget = false;
         }
 
+        void OnEnable() { Sfx.AudioRestarted += RestartSpeakers; Active = true; MicChoice.StopTest(); }
+        void OnDisable() { Sfx.AudioRestarted -= RestartSpeakers; Active = false; }
+
+        // After the sound output moves (a headset plugged in), every voice starts again from a clean buffer.
+        void RestartSpeakers()
+        {
+            foreach (var s in _speakers.Values)
+            {
+                if (s.Src == null) continue;
+                s.Src.Play();
+                s.LastPos = 0; s.Played = 0; s.Cleared = 0; s.Write = Jitter;
+            }
+        }
+
         void OnDestroy()
         {
             StopMic();
@@ -96,6 +113,19 @@ namespace Stratum.Game
         {
             int mode = TestTone ? 2 : Settings.VoiceMode;
             if (mode != _mode) { _mode = mode; if (mode == 0) StopMic(); else if (!TestTone) StartMic(); }
+            // A headset plugged in or out, or a different microphone picked in Settings: open the right one.
+            if (_mode > 0 && !TestTone && (_deviceCheck -= Time.unscaledDeltaTime) <= 0)
+            {
+                _deviceCheck = 1.5f;
+                string want = MicChoice.Device();
+                int count = Microphone.devices.Length;
+                if (want != _device || count != _deviceCount || _mic != null && !Microphone.IsRecording(_device) || _mic == null && count > 0)
+                {
+                    if (count != _deviceCount && _deviceCount >= 0) Debug.Log("[Stratum] microphones now: " + string.Join(", ", Microphone.devices));
+                    _deviceCount = count;
+                    StartMic();
+                }
+            }
             PumpMic();
             UpdateSpeakers();
             UpdateUi();
@@ -109,13 +139,15 @@ namespace Stratum.Game
             _micProblem = null;
             try
             {
-                if (Microphone.devices.Length == 0) { _micProblem = "No microphone found"; return; }
-                _device = null;                                          // the system's default microphone
+                _deviceCount = Microphone.devices.Length;
+                if (Microphone.devices.Length == 0) { _micProblem = "No microphone found: plug in a headset"; return; }
+                _device = MicChoice.Device();
                 Microphone.GetDeviceCaps(_device, out int min, out int max);
                 _micRate = min == 0 && max == 0 ? Voice.Rate : Mathf.Clamp(Voice.Rate, min, max);
                 _mic = Microphone.Start(_device, true, 1, _micRate);
                 if (_mic == null) { _micProblem = "Couldn't open the microphone"; return; }
                 _micRate = _mic.frequency;
+                Debug.Log($"[Stratum] microphone: {(_device ?? "default")} at {_micRate} Hz");
                 _readPos = 0; _rsPos = 0; _rsPrev = 0;
                 _pending.Clear();
             }
@@ -126,6 +158,7 @@ namespace Stratum.Game
         {
             if (_mic != null) { try { Microphone.End(_device); } catch { } Destroy(_mic); }
             _mic = null;
+            MicLevel = 0;
             Transmitting = false;
         }
 
@@ -162,6 +195,7 @@ namespace Stratum.Game
                 _pending.RemoveRange(0, Voice.FrameSamples);
                 float rms = Voice.Rms(_frame, 0, Voice.FrameSamples);
                 _level = Mathf.Max(rms * 4, _level * 0.85f);
+                MicLevel = Mathf.Clamp01(_level);
                 bool send;
                 if (_mode == 1) send = wantPush;
                 else
@@ -328,6 +362,75 @@ namespace Stratum.Game
                     names += (names == "" ? "" : "\n") + "• " + (Avatars?.NameOf(s.Id) ?? "Someone") + " is talking";
             _talkers.text = names;
             _talkers.rectTransform.anchoredPosition = new Vector2(4, pill.activeSelf ? -52 : 0);
+        }
+    }
+}
+
+namespace Stratum.Game
+{
+    // Which microphone to use: the one picked in Settings if it's plugged in, else the system's default.
+    // (On Windows, Unity's "default" is often a webcam or the laptop's own mic rather than the headset, so the
+    // pick matters.) Also a small tester for Settings, so a headset can be checked before joining a server.
+    public static class MicChoice
+    {
+        public static string Device()
+        {
+            var want = Settings.MicDevice;
+            if (string.IsNullOrEmpty(want)) return null;
+            foreach (var d in Microphone.devices) if (d == want) return d;
+            return null;
+        }
+
+        public static string Label()
+        {
+            if (Microphone.devices.Length == 0) return "none found";
+            var d = Device();
+            return d == null ? "Default" : Short(d);
+        }
+
+        static string Short(string d) => d.Length > 26 ? d.Substring(0, 25) + "…" : d;
+
+        // Default, then each microphone in turn.
+        public static void Next()
+        {
+            var list = Microphone.devices;
+            if (list.Length == 0) { Settings.MicDevice = ""; return; }
+            int i = Array.IndexOf(list, Device());
+            Settings.MicDevice = i + 1 < list.Length ? list[i + 1] : "";
+            StopTest();
+        }
+
+        // The tester: listens while Settings is open (unless voice chat already has the microphone).
+        static AudioClip _clip; static string _dev; static float _level; static int _rate;
+        public static float TestLevel()
+        {
+            if (VoiceChat.Active) return VoiceChat.MicLevel;
+            var want = Device();
+            if (_clip == null || want != _dev || !Microphone.IsRecording(_dev))
+            {
+                StopTest();
+                if (Microphone.devices.Length == 0) return 0;
+                _dev = want;
+                Microphone.GetDeviceCaps(_dev, out int min, out int max);
+                _rate = min == 0 && max == 0 ? 16000 : Mathf.Clamp(16000, min, max);
+                try { _clip = Microphone.Start(_dev, true, 1, _rate); } catch { _clip = null; }
+                if (_clip == null) return 0;
+            }
+            int pos = Microphone.GetPosition(_dev);
+            int n = Mathf.Min(_rate / 20, _clip.samples);
+            if (pos < n) return _level;
+            var buf = new float[n];
+            _clip.GetData(buf, pos - n);
+            float sum = 0; foreach (var v in buf) sum += v * v;
+            float rms = Mathf.Sqrt(sum / n) * Settings.MicGain;
+            _level = Mathf.Max(Mathf.Clamp01(rms * 4), _level * 0.85f);
+            return _level;
+        }
+
+        public static void StopTest()
+        {
+            if (_clip != null) { try { Microphone.End(_dev); } catch { } UnityEngine.Object.Destroy(_clip); }
+            _clip = null; _level = 0;
         }
     }
 }

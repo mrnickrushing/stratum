@@ -23,7 +23,7 @@ Shader "Stratum/Water"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
             TEXTURE2D_ARRAY(_BlockNormal); SAMPLER(sampler_BlockNormal);
-            float4 _SkyAmbient, _SkyZenith, _SkyHorizon, _TorchColor;
+            float4 _SkyAmbient, _SkyZenith, _SkyHorizon, _TorchColor, _CaveGlow;
             float _WaterLayer, _Underwater;
 
             struct A { float3 positionOS : POSITION; float3 normalOS : NORMAL; float4 light : COLOR; float3 uv : TEXCOORD0; };
@@ -78,7 +78,7 @@ Shader "Stratum/Water"
                 float fresnel = 0.04 + 0.96 * pow(1 - ndv, 5);
 
                 float skyB = LevelToBrightness(i.light.r), blkB = LevelToBrightness(i.light.g);
-                float3 lightAmt = _SkyAmbient.rgb * skyB + _TorchColor.rgb * blkB + 0.01;
+                float3 lightAmt = _SkyAmbient.rgb * skyB + _TorchColor.rgb * blkB + 0.01 + _CaveGlow.rgb;
 
                 // How much water lies behind this pixel.
                 float2 suv = i.screen.xy / i.screen.w;

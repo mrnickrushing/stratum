@@ -28,3 +28,6 @@
 Server/bin/
 Server/obj/
 !Server/Stratum.Server.csproj
+
+# Cloudflare deploy state
+site/.wrangler/

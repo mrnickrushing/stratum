@@ -22,6 +22,8 @@ namespace Stratum.Server
             public int sz { get; set; }
             public double time { get; set; } = 0.3;
             public int day { get; set; } = 1;
+            public int weather { get; set; }
+            public float weatherLeft { get; set; } = 900;
             public long created { get; set; }
         }
 
@@ -29,6 +31,11 @@ namespace Stratum.Server
         public readonly Info Meta;
         public readonly WorldGen Gen;
         public readonly Water Water;
+        public readonly Growth Growth;
+        public readonly Signal Signal;
+
+        // A change the server makes itself, told to everyone (through Changed).
+        public void Put(int x, int y, int z, byte id) { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); Signal.Wake(x, y, z); } }
 
         readonly Dictionary<long, Chunk> _chunks = new Dictionary<long, Chunk>();
         readonly Dictionary<long, byte[]> _packed = new Dictionary<long, byte[]>();    // compressed copies to send
@@ -57,7 +64,9 @@ namespace Stratum.Server
                 Meta.sx = s.x; Meta.sy = s.y; Meta.sz = s.z;
                 SaveMeta();
             }
-            Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); });
+            Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); }) { Loaded = IsLoaded };
+            Signal = new Signal(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }) { Loaded = IsLoaded };
+            Growth = new Growth(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }, (uint)Meta.seed ^ 0x5eed) { Loaded = IsLoaded };
 
             int n = Math.Clamp(Environment.ProcessorCount - 1, 1, 6);
             _workers = new Thread[n];
@@ -192,6 +201,14 @@ namespace Stratum.Server
         public float yaw { get; set; }
         public float pitch { get; set; }
         public float health { get; set; } = 20;
+        public float food { get; set; } = 20;
+        public float saturation { get; set; } = 5;
+        public bool hasBed { get; set; }
+        public int xpLevel { get; set; }
+        public int xpPoints { get; set; }
+        public int bx { get; set; }
+        public int by { get; set; }
+        public int bz { get; set; }
         public int selected { get; set; }
         public List<SlotRecord> slots { get; set; } = new List<SlotRecord>();
         public long lastSeen { get; set; }

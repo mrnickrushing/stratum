@@ -97,6 +97,17 @@ namespace Stratum.Game
             foreach (var a in _all.Values) Place(a, dt);
         }
 
+        // Boats and carts friends are sitting in, to be drawn with the creatures.
+        public void Rides(List<MobState> into)
+        {
+            foreach (var a in _all.Values)
+            {
+                bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0;
+                if (!boat && !cart) continue;
+                into.Add(new MobState { Id = -1000 - a.Id, Kind = boat ? MobKind.Boat : MobKind.Cart, Pos = a.Pos, Yaw = a.Yaw, Health = 1 });
+            }
+        }
+
         void Place(Avatar a, float dt)
         {
             var before = a.Pos;
@@ -109,7 +120,8 @@ namespace Stratum.Game
             a.Speed = Mathf.Lerp(a.Speed, speed, 1 - Mathf.Exp(-dt * 8));
 
             bool sneak = (a.Flags & Net.Sneaking) != 0, fly = (a.Flags & Net.Flying) != 0;
-            a.Root.position = a.Pos;
+            bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0, seated = boat || cart;
+            a.Root.position = a.Pos + Vector3.up * (boat ? -0.25f : cart ? 0.0f : 0);
             a.Root.rotation = Quaternion.Euler(0, a.Yaw, 0);
             a.Body.localRotation = Quaternion.Euler(sneak ? 22 : 0, 0, 0);
             a.Head.localRotation = Quaternion.Euler(Mathf.Clamp(a.Pitch, -60, 60), 0, 0);
@@ -117,8 +129,9 @@ namespace Stratum.Game
             float walk = fly ? 0 : Mathf.Clamp01(a.Speed / 4.3f);
             a.Phase += dt * (4 + a.Speed * 2.2f) * (walk > 0.05f ? 1 : 0);
             float sw = Mathf.Sin(a.Phase) * 38 * walk;
-            a.LegL.localRotation = Quaternion.Euler(sw, 0, 0);
-            a.LegR.localRotation = Quaternion.Euler(-sw, 0, 0);
+            if (seated) { sw = 0; a.Root.position += Vector3.up * 0.1f; }
+            a.LegL.localRotation = Quaternion.Euler(seated ? -80 : sw, 0, 0);
+            a.LegR.localRotation = Quaternion.Euler(seated ? -80 : -sw, 0, 0);
             a.Swing = Mathf.Max(0, a.Swing - dt * 3.5f);
             float hit = Mathf.Sin(a.Swing * Mathf.PI) * 75;
             a.ArmL.localRotation = Quaternion.Euler(-sw * 0.8f, 0, 0);
@@ -250,7 +263,7 @@ namespace Stratum.Game
         }
 
         // A unit cube whose faces are shaded a little differently, so the figure reads as solid without lights.
-        static Mesh Cube()
+        internal static Mesh Cube()
         {
             var v = new List<Vector3>(); var col = new List<Color>(); var tri = new List<int>();
             void Face(Vector3 n, Vector3 u, Vector3 w, float shade)

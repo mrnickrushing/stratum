@@ -7,6 +7,14 @@ tools at a workbench, smelt at a furnace, and build. Survival and Creative modes
 Everything is made in code: terrain, textures (painted at 64 px per block at launch), icons, sound and music. There are
 no imported art files.
 
+Download and install: **https://stratum.rushingtechnologies.com** (Windows installer, Linux one-line install).
+
+0.2 adds the rest of survival: creatures and combat, food and hunger, armour, chests, beds, signs, buckets and flowing
+water and lava, farming, XP, enchanting and the anvil, weather, compass/clock/maps, villages with traders, boats,
+minecarts and rails, spark power (levers, buttons, plates, wire, torches, lamps, repeaters, doors), and the Ember Deep:
+an underworld reached through lit obsidian frames (a strip of the same world at x 56000-64000, 1:8 with the surface;
+`Core/Ember.cs`), with Cinder Keeps where the Cinder Colossus waits.
+
 ## Controls
 
 | | |
@@ -47,6 +55,21 @@ unity command --project-path . script eval 'Stratum.EditorTools.Build.Linux(); r
 ```
 
 Output goes to `Builds/Linux/Stratum.x86_64` or `Builds/Windows/Stratum.exe`.
+
+## Releasing
+
+1. Bump the version in `Assets/Editor/Build.cs` (and `VERSION` in `site/worker.js`, the sizes/version in
+   `site/public/index.html`), build both players, and smoke-test them (below).
+2. `Tools/release/package.sh 0.2.0` writes `Builds/release/`: `Stratum-<v>-Setup.exe` (NSIS, 64-bit, per-user, no
+   admin; `Tools/release/stratum.nsi`), `Stratum-<v>-Windows.zip`, `Stratum-<v>-Linux.tar.gz` (carries
+   `install.sh`), `install.sh` and `SHA256SUMS.txt`.
+3. Upload them to the R2 bucket `stratum-downloads` under `v<version>/` (`wrangler r2 object put
+   stratum-downloads/v0.2.0/<file> --file Builds/release/<file>`), copy `Tools/release/install.sh` to
+   `site/public/`, and `cd site && wrangler deploy` (Worker `stratum-site` on stratum.rushingtechnologies.com:
+   static page in `site/public`, `/download/{windows,windows-zip,linux,sums}` streamed from R2).
+4. `gh release create v<version>` with the same files, and merge to `main` (Railway redeploys the server).
+
+The icon is drawn by `Tools/brand/icon.py` (`Assets/Art/Icon.png`, `Tools/brand/stratum.ico`).
 
 ## Checking a build
 

@@ -14,8 +14,11 @@ namespace Stratum.Core
         public static readonly string[] BiomeNames =
             { "Ocean", "River", "Beach", "Meadow", "Oakwood", "Birch Grove", "Pinewood", "Frostland", "Dunes", "High Peaks" };
 
+        public readonly Villages Villages;
+
         public WorldGen(int seed)
         {
+            Villages = new Villages(this, seed);
             Seed = seed;
             _cont = new Noise(seed); _eros = new Noise(seed + 1); _peak = new Noise(seed + 2); _hill = new Noise(seed + 3);
             _detail = new Noise(seed + 4); _river = new Noise(seed + 5); _temp = new Noise(seed + 6); _humid = new Noise(seed + 7);
@@ -88,6 +91,7 @@ namespace Stratum.Core
 
         public void Generate(Chunk ch)
         {
+            if (Ember.InChunk(ch.X)) { Ember.Generate(ch, _cave1, _cave2, Seed); ch.RecalcMaxY(); ch.Ready = true; return; }
             var cols = _cols ??= new Column[W * W];
             int bx = ch.X * Chunk.Size, bz = ch.Z * Chunk.Size;
             for (int z = 0; z < W; z++)
@@ -160,6 +164,8 @@ namespace Stratum.Core
             Ores(ch);
             Trees(ch, cols);
             Flora(ch, cols);
+            int vbx = bx, vbz = bz;
+            Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
             ch.RecalcMaxY();
             ch.Ready = true;
         }
@@ -266,6 +272,8 @@ namespace Stratum.Core
             Vein(ch, ref rng, Blocks.IronOre, 8, 5, 64, 6);
             Vein(ch, ref rng, Blocks.GoldOre, 3, 5, 34, 5);
             Vein(ch, ref rng, Blocks.SunstoneOre, 2, 5, 22, 4);
+            if (rng.Value() < 0.5f) Vein(ch, ref rng, Blocks.JadeOre, 1, 8, 110, 3);
+            Vein(ch, ref rng, Blocks.SparkOre, 5, 4, 18, 6);
             Vein(ch, ref rng, Blocks.Gravel, 5, 5, 90, 14);
             // Moss grows on rock beside cave air below 50.
         }
@@ -473,6 +481,15 @@ namespace Stratum.Core
                     }
                     else if (ground == Blocks.SnowyGrass && r < 0.04f) plant = Blocks.Fern;
                     else if (ground == Blocks.Sand && biome == Biome.Desert && r < 0.012f) plant = Blocks.DeadBush;
+                    // Sugar cane by the water's edge.
+                    if ((ground == Blocks.Grass || ground == Blocks.Sand) && h == Chunk.SeaLevel && x > 0 && x < 15 && z > 0 && z < 15
+                        && Noise.Hash01(bx + x, 17, bz + z, Seed) < 0.1f
+                        && (ch.Get(x + 1, h, z) == Blocks.Water || ch.Get(x - 1, h, z) == Blocks.Water || ch.Get(x, h, z + 1) == Blocks.Water || ch.Get(x, h, z - 1) == Blocks.Water))
+                    {
+                        int tall = 1 + (int)(Noise.Hash01(bx + x, 19, bz + z, Seed) * 3);
+                        for (int i = 1; i <= tall && h + i < Chunk.Height; i++) ch.Set(x, h + i, z, Blocks.SugarCane);
+                        continue;
+                    }
                     if (plant != 0) ch.Set(x, h + 1, z, plant);
                 }
         }

@@ -26,7 +26,7 @@ namespace Stratum.EditorTools
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(Scene, true) };
             PlayerSettings.companyName = "Rushing Technologies";
             PlayerSettings.productName = "Stratum";
-            PlayerSettings.bundleVersion = "0.1.1";
+            PlayerSettings.bundleVersion = "0.2.0";
             PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
             PlayerSettings.defaultIsNativeResolution = true;
             PlayerSettings.resizableWindow = true;
@@ -36,6 +36,9 @@ namespace Stratum.EditorTools
             PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
             PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Standalone, "com.rushingtech.stratum");
             IncludeShaders("Universal Render Pipeline/Unlit", "Universal Render Pipeline/Particles/Unlit");
+            // The window and taskbar icon (drawn by Tools/brand/icon.py).
+            var icon = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Icon.png");
+            if (icon != null) PlayerSettings.SetIcons(UnityEditor.Build.NamedBuildTarget.Unknown, new[] { icon }, IconKind.Any);
             AssetDatabase.SaveAssets();
             Debug.Log("Stratum project set up");
         }

@@ -64,6 +64,8 @@ namespace Stratum.Server
             return null;
         }
 
+        public float Food; public bool HasBed; public int BX, XpLevel;
+
         public bool Welcome()
         {
             var r = Wait(Net.Msg.Welcome);
@@ -73,6 +75,7 @@ namespace Stratum.Server
             HasPos = r.Bool(); X = r.F32(); Y = r.F32(); Z = r.F32(); r.F32(); r.F32(); r.F32(); r.U8();
             Slots = r.Stacks();
             Name = r.Str(); Token = r.Str();
+            Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); r.U8(); XpLevel = r.I32(); r.I32();
             return true;
         }
 
@@ -101,6 +104,36 @@ namespace Stratum.Server
     public static class SelfTest
     {
         static int _fails;
+        // The Ember Deep: its land, lighting a frame, breaking it, and coming out by a portal on the far side.
+        static void EmberChecks()
+        {
+            var gen = new WorldGen(31337);
+            var ch = new Chunk(Ember.Mid / 16, 0); gen.Generate(ch);
+            int lava = 0, rock = 0, roof = 0;
+            for (int i = 0; i < ch.Blocks.Length; i++) { byte id = ch.Blocks[i]; if (id == Blocks.Lava) lava++; else if (id == Blocks.Cinderstone) rock++; if (id == Blocks.Bedrock && i >> 8 >= Ember.Roof) roof++; }
+            Check(ch.Ready && rock > 1000 && roof >= 256, "the Ember Deep is cinderstone under a bedrock roof");
+            Check(Ember.ToOverworld(Ember.ToEmber(800, -400).x, Ember.ToEmber(800, -400).z) == (800f, -400f), "a step in the Deep is eight on the surface, both ways");
+
+            var w = new Dictionary<(int, int, int), byte>();
+            byte Get(int x, int y, int z) => w.TryGetValue((x, y, z), out var b) ? b : (byte)0;
+            void Set(int x, int y, int z, byte b) { if (b == 0) w.Remove((x, y, z)); else w[(x, y, z)] = b; }
+            for (int x = 0; x < 4; x++) { Set(x, 0, 0, Blocks.Obsidian); Set(x, 4, 0, Blocks.Obsidian); }
+            for (int y = 1; y < 4; y++) { Set(0, y, 0, Blocks.Obsidian); Set(3, y, 0, Blocks.Obsidian); }
+            Check(!Ember.Light(Get, Set, 1, 1, 1), "a striker beside the frame (not in it) lights nothing");
+            Check(Ember.Light(Get, Set, 1, 1, 0) && Ember.IsPortal(Get(2, 3, 0)) && w.Count == 14 + 6, "a 4x5 obsidian frame lights");
+            Set(3, 2, 0, 0); Ember.Collapse(Get, Set, 3, 2, 0);
+            Check(!Ember.IsPortal(Get(1, 1, 0)) && !Ember.IsPortal(Get(2, 3, 0)), "breaking the frame puts the portal out");
+            Set(3, 2, 0, Blocks.Obsidian); Set(1, 2, 0, Blocks.Stone);
+            Check(!Ember.Light(Get, Set, 1, 1, 0), "a frame with something in it won't light");
+            Set(1, 2, 0, 0); Ember.Light(Get, Set, 1, 1, 0);
+            int had = w.Count;
+            var (sx, sy, sz) = Ember.Arrive(Get, Set, 6, 3, false, 0);
+            Check(w.Count == had && sx > 0 && sx < 3 && sy == 1 && Math.Abs(sz) <= 1.5f, "coming through, a nearby portal is used rather than a new one built");
+            int before = w.Count;
+            var (ax, ay, az) = Ember.Arrive(Get, Set, 300, 300, false, 70);
+            Check(w.Count > before && Ember.IsPortal(Get(301, 71, 300)) && ay == 71, "with none near, a new frame is built and lit");
+        }
+
         static void Check(bool ok, string what) { Console.WriteLine((ok ? "PASS " : "FAIL ") + what); if (!ok) _fails++; }
 
         public static int Run()
@@ -150,6 +183,24 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
+                    // A chest: Ada fills a slot, Bea sees it, breaking it hands the things to Ada.
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(Blocks.Chest).U8(0));
+                    Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Chest) != null, "Ada places a chest");
+                    a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    var box = a.Wait(Net.Msg.Box);
+                    Check(box != null && box.I32() == px && box.I32() == py + 1 && box.I32() == pz && box.Stacks().Length == Containers.ChestSlots, "she opens it: 27 empty slots");
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz)); b.Wait(Net.Msg.Box);
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)));
+                    var set = b.Wait(Net.Msg.BoxSet);
+                    Check(set != null && set.I32() == px && set.I32() == py + 1 && set.I32() == pz && set.U8() == 2 && set.Slot().Count == 9, "Bea, looking in too, sees the cobble go in");
+                    a.Send(new Packet(Net.Msg.CloseBox)); b.Send(new Packet(Net.Msg.CloseBox));
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
+                    var give = a.Wait(Net.Msg.Give);
+                    Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
+                    Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
+                    a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
+                    Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
+
                     var tone = new float[Voice.FrameSamples];
                     for (int i = 0; i < tone.Length; i++) tone[i] = 0.4f * (float)Math.Sin(2 * Math.PI * 440 * i / Voice.Rate);
                     var enc = new Voice.Encoder();
@@ -171,7 +222,7 @@ namespace Stratum.Server
                     Check(b.Wait(Net.Msg.Moved, r => r.I32() == a.Id && Math.Abs(r.F32() - ax) < 0.01f) != null, "Bea sees Ada move");
 
                     var inv = new Stack[Inventory.Size]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
-                    a.Send(new Packet(Net.Msg.Keep).F32(17).U8(3).Stacks(inv));
+                    a.Send(new Packet(Net.Msg.Keep).F32(17).F32(12).F32(3).U8(3).Stacks(inv).Bool(true).I32(px).I32(py).I32(pz).I32(7).I32(3));
 
                     using (var c = new Bot(port)) { c.Create("ada", "another-pass"); Check(c.Refused()?.Contains("already an account") == true, "nobody can make a second account called ada"); }
                     using (var c = new Bot(port)) { c.Login("Bea", "wrong-password"); Check(c.Refused() == "Wrong password.", "a wrong password is refused"); }
@@ -196,6 +247,8 @@ namespace Stratum.Server
                     Check(w && a.HasPos && Math.Abs(a.X - ax) < 0.01f && Math.Abs(a.Z - az) < 0.01f, "and is where she stood");
                     Check(w && a.Slots.Length == Inventory.Size && a.Slots[0].Item == "cobble" && a.Slots[0].Count == 5 && a.Slots[3].Count == 12,
                           "and her backpack came back");
+                    Check(w && Math.Abs(a.Food - 12) < 0.01f && a.HasBed && a.BX == px, "and so do her hunger and her bed");
+                    Check(a.XpLevel == 7, "and her experience level");
                     a.Want(new[] { (px >> 4, pz >> 4) });
                     a.Wait(Net.Msg.Chunk, null, 15000);
                     Check(a.BlockAt(px, py, pz) == Blocks.Stone, "and the stone she placed is still there");
@@ -214,6 +267,7 @@ namespace Stratum.Server
                 var srv4 = new GameServer(cfg); srv4.Start();
                 using (var a = new Bot(srv4.Port)) { a.Login("Ada", "someone-else"); Check(a.Refused() == "Wrong password.", "the same reset isn't applied twice"); }
                 srv4.Stop();
+                EmberChecks();
             }
             catch (Exception e) { Check(false, "threw " + e); }
             finally { try { Directory.Delete(dir, true); } catch { } }

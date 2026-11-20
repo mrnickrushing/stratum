@@ -42,6 +42,9 @@ namespace Stratum.Game
         readonly List<(int x, int z)> _want = new List<(int, int)>();
         readonly List<(int x, int y, int z, byte id)> _early = new List<(int, int, int, byte)>();
         Water _waterSim;
+        public Growth Growth;
+        public Signal Signal;
+        readonly (float, float)[] _growAt = new (float, float)[1];
 
         readonly Dictionary<long, Slot> _slots = new Dictionary<long, Slot>();
         readonly List<Job> _jobs = new List<Job>();
@@ -72,7 +75,9 @@ namespace Stratum.Game
             w.BlockMaterial = block; w.WaterMaterial = water;
             w.ViewDistance = viewDistance;
             if (saveDir != null) Directory.CreateDirectory(Path.Combine(saveDir, "chunks"));
-            w._waterSim = new Water(w.Get, w.SetWater);
+            w._waterSim = new Water(w.Get, w.SetWater) { Loaded = w.IsReady };
+            w.Signal = new Signal(w.Get, (x, y, z, id) => w.Set(x, y, z, id)) { Loaded = w.IsReady };
+            w.Growth = new Growth(w.Get, (x, y, z, id) => w.Set(x, y, z, id), (uint)seed ^ 0x5eed) { Loaded = w.IsReady };
             w.StartWorkers();
             return w;
         }
@@ -225,7 +230,12 @@ namespace Stratum.Game
                     _fromServer = true;
                     try { Set(x, y, z, id); } finally { _fromServer = false; }
                 }
-            if (!Remote) _waterSim.Tick(Time.deltaTime);
+            if (!Remote)
+            {
+                _waterSim.Tick(Time.deltaTime);
+                _growAt[0] = (_focus.x, _focus.z);
+                Growth.Tick(Time.deltaTime, _growAt);
+            }
         }
 
         void Schedule()
@@ -349,6 +359,22 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ blocks
 
+        // The highest thing in a column that isn't air (for maps); false if that column isn't here yet.
+        public bool Top(int x, int z, out int y, out byte id)
+        {
+            y = 0; id = 0;
+            var s = SlotAt(x, z);
+            if (s == null || !s.Chunk.Ready) return false;
+            var b = s.Chunk.Blocks; int lx = x & 15, lz = z & 15;
+            for (int yy = Mathf.Min(Chunk.Height - 1, s.Chunk.MaxY); yy >= 0; yy--)
+            {
+                byte v = b[Chunk.Index(lx, yy, lz)];
+                if (v == 0 || Blocks.Get(v).Shape == Shape.Cross || Blocks.Get(v).Shape == Shape.Torch) continue;
+                y = yy; id = v; return true;
+            }
+            return true;
+        }
+
         Slot SlotAt(int x, int z) => _slots.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var s) ? s : null;
 
         public bool IsReady(int x, int z) { var s = SlotAt(x, z); return s != null && s.Chunk.Ready; }
@@ -412,7 +438,7 @@ namespace Stratum.Game
                 }
             Changed?.Invoke(x, y, z, old, id);
             if (!_fromServer) Edited?.Invoke(x, y, z, old, id);
-            if (id == 0 && !Remote) _waterSim.Wake(x, y, z);
+            if (!Remote) { _waterSim.Wake(x, y, z); Signal?.Wake(x, y, z); }
             return true;
         }
 
