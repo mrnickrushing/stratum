@@ -344,9 +344,11 @@ namespace Stratum.Game
             _boxAt = at;
             _box = (Stack[])contents.Clone();
             if (_box.Length < Containers.ChestSlots) System.Array.Resize(ref _box, Containers.ChestSlots);
-            if (InventoryOpen && _station == "chest") return;
-            OpenInventory("chest");
-            Sfx.I?.Play("chest_open", 0.7f);
+            // A furnace opens as its own screen ("smelt"): three slots, the fire and the progress.
+            string st = Blocks.Get(World.Get(at.x, at.y, at.z)).BaseId == Blocks.Furnace ? "smelt" : "chest";
+            if (InventoryOpen && _station == st) return;
+            OpenInventory(st);
+            Sfx.I?.Play(st == "smelt" ? "click" : "chest_open", 0.7f);
         }
 
         // Someone else changed a slot of the chest we have open.
@@ -356,7 +358,7 @@ namespace Stratum.Game
             _box[slot] = s;
         }
 
-        public bool BoxOpen => InventoryOpen && _station == "chest";
+        public bool BoxOpen => InventoryOpen && (_station == "chest" || _station == "smelt");
         public Vector3Int BoxAt => _boxAt;
 
         public void OpenInventory(string station)
@@ -375,8 +377,9 @@ namespace Stratum.Game
                 if (!P.Creative) GiveBack(_cursor);
                 _cursor = Stack.None;
             }
-            if (_station == "chest") { _box = null; Sfx.I?.Play("chest_close", 0.6f); CloseBoxed?.Invoke(); }
+            if (_station == "chest" || _station == "smelt") { _box = null; if (_station == "chest") Sfx.I?.Play("chest_close", 0.6f); CloseBoxed?.Invoke(); }
             if (WorkStation) ReturnWork();
+            ReturnGrid();
             _inv.SetActive(false);
         }
 
@@ -428,14 +431,17 @@ namespace Stratum.Game
                     _armSlots.Add(v);
                 }
                 _armText = UIKit.Label(_invGrid, "", 22, UIKit.Dim);
-                _armText.rectTransform.Place(0, 1, 4 * (S + G) + 10, -490, 400, 40);
+                _armText.rectTransform.Place(0, 1, 0, -558, 340, 30);
             }
+            LayoutGrid();
             // A chest's slots take the crafting panel's place.
             foreach (Transform t in _boxGrid) Destroy(t.gameObject);
             _boxSlots.Clear();
             bool chest = _station == "chest" && _box != null;
-            _boxGrid.gameObject.SetActive(chest);
-            _craftArea.SetActive(!chest && !WorkStation);
+            bool smelt = _station == "smelt" && _box != null;
+            _boxGrid.gameObject.SetActive(chest || smelt);
+            _craftArea.SetActive(!chest && !smelt && !WorkStation);
+            if (smelt) LayoutFurnace();
             LayoutWork();
             if (chest)
             {
@@ -525,6 +531,7 @@ namespace Stratum.Game
             if (_box == null) return;
             var kb = Keyboard.current;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
+            if (_station == "smelt" && !FurnaceClick(i, shift)) return;
             if (shift && button == PointerEventData.InputButton.Left && !_box[i].Empty)
             {
                 var s = _box[i];
@@ -542,6 +549,7 @@ namespace Stratum.Game
         // Shift-click in the pack with a chest open: the stack goes into the chest.
         bool ToBox(int i)
         {
+            if (_box != null && _station == "smelt") return ToFurnace(i);
             if (_box == null || _station != "chest") return false;
             ref var slot = ref P.Inv.Slots[i];
             var s = slot;
@@ -619,10 +627,11 @@ namespace Stratum.Game
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
+            if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
-                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "furnace" && furnace))
+                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
                 .OrderBy(x => x.sec).ThenByDescending(x => x.can).ToList();
             int shown = -1;
@@ -646,7 +655,7 @@ namespace Stratum.Game
                     bool ok = P.Inv.Count(x.item) >= x.count;
                     return $"<color=#{ColorUtility.ToHtmlStringRGB(ok ? UIKit.Good : UIKit.Bad)}>{x.count} {Items.DisplayName(x.item)}</color>";
                 }));
-                if (!here) need = r.Station == "furnace" ? "at a Furnace" : "at a Workbench";
+                if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : "at a Workbench";
                 var needL = UIKit.Label(row.transform, need, 20, UIKit.Dim, TextAnchor.UpperLeft);
                 needL.supportRichText = true;
                 needL.rectTransform.Place(0, 1, 88, -46, 380, 30);
@@ -683,7 +692,9 @@ namespace Stratum.Game
             for (int i = 0; i < _armSlots.Count; i++) _armSlots[i].Show(P.Inv.Slots[Inventory.ArmourStart + i]);
             if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
             if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);
+            UpdateFurnace();
             UpdateWork();
+            UpdateGrid();
             var sp = _cursor.Empty ? null : Icons.Get(_cursor.Item);
             _cursorIcon.sprite = sp; _cursorIcon.enabled = sp != null;
             _cursorCount.text = !_cursor.Empty && _cursor.Count > 1 ? _cursor.Count.ToString() : "";

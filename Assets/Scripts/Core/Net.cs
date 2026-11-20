@@ -150,7 +150,7 @@ namespace Stratum.Core
         public Stack Slot()
         {
             string item = Str(); int count = _r.ReadUInt16(); int wear = _r.ReadUInt16();
-            return string.IsNullOrEmpty(item) || count == 0 || Items.Get(item) == null ? Stack.None : new Stack(item, count) { Wear = wear };
+            return string.IsNullOrEmpty(item) || count == 0 || Items.Get(item) == null && !Smelting.Hidden(item) ? Stack.None : new Stack(item, count) { Wear = wear };
         }
 
         public Stack[] Stacks()

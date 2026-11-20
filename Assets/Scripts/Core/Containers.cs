@@ -55,6 +55,8 @@ namespace Stratum.Core
         }
 
         public bool Has(int x, int y, int z) => _boxes.ContainsKey(Key(x, y, z));
+        public bool TryGet(long key, out Stack[] slots) => _boxes.TryGetValue(key, out slots);
+        public IEnumerable<KeyValuePair<long, Stack[]>> All => _boxes;
 
         public bool IsEmpty(int x, int y, int z)
         {

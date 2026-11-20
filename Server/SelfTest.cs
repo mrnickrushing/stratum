@@ -263,6 +263,28 @@ namespace Stratum.Server
             Check(logs > 150, $"All Oakwood is wooded ({logs} oak logs in 16 chunks)");
             Check(WorldGen.ParseKind("towering") == WorldKind.Towering && WorldGen.ParseKind("vast") == WorldKind.Vast && WorldGen.ParseKind("islands") == WorldKind.Islands, "the other kinds still parse");
 
+            // Furnaces: fuel, time and room for the result.
+            {
+                var f = new Stack[Smelting.Slots];
+                f[Smelting.In] = new Stack("iron_ore", 10); f[Smelting.Fuel] = new Stack("coal", 1);
+                int ticks = 0; while (Smelting.Busy(f) && ticks < 100000) { Smelting.Step(f); ticks++; }
+                Check(f[Smelting.Out].Item == "iron_ingot" && f[Smelting.Out].Count == 8 && f[Smelting.In].Count == 2 && f[Smelting.Fuel].Empty && ticks >= Smelting.CookTicks * 8,
+                      $"one coal smelts eight ore and then the fire goes out ({f[Smelting.Out].Count} ingots, {f[Smelting.In].Count} ore left, {ticks / 10} s)");
+                f[Smelting.Fuel] = new Stack("oak_planks", 2); ticks = 0; while (Smelting.Busy(f) && ticks < 100000) { Smelting.Step(f); ticks++; }
+                Check(f[Smelting.Out].Count == 10 && f[Smelting.In].Empty && f[Smelting.Fuel].Empty, $"planks burn too, for less ({f[Smelting.Out].Count} ingots)");
+                var g = new Stack[Smelting.Slots]; g[Smelting.In] = new Stack("cobble", 3); g[Smelting.Fuel] = new Stack("coal", 1); g[Smelting.Out] = new Stack("glass", 5);
+                Check(!Smelting.Busy(g) && Smelting.Step(g) == 0 && g[Smelting.Fuel].Count == 1, "no fuel is lit when the result has nowhere to go");
+                var h = new Stack[Smelting.Slots]; h[Smelting.In] = new Stack("dirt", 3); h[Smelting.Fuel] = new Stack("coal", 1);
+                Check(!Smelting.Busy(h), "or when the thing can't be smelted");
+                var c = new Stack[Smelting.Slots]; c[Smelting.In] = new Stack("raw_beef", 1); c[Smelting.Fuel] = new Stack("stick", 2);
+                ticks = 0; while (Smelting.Busy(c) && ticks < 100000) { Smelting.Step(c); ticks++; }
+                Check(c[Smelting.Out].Item == "steak" && c[Smelting.Fuel].Empty, "two sticks cook a steak");
+                var boxes = new Containers(); var fs = new Furnaces(boxes);
+                boxes.Set(1, 2, 3, Smelting.In, new Stack("sand", 1)); boxes.Set(1, 2, 3, Smelting.Fuel, new Stack("stick", 4)); fs.Wake(1, 2, 3);
+                for (int i = 0; i < 300; i++) fs.Tick(0.1f);
+                Check(boxes.At(1, 2, 3)[Smelting.Out].Item == "glass" && fs.Active == 0 && boxes.At(1, 2, 3)[Smelting.Fuel].Count == 2, "a furnace left alone finishes, uses only the fuel it needs, and rests");
+            }
+
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
             int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
             var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4,
@@ -490,6 +512,24 @@ namespace Stratum.Server
                     Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
                     a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
                     Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
+
+                    // A furnace: ore in, coal under it, and it starts to work while she watches.
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(Blocks.Furnace).U8(0));
+                    b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Furnace);
+                    a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    Check(a.Wait(Net.Msg.Box) != null, "Ada opens a furnace");
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(new Stack("iron_ore", 2)));
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.Fuel).Slot(new Stack("coal", 1)));
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.Burn).Slot(new Stack("_burn", 9999)));      // she can't light it by hand
+                    Stack fire = default;
+                    Check(a.Wait(Net.Msg.BoxSet, r => { r.I32(); r.I32(); r.I32(); if (r.U8() != Smelting.Burn) return false; fire = r.Slot(); return true; }, 3000) != null
+                          && fire.Count > 0 && fire.Count < Smelting.CookTicks * 8 && fire.Wear == Smelting.CookTicks * 8, $"the coal lights and burns down ({fire.Count} of {fire.Wear})");
+                    Check(a.Wait(Net.Msg.BoxSet, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Smelting.Cook && r.Slot().Count > 0; }, 3000) != null, "and the ore starts to smelt");
+                    a.Send(new Packet(Net.Msg.CloseBox));
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Furnace));
+                    var back1 = a.Wait(Net.Msg.Give); string gotItem = back1?.Str();
+                    var back2 = a.Wait(Net.Msg.Give, null, 600);
+                    Check(gotItem == "iron_ore" && back2 == null, "breaking it gives back the ore, and nothing of the fire");
 
                     // A whole pack (40 slots and the XP) in one satchel: every stack can be reached.
                     var pack = new Stack[41]; for (int i = 0; i < pack.Length; i++) pack[i] = new Stack(i % 2 == 0 ? "cobble" : "torch", i + 1);

@@ -49,6 +49,7 @@ namespace Stratum.Game
         readonly int _difficulty;
         public readonly MobSim Sim;
         public readonly Containers Boxes = new Containers();
+        public Furnaces Furnaces;
         public readonly WeatherSim Weather = new WeatherSim(Environment.TickCount);
         readonly List<Seen> _seen = new List<Seen>();
         readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
@@ -62,6 +63,9 @@ namespace Stratum.Game
             _world = world; _player = player; _sky = sky; _difficulty = difficulty;
             _file = folder != null ? Path.Combine(folder, "containers.bin") : null;
             if (_file != null) try { Boxes.Load(_file); } catch (Exception e) { Debug.LogWarning("containers unreadable: " + e.Message); }
+            Furnaces = new Furnaces(Boxes);
+            Furnaces.WakeSaved();
+            Furnaces.Changed = (x, y, z, slot, s) => { var at = new Vector3Int(x, y, z); if (_open && at == _box) BoxChanged?.Invoke(at, slot, s); };
             Sim = new MobSim(world.Get, seed ^ Environment.TickCount) { Difficulty = difficulty, BiomeAt = world.Gen.BiomeAt };
             Sim.Loaded = (x, z) => world.IsReady(x, z);
             Sim.VillageNear = (x, z) => world.Gen.Villages.Near(x, z, 96);
@@ -76,7 +80,7 @@ namespace Stratum.Game
             {
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
-                foreach (var s in Boxes.Remove(x, y, z)) if (!s.Empty) Gave?.Invoke(s.Item, s.Count, s.Wear);
+                foreach (var s in Boxes.Remove(x, y, z)) if (!s.Empty && !Smelting.Hidden(s.Item)) Gave?.Invoke(s.Item, s.Count, s.Wear);
             };
         }
 
@@ -86,6 +90,7 @@ namespace Stratum.Game
             _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item });
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
+            Furnaces.Tick(dt);
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
             foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
@@ -125,7 +130,14 @@ namespace Stratum.Game
             BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
         }
 
-        public override void BoxSlot(Vector3Int at, int slot, Stack s) { if (_open && at == _box) Boxes.Set(at.x, at.y, at.z, slot, s); }
+        public override void BoxSlot(Vector3Int at, int slot, Stack s)
+        {
+            if (!_open || at != _box) return;
+            bool furnace = Blocks.Get(_world.Get(at.x, at.y, at.z)).BaseId == Blocks.Furnace;
+            if (furnace && slot > Smelting.Out) return;
+            Boxes.Set(at.x, at.y, at.z, slot, s);
+            if (furnace) Furnaces.Wake(at.x, at.y, at.z);
+        }
         public override void CloseBox() => _open = false;
 
         public override void Sleep(bool on) { _sleepTimer = 0; Sleepers?.Invoke(on ? 1 : 0, 1); }

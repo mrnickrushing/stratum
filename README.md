@@ -129,6 +129,13 @@ World packs are a kind, a seed, a way to play and a starting kit; USE makes the 
 that. Tile pictures are `Resources/Extras/<id>.jpg` (800x392). Outfits are colour sets for the avatar; the choice is
 sent as one byte after the Hello's features and relayed in `Joined`, so other players see it.
 
+**Crafting and smelting (0.7):** the backpack has a 2x2 crafting grid and a workbench a 3x3 (`UI/Hud.Grid.cs`): one of
+each thing a recipe needs, in any squares (recipes have no shapes), and taking the result uses one from every square.
+The recipe list stays as the book. A furnace is a container (`Core/Smelting.cs`): slots for the thing, the fuel and
+the result, plus two hidden slots (`_burn`, `_cook`) for the fire and the progress, stepped ten times a second by
+`Furnaces` in single player and on the server whether or not anyone is near. Coal smelts 8 things, a log or planks
+1.5, a stick 0.5; a piece takes 8 seconds. Furnace recipes can no longer be made from the list.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,
