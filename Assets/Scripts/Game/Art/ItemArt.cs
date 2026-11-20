@@ -225,6 +225,29 @@ namespace Stratum.Game
                     });
                     c.Poly(new[] { new Vector2(46, 52), new Vector2(52, 42), new Vector2(40, 42) }, (x, y) => Hex(0xffffff));
                     break;
+                case "spark":
+                {
+                    // A little heap of glittering red dust.
+                    var rng = new System.Random(7);
+                    for (int i = 0; i < 46; i++)
+                    {
+                        float a = (float)rng.NextDouble() * 6.283f, r = (float)System.Math.Sqrt(rng.NextDouble()) * 26;
+                        var at = new Vector2(48 + Mathf.Cos(a) * r, 34 + Mathf.Sin(a) * r * 0.55f + (26 - r) * 0.5f);
+                        float sz = 3 + (float)rng.NextDouble() * 4;
+                        Color col = Color.Lerp(Hex(0x8a0e08), Hex(0xff4a2a), (float)rng.NextDouble());
+                        c.Disc(at, sz, (x, y) => col);
+                    }
+                    break;
+                }
+                case "lever":
+                    c.Poly(new[] { new Vector2(22, 30), new Vector2(74, 30), new Vector2(70, 14), new Vector2(26, 14) }, (x, y) => Color.Lerp(Hex(0x5c5d62), Hex(0x9a9ba0), (y - 14) / 16f));
+                    c.Line(new Vector2(48, 26), new Vector2(64, 82), 7, (t, ss) => Color.Lerp(Hex(0x6a4a2a), Hex(0xb08a5a), ss));
+                    c.Disc(new Vector2(64, 82), 6, (x, y) => Hex(0x8a6a44));
+                    break;
+                case "button":
+                    c.Poly(new[] { new Vector2(28, 62), new Vector2(68, 62), new Vector2(68, 34), new Vector2(28, 34) }, (x, y) => Color.Lerp(Hex(0x6c6d72), Hex(0xa6a7ac), (y - 34) / 28f));
+                    c.Line(new Vector2(28, 62), new Vector2(68, 62), 3, (t, ss) => Hex(0xc4c5ca));
+                    break;
                 case "boat":
                 {
                     // A rowing boat side on: a curved hull of planks, the gunwale, an oar resting across.

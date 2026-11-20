@@ -72,7 +72,7 @@ namespace Stratum.Core
                     if (t == Tex.GrassSide) fl |= Flag.TintMask;
                     if (d.Cutout) fl |= Flag.Clip;
                     if (d.Sway) fl |= Flag.Sway;
-                    if (t == Tex.Sunstone || t == Tex.Torch || t == Tex.Lava) fl |= Flag.Glow;
+                    if (t == Tex.Sunstone || t == Tex.Torch || t == Tex.Lava || t == Tex.LampOn || t == Tex.SparkTorchOn) fl |= Flag.Glow;
                     if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) fl |= Flag.GlowMask;
                     FlagsOf[i * 6 + f] = fl;
                 }
@@ -479,6 +479,7 @@ namespace Stratum.Core
 
         int JoinMask(BlockDef d, int rx, int y, int rz)
         {
+            if (d.Connect == Connect.Wire) return Signal.WireMask(B, rx, y, rz);
             int m = 0;
             if (Blocks.Joins(d, B(rx, y, rz + 1))) m |= 1;
             if (Blocks.Joins(d, B(rx + 1, y, rz))) m |= 2;
@@ -525,9 +526,11 @@ namespace Stratum.Core
         void Torch(byte id, int x, int y, int z, int rx, int rz)
         {
             Grow();
-            uint light = Pack(SkyAt(rx, y, rz), 15, 3);
-            float layer = (float)Tex.Torch;
-            uint tint = 0xFFFFFF | ((uint)(Flag.Clip | Flag.Glow) << 24);
+            var td = Blocks.Defs[id];
+            bool glow = td.Emit > 0;
+            uint light = Pack(SkyAt(rx, y, rz), glow ? 15 : LitAt(rx, y, rz), 3);
+            float layer = (float)td.Side;
+            uint tint = 0xFFFFFF | ((uint)(Flag.Clip | (glow ? Flag.Glow : 0)) << 24);
             const float w = 1f / 16f, hgt = 10f / 16f;
             float x0 = x + 0.5f - w, x1 = x + 0.5f + w, z0 = z + 0.5f - w, z1 = z + 0.5f + w, y0 = y, y1 = y + hgt;
             float u0 = 0.5f - w, u1 = 0.5f + w;

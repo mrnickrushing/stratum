@@ -6,7 +6,7 @@ namespace Stratum.Core
     public enum Shape : byte { Cube, Cross, Torch, Liquid, Boxes }
     public enum Sound : byte { Stone, Dirt, Grass, Sand, Wood, Leaves, Glass, Snow, Metal, Cloth }
     public enum Tool : byte { None, Pickaxe, Axe, Shovel, Sword, Hoe, Shears }
-    public enum Connect : byte { None, Fence, Wall, Pane }
+    public enum Connect : byte { None, Fence, Wall, Pane, Wire }
 
     // Texture layers used by block faces. BlockTextures (Game) paints one layer per entry, in this order.
     public enum Tex : byte
@@ -24,7 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
-        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail,
+        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail, SparkOre, WireOff, WireOn, Lever, SparkTorchOn, SparkTorchOff, LampOff, LampOn, RepeaterOff, RepeaterOn,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
@@ -107,7 +107,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail,
+            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -401,6 +401,60 @@ namespace Stratum.Core
             Rail = Facings("rail", "Rail", 10, (d, i) => RailDef(d, i, false), i => i < 2 ? i : i < 6 ? i - 2 : i - 6);
             BoosterRail = Facings("booster_rail", "Booster Rail", 6, (d, i) => RailDef(d, i, true), i => i < 2 ? i : i - 2);
 
+            // ---------------------------------------------------------------- 0.2: spark (power)
+            BlockDef Twin(string key, string name, Tex t, BlockDef first)
+            {
+                var d = Add(key, name, t); d.BaseId = first.Id; d.Variant = 1; d.Creative = false; Palette.Remove(d.Id); d.DropItem = Keys[first.Id];
+                return d;
+            }
+            b = Rock("spark_ore", "Spark Ore", Tex.SparkOre, 3, 3); b.DropItem = "spark"; b.DropCount = 4; b.Emit = 0; SparkOre = b.Id;
+            foreach (var on in new[] { false, true })
+            {
+                var w = on ? Twin("spark_wire_on", "Spark Wire", Tex.WireOn, Get(SparkWire)) : Add("spark_wire", "Spark Wire", Tex.WireOff);
+                w.Shape = Shape.Boxes; w.Connect = Connect.Wire; w.Solid = false; w.Opaque = false; w.Opacity = 0; w.Cutout = true;
+                w.Hardness = 0; w.Sound = Sound.Stone; w.DropItem = "spark"; w.Creative = false; Palette.Remove(w.Id); w.FlatIcon = true;
+                w.Boxes = new[] { new Box(0, 0, 0, 1, 1 / 16f, 1) };
+                if (!on) SparkWire = w.Id;
+            }
+            Lever = Facings("lever", "Lever", 4, (d, i) =>
+            {
+                d.Variant = i & 1; d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 0.5f; d.Sound = Sound.Wood;
+                d.Top = d.Side = d.Bottom = Tex.Lever; d.FlatIcon = true;
+                d.Boxes = new[] { Box.Px(5, 0, 4, 11, 3, 12), (i & 1) == 1 ? Box.Px(7, 3, 9, 9, 11, 11) : Box.Px(7, 3, 5, 9, 11, 7) };
+            }, i => i / 2);
+            Button = Facings("button", "Button", 8, (d, i) =>
+            {
+                d.Variant = i & 1; d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 0.5f; d.Tool = Tool.Pickaxe; d.Sound = Sound.Stone;
+                d.Top = d.Side = d.Bottom = Tex.Stone; d.FlatIcon = true;
+                d.Boxes = new[] { (i & 1) == 1 ? Box.Px(5, 6, 15, 11, 10, 16) : Box.Px(5, 6, 14, 11, 10, 16) };
+            }, i => i / 2);
+            foreach (var on in new[] { false, true })
+            {
+                var pl = on ? Twin("pressure_plate_on", "Pressure Plate", Tex.Stone, Get(PressurePlate)) : Add("pressure_plate", "Pressure Plate", Tex.Stone);
+                pl.Shape = Shape.Boxes; pl.Solid = false; pl.Opaque = false; pl.Opacity = 0; pl.Hardness = 0.5f; pl.Tool = Tool.Pickaxe; pl.Sound = Sound.Stone;
+                pl.Boxes = new[] { new Box(1 / 16f, 0, 1 / 16f, 15 / 16f, on ? 0.5f / 16 : 1 / 16f, 15 / 16f) };
+                if (!on) PressurePlate = pl.Id;
+            }
+            foreach (var lit in new[] { true, false })
+            {
+                var t = lit ? Add("spark_torch", "Spark Torch", Tex.SparkTorchOn) : Twin("spark_torch_off", "Spark Torch", Tex.SparkTorchOff, Get(SparkTorch));
+                t.Shape = Shape.Torch; t.Solid = false; t.Opaque = false; t.Opacity = 0; t.Emit = (byte)(lit ? 7 : 0); t.Hardness = 0; t.Cutout = true; t.Sound = Sound.Wood;
+                if (lit) SparkTorch = t.Id;
+            }
+            foreach (var lit in new[] { false, true })
+            {
+                var l = lit ? Twin("spark_lamp_on", "Spark Lamp", Tex.LampOn, Get(SparkLamp)) : Add("spark_lamp", "Spark Lamp", Tex.LampOff);
+                l.Hardness = 0.3f; l.Sound = Sound.Glass; l.Emit = (byte)(lit ? 15 : 0);
+                if (!lit) SparkLamp = l.Id;
+            }
+            Repeater = Facings("repeater", "Repeater", 8, (d, i) =>
+            {
+                d.Variant = i & 1; d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 0; d.Sound = Sound.Stone;
+                d.Top = (i & 1) == 1 ? Tex.RepeaterOn : Tex.RepeaterOff; d.Side = d.Bottom = Tex.Stone; d.FlatIcon = true;
+                d.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16), Box.Px(7, 2, 3, 9, 6, 5), Box.Px(7, 2, 9, 9, 6, 11) };
+                if ((i & 1) == 1) d.Emit = 4;
+            }, i => i / 2);
+
             // ---------------------------------------------------------------- 0.2: enchanting
             b = Add("enchanting_table", "Enchanting Table", Tex.EnchantTop, Tex.EnchantSide, Tex.Obsidian);
             b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 5; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Stone; b.Emit = 7;
@@ -421,7 +475,7 @@ namespace Stratum.Core
 
         // ------------------------------------------------------------------ connecting shapes
 
-        static readonly Box[][][] _connect = new Box[4][][];
+        static readonly Box[][][] _connect = new Box[5][][];
 
         // The pieces of a fence, wall or pane joined toward the sides in `mask` (1 +Z, 2 +X, 4 -Z, 8 -X).
         public static Box[] ConnectBoxes(Connect kind, int mask)
@@ -436,6 +490,11 @@ namespace Stratum.Core
             {
                 case Connect.Fence: post = Box.Px(6, 0, 6, 10, 16, 10); arm1 = Box.Px(7, 6, 10, 9, 9, 16); arm2 = Box.Px(7, 12, 10, 9, 15, 16); two = true; break;
                 case Connect.Wall: post = Box.Px(4, 0, 4, 12, 16, 12); arm1 = Box.Px(5, 0, 12, 11, 13, 16); break;
+                case Connect.Wire:
+                    post = new Box(5 / 16f, 0, 5 / 16f, 11 / 16f, 0.02f, 11 / 16f); arm1 = new Box(6 / 16f, 0, 11 / 16f, 10 / 16f, 0.02f, 1);
+                    if ((mask & 15) == 1 || (mask & 15) == 4) mask |= 5;        // a line runs on through
+                    if ((mask & 15) == 2 || (mask & 15) == 8) mask |= 10;
+                    break;
                 default: post = Box.Px(7, 0, 7, 9, 16, 9); arm1 = Box.Px(7, 0, 9, 9, 16, 16); break;
             }
             list.Add(post);
@@ -465,6 +524,7 @@ namespace Stratum.Core
         public static Box[] ShapeAt(Func<int, int, int, byte> get, int x, int y, int z, BlockDef d)
         {
             if (d.Connect == Connect.None) return d.Boxes;
+            if (d.Connect == Connect.Wire) return new[] { new Box(0, 0, 0, 1, 1 / 16f, 1) };
             int mask = 0;
             for (int dir = 0; dir < 4; dir++) if (Joins(d, get(x + DX[dir], y, z + DZ[dir]))) mask |= 1 << dir;
             return ConnectBoxes(d.Connect, mask);
@@ -490,6 +550,9 @@ namespace Stratum.Core
         }
 
         public static BlockDef Get(byte id) => Defs[id] ?? Defs[0];
+
+        // The same block with a bit of its variant flipped (open/shut, on/off), counted from the family's first id.
+        public static byte Flip(byte id, int bit) { int b = Get(id).BaseId; return (byte)(b + ((id - b) ^ bit)); }
         public static byte Id(string key) => ByKey.TryGetValue(key, out var v) ? v : (byte)0;
         public static int Count => _next;
 

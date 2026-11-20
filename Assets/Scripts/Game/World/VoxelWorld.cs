@@ -43,6 +43,7 @@ namespace Stratum.Game
         readonly List<(int x, int y, int z, byte id)> _early = new List<(int, int, int, byte)>();
         Water _waterSim;
         public Growth Growth;
+        public Signal Signal;
         readonly (float, float)[] _growAt = new (float, float)[1];
 
         readonly Dictionary<long, Slot> _slots = new Dictionary<long, Slot>();
@@ -75,6 +76,7 @@ namespace Stratum.Game
             w.ViewDistance = viewDistance;
             if (saveDir != null) Directory.CreateDirectory(Path.Combine(saveDir, "chunks"));
             w._waterSim = new Water(w.Get, w.SetWater) { Loaded = w.IsReady };
+            w.Signal = new Signal(w.Get, (x, y, z, id) => w.Set(x, y, z, id)) { Loaded = w.IsReady };
             w.Growth = new Growth(w.Get, (x, y, z, id) => w.Set(x, y, z, id), (uint)seed ^ 0x5eed) { Loaded = w.IsReady };
             w.StartWorkers();
             return w;
@@ -436,7 +438,7 @@ namespace Stratum.Game
                 }
             Changed?.Invoke(x, y, z, old, id);
             if (!_fromServer) Edited?.Invoke(x, y, z, old, id);
-            if (!Remote) _waterSim.Wake(x, y, z);
+            if (!Remote) { _waterSim.Wake(x, y, z); Signal?.Wake(x, y, z); }
             return true;
         }
 

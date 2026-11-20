@@ -51,6 +51,7 @@ namespace Stratum.Game
         public readonly Containers Boxes = new Containers();
         public readonly WeatherSim Weather = new WeatherSim(Environment.TickCount);
         readonly List<Seen> _seen = new List<Seen>();
+        readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
         bool _open; Vector3Int _box;
         float _sleepTimer;
 
@@ -84,6 +85,10 @@ namespace Stratum.Game
             _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item });
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
+            _bodies.Clear();
+            _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
+            foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+            _world.Signal?.Tick(dt, _bodies);
             _sky.Weather = Sim.Weather = Weather.State;
             Sim.Tick(dt, _seen);
             Mobs.Clear();

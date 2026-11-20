@@ -61,6 +61,7 @@ namespace Stratum.Server
         readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
         readonly Accounts _accounts;
         readonly MobSim _mobs;
+        readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
         readonly Containers _boxes = new Containers();
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
@@ -181,6 +182,10 @@ namespace Stratum.Server
                     _weather.Tick(dt);
                     _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
                     World.Growth.Tick(dt, _near);
+                    _bodies.Clear();
+                    foreach (var pl in _players.Values) if (pl.Joined && pl.Alive) _bodies.Add((pl.X, pl.Y, pl.Z));
+                    foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+                    World.Signal.Tick(dt, _bodies);
                     TickMobs(dt);
                     if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); }
                     World.Meta.time += dt / 1200.0;     // Sky.DayLength
@@ -436,6 +441,7 @@ namespace Stratum.Server
             World.SetRaw(x, y, z, id);
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
             World.Water.Wake(x, y, z);
+            World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
                 foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));

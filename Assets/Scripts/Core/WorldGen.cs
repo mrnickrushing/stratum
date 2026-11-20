@@ -272,6 +272,7 @@ namespace Stratum.Core
             Vein(ch, ref rng, Blocks.GoldOre, 3, 5, 34, 5);
             Vein(ch, ref rng, Blocks.SunstoneOre, 2, 5, 22, 4);
             if (rng.Value() < 0.5f) Vein(ch, ref rng, Blocks.JadeOre, 1, 8, 110, 3);
+            Vein(ch, ref rng, Blocks.SparkOre, 5, 4, 18, 6);
             Vein(ch, ref rng, Blocks.Gravel, 5, 5, 90, 14);
             // Moss grows on rock beside cave air below 50.
         }

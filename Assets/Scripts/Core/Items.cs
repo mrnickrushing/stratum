@@ -126,6 +126,7 @@ namespace Stratum.Core
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
+            Add(new ItemDef { Id = "spark", Name = "Spark Dust", Block = Blocks.SparkWire });
             Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
             Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
@@ -201,7 +202,13 @@ namespace Stratum.Core
             R("boat", 1, "workbench", ("oak_planks", 5));
             R("minecart", 1, "workbench", ("iron_ingot", 5));
             R("rail", 16, "workbench", ("iron_ingot", 6), ("stick", 1));
-            R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("sunstone_shard", 1));
+            R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("spark", 1));
+            R("spark_torch", 1, null, ("spark", 1), ("stick", 1));
+            R("lever", 1, null, ("cobble", 1), ("stick", 1));
+            R("button", 1, null, ("stone", 1));
+            R("pressure_plate", 1, "workbench", ("stone", 2));
+            R("spark_lamp", 1, "workbench", ("spark", 4), ("sunstone_shard", 1));
+            R("repeater", 1, "workbench", ("spark", 1), ("spark_torch", 2), ("stone", 3));
             R("jade_block", 1, "workbench", ("jade", 9));
             R("jade", 9, null, ("jade_block", 1));
             R("compass", 1, "workbench", ("iron_ingot", 4), ("sunstone_shard", 1));

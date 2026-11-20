@@ -380,7 +380,7 @@ namespace Stratum.Game
         static bool IsUsable(byte id)
         {
             var d = Blocks.Get(id);
-            return id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -452,6 +452,8 @@ namespace Stratum.Game
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }
+                if (tdef.BaseId == Blocks.Lever) { World.Set(Target.x, Target.y, Target.z, Blocks.Flip(target, 1)); Sfx.I?.Play("door_close", 0.4f, 1.8f); _swing = 0; return; }
+                if (tdef.BaseId == Blocks.Button) { if ((tdef.Variant & 1) == 0) { World.Set(Target.x, Target.y, Target.z, (byte)(target + 1)); Sfx.I?.Play("door_close", 0.35f, 2.2f); } _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Sign || tdef.BaseId == Blocks.WallSign) { EditSign?.Invoke(Target); return; }
             }
             if (item == null) return;
@@ -553,6 +555,18 @@ namespace Stratum.Game
                 if (TargetNormal.y != 0 || !Blocks.Get(target).Solid) return;
                 place = (byte)(Blocks.Ladder + DirOf(-TargetNormal));
             }
+            else if (id == Blocks.SparkWire || id == Blocks.Lever || id == Blocks.PressurePlate || id == Blocks.Repeater)
+            {
+                var bb = Blocks.Get(below);
+                if (!(bb.Solid && bb.Opaque && bb.Shape == Shape.Cube) && !Blocks.Slabs.Contains(below)) return;
+                place = id == Blocks.Lever ? (byte)(Blocks.Lever + (f & 1) * 2) : id == Blocks.Repeater ? (byte)(Blocks.Repeater + f * 2) : id;
+            }
+            else if (id == Blocks.Button)
+            {
+                // On the side of something solid.
+                if (TargetNormal.y != 0 || !Blocks.Get(target).Opaque) return;
+                place = (byte)(Blocks.Button + DirOf(-TargetNormal) * 2);
+            }
             else if (id == Blocks.Rail || id == Blocks.BoosterRail)
             {
                 if (!Blocks.Get(below).Solid || !Blocks.Get(below).Opaque && !Blocks.Slabs.Contains(below)) return;
@@ -599,7 +613,7 @@ namespace Stratum.Game
                 var up = p + Vector3Int.up;
                 byte id = World.Get(up.x, up.y, up.z);
                 var d = Blocks.Get(id);
-                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0 || Rails.Is(id);
+                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id);
                 if (id == 0 || !needs) return;
                 if (d.BaseId == Blocks.OakDoor) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);
@@ -640,14 +654,14 @@ namespace Stratum.Game
             {
                 bool upper = (d.Variant & 1) == 1;
                 var other = upper ? p + Vector3Int.down : p + Vector3Int.up;
-                World.Set(p.x, p.y, p.z, (byte)(id ^ 2));
+                World.Set(p.x, p.y, p.z, Blocks.Flip(id, 2));
                 byte oid = World.Get(other.x, other.y, other.z);
-                if (Blocks.Get(oid).BaseId == Blocks.OakDoor) World.Set(other.x, other.y, other.z, (byte)(oid ^ 2));
+                if (Blocks.Get(oid).BaseId == Blocks.OakDoor) World.Set(other.x, other.y, other.z, Blocks.Flip(oid, 2));
                 Sfx.I?.Play((d.Variant & 2) == 0 ? "door_open" : "door_close", 0.7f);
             }
             else
             {
-                World.Set(p.x, p.y, p.z, (byte)(id ^ 1));
+                World.Set(p.x, p.y, p.z, Blocks.Flip(id, 1));
                 Sfx.I?.Play((d.Variant & 1) == 0 ? "door_open" : "door_close", 0.6f, 1.15f);
             }
             _swing = 0;

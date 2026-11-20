@@ -123,6 +123,16 @@ namespace Stratum.Game
                 case Tex.Ladder: Ladder(p); return 2f;
                 case Tex.IronBars: Bars(p); return 2f;
                 case Tex.EnchantTop: EnchantTop(p); return 3f;
+                case Tex.SparkOre: Ore(p, Hex(0xff3a2a), Hex(0x9a1208), false); return 4f;
+                case Tex.WireOff: Dust(p, Hex(0x6a0e0a), Hex(0x3a0604)); return 0.5f;
+                case Tex.WireOn: Dust(p, Hex(0xff3a1a), Hex(0xb81208)); return 0.5f;
+                case Tex.Lever: LeverTex(p); return 2f;
+                case Tex.SparkTorchOn: SparkTorchTex(p, true); return 1f;
+                case Tex.SparkTorchOff: SparkTorchTex(p, false); return 1f;
+                case Tex.LampOff: Lamp(p, false); return 3f;
+                case Tex.LampOn: Lamp(p, true); return 3f;
+                case Tex.RepeaterOff: RepeaterTex(p, false); return 2f;
+                case Tex.RepeaterOn: RepeaterTex(p, true); return 2f;
                 case Tex.Rail: RailTex(p, false, false); return 1.5f;
                 case Tex.RailCurve: RailTex(p, true, false); return 1.5f;
                 case Tex.BoosterRail: RailTex(p, false, true); return 1.5f;
@@ -587,6 +597,73 @@ namespace Stratum.Game
                     float edge = rail ? Mathf.Min(x - (x < 32 ? 6 : 50), (x < 32 ? 13 : 57) - x) : Mathf.Min(y % 16 - 5, 9 - y % 16);
                     Color c = Paint.Mul(wood, (0.75f + grain * 0.3f) * (edge < 1 ? 0.7f : 1)); c.a = 1;
                     p.Set(x, y, c, rail ? 0.9f : 0.7f);
+                }
+        }
+
+        // Spark dust: a gritty smear, dark when idle, bright when it carries power.
+        static void Dust(Paint p, Color hi, Color lo)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 6, 3), g = p.Hash(x * 7 + y * 131, 9);
+                    Color c = Color.Lerp(lo, hi, Mathf.Clamp01(n * 1.2f + (g > 0.85f ? 0.4f : 0))); c.a = 1;
+                    p.Set(x, y, c, 0.2f);
+                }
+        }
+
+        // A lever: a cobbled base (the bottom rows) and a wooden handle above.
+        static void LeverTex(Paint p)
+        {
+            Rock(p, Hex(0x85868a), Hex(0x5c5d62), 0.2f, false);
+            for (int y = 14; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    Color c = Color.Lerp(Hex(0x6a4a2a), Hex(0xa07a4a), p.Streak(x, y, 3, 14, 3)); c.a = 1;
+                    p.Set(x, y, c, 0.6f);
+                }
+        }
+
+        static void SparkTorchTex(Paint p, bool lit)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++) p.Set(x, y, new Color(0, 0, 0, 0), 0);
+            for (int y = 0; y < 40; y++)
+                for (int x = 28; x < 36; x++)
+                {
+                    Color c = Color.Lerp(Hex(0x5a3a1e), Hex(0x8a6038), p.Streak(x, y, 4, 2, 2));
+                    if (y > 30) c = lit ? Color.Lerp(Hex(0xffb0a0), Hex(0xff2a10), (y - 30) / 10f * 0.5f + Mathf.Abs(x - 31.5f) / 6f) : Color.Lerp(Hex(0x5a1410), Hex(0x2a0806), Mathf.Abs(x - 31.5f) / 5f);
+                    p.Set(x, y, c, 0.5f);
+                }
+        }
+
+        // A lamp: a lattice of dark iron round panes that glow warm when it's lit.
+        static void Lamp(Paint p, bool lit)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool bar = x % 16 < 2 || y % 16 < 2 || x > 61 || y > 61;
+                    float r = Mathf.Sqrt((x % 16 - 8) * (x % 16 - 8) + (y % 16 - 8) * (y % 16 - 8)) / 8f;
+                    Color c = bar ? Paint.Mul(Hex(0x3a2a1e), 0.8f + p.Fbm(x, y, 8, 2) * 0.3f)
+                                  : lit ? Color.Lerp(Hex(0xfff2c0), Hex(0xffa040), r * 0.8f + p.Fbm(x, y, 5, 2) * 0.2f)
+                                        : Color.Lerp(Hex(0x8a6a3a), Hex(0x4a3420), r * 0.7f + p.Fbm(x, y, 5, 2) * 0.3f);
+                    c.a = 1;
+                    p.Set(x, y, c, bar ? 0.9f : 0.3f);
+                }
+        }
+
+        // A repeater's top: a stone slab with an arrow toward its output (the +v edge), red when on.
+        static void RepeaterTex(Paint p, bool on)
+        {
+            Rock(p, Hex(0xa2a3a8), Hex(0x86878c), 0.12f, false);
+            Color ink = on ? Hex(0xff3a1a) : Hex(0x6a0e0a);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool shaft = Mathf.Abs(x - 31.5f) < 2.5f && y > 8 && y < 46;
+                    bool head = y >= 38 && y < 58 && Mathf.Abs(x - 31.5f) < (58 - y) * 0.9f;
+                    if (shaft || head) { var c = ink; c.a = 1; p.Set(x, y, c, 0.15f); }
                 }
         }
 

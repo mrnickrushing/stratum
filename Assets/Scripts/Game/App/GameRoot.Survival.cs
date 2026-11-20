@@ -31,6 +31,7 @@ namespace Stratum.Game
             _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
             _link.Mounted = (k, at, yaw) => _player.GetIn(k, at, yaw);
             _player.GotOut = (k, at, yaw) => _link.Park(k, at, yaw);
+            _player.Powered = (x, y, z) => Signal.BoosterPowered(_world.Get, x, y, z);
             _act.OpenTrade = (id, job) => { _hud.SetTrade(job, id); OpenInventory("trade"); };
             _hud.SpawnPoint = () => Online ? _netSpawn : new Vector3(_meta.sx, _meta.sy, _meta.sz);
             _hud.Others = () =>
