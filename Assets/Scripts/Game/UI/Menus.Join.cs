@@ -54,7 +54,7 @@ namespace Stratum.Game
                 y -= 108;
                 return (f, row.gameObject, l);
             }
-            _joinAddr = Row("Server address", "host:port", SavedAddress()).f;
+            _joinAddr = Row("Server address (our server: just type play)", "play", SavedAddress()).f;
             _joinUser = Row($"Username ({MinName}-{Core.Net.MaxNameLength} letters, numbers, - or _)", "Username", PlayerPrefs.GetString("mp_user", PlayerPrefs.GetString("mp_name", ""))).f;
             _joinUser.characterLimit = Core.Net.MaxNameLength;
             (_joinPass, _, _joinPassLabel) = Row("Password", "Password", "");

@@ -39,7 +39,7 @@ namespace Stratum.Game
 
         IEnumerator AskWorlds(string address)
         {
-            if (!NetClient.ParseAddress(address, out var host, out int port)) yield break;
+            if (!NetClient.ParseAddress(DefaultServer.Resolve(address), out var host, out int port)) yield break;
             using (var net = new NetClient(host, port))
             {
                 float t = 0;
@@ -89,7 +89,7 @@ namespace Stratum.Game
 
         IEnumerator EnterRemote(string address, byte mode, string user, string secret, string invite, string world = "")
         {
-            if (!NetClient.ParseAddress(address, out var host, out int port)) { _menus.ShowJoin("That address doesn't look right."); yield break; }
+            if (!NetClient.ParseAddress(DefaultServer.Resolve(address), out var host, out int port)) { _menus.ShowJoin("That address doesn't look right."); yield break; }
             var net = _pendingNet = new NetClient(host, port);
             float t = 0;
             while (net.Connected == null)
