@@ -123,6 +123,9 @@ namespace Stratum.Game
                 case Tex.Ladder: Ladder(p); return 2f;
                 case Tex.IronBars: Bars(p); return 2f;
                 case Tex.EnchantTop: EnchantTop(p); return 3f;
+                case Tex.Rail: RailTex(p, false, false); return 1.5f;
+                case Tex.RailCurve: RailTex(p, true, false); return 1.5f;
+                case Tex.BoosterRail: RailTex(p, false, true); return 1.5f;
                 case Tex.JadeOre: Ore(p, Hex(0x3cc47a), Hex(0x1e8a4e), false); return 4f;
                 case Tex.JadeBlock: Metal(p, Hex(0x4ad08a), Hex(0x1a7a46)); return 3f;
                 case Tex.EnchantSide: EnchantSide(p); return 3f;
@@ -584,6 +587,41 @@ namespace Stratum.Game
                     float edge = rail ? Mathf.Min(x - (x < 32 ? 6 : 50), (x < 32 ? 13 : 57) - x) : Mathf.Min(y % 16 - 5, 9 - y % 16);
                     Color c = Paint.Mul(wood, (0.75f + grain * 0.3f) * (edge < 1 ? 0.7f : 1)); c.a = 1;
                     p.Set(x, y, c, rail ? 0.9f : 0.7f);
+                }
+        }
+
+        // Iron (or gold) rails on wooden sleepers, running along v; the curve bends round the (64, 64) corner.
+        static void RailTex(Paint p, bool curve, bool booster)
+        {
+            Color wood = Hex(0x6e4e30), iron = booster ? Hex(0xd8b04a) : Hex(0x9a9ea6), glow = Hex(0xff5a2a);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float across, along;
+                    if (curve)
+                    {
+                        float dx = 63.5f - x, dy = 63.5f - y;
+                        across = Mathf.Sqrt(dx * dx + dy * dy);            // 0..90: rails at 16 and 48
+                        along = Mathf.Atan2(dy, dx) / (Mathf.PI / 2) * 50;  // 0..50 round the bend
+                    }
+                    else { across = x + 0.5f; along = y; }
+                    bool railA = Mathf.Abs(across - 16) <= 2.6f, railB = Mathf.Abs(across - 48) <= 2.6f;
+                    bool sleeper = ((int)Mathf.Repeat(along, 16) >= 3 && (int)Mathf.Repeat(along, 16) <= 11) && across > 5 && across < 59;
+                    bool core = booster && Mathf.Abs(across - 32) <= 2 && !sleeper;
+                    if (railA || railB)
+                    {
+                        float r = 1 - Mathf.Abs(across - (railA ? 16 : 48)) / 2.6f;
+                        Color c = Paint.Mul(iron, 0.55f + r * 0.6f + p.Fbm(x, y, 8, 2) * 0.08f); c.a = 1;
+                        p.Set(x, y, c, 0.6f + r * 0.4f);
+                    }
+                    else if (core) { Color c = glow; c.a = 1; p.Set(x, y, c, 0.3f); }
+                    else if (sleeper)
+                    {
+                        float g = p.Streak(x, y, 2, 10, 3);
+                        Color c = Paint.Mul(wood, 0.7f + g * 0.35f); c.a = 1;
+                        p.Set(x, y, c, 0.4f);
+                    }
+                    else p.Set(x, y, new Color(0, 0, 0, 0), 0);
                 }
         }
 

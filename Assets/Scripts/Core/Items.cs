@@ -126,6 +126,8 @@ namespace Stratum.Core
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
+            Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
+            Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
             Add(new ItemDef { Id = "clock", Name = "Clock", MaxStack = 1 });
             Add(new ItemDef { Id = "map", Name = "Map", MaxStack = 1 });
@@ -196,6 +198,10 @@ namespace Stratum.Core
             R("iron_bars", 16, "workbench", ("iron_ingot", 6));
             R("sign", 3, "workbench", ("@planks", 6), ("stick", 1));
             R("bucket", 1, "workbench", ("iron_ingot", 3));
+            R("boat", 1, "workbench", ("oak_planks", 5));
+            R("minecart", 1, "workbench", ("iron_ingot", 5));
+            R("rail", 16, "workbench", ("iron_ingot", 6), ("stick", 1));
+            R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("sunstone_shard", 1));
             R("jade_block", 1, "workbench", ("jade", 9));
             R("jade", 9, null, ("jade_block", 1));
             R("compass", 1, "workbench", ("iron_ingot", 4), ("sunstone_shard", 1));

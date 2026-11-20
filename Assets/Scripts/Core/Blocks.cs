@@ -24,7 +24,7 @@ namespace Stratum.Core
         WoolWhite, WoolGrey, WoolBlack, WoolBrown, WoolRed, WoolYellow, WoolGreen, WoolBlue,
         Lava, Obsidian,
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
-        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock,
+        EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         Count
     }
@@ -107,7 +107,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            EnchantingTable, Anvil, JadeOre, JadeBlock,
+            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -387,6 +387,19 @@ namespace Stratum.Core
             // ---------------------------------------------------------------- 0.2: villages
             b = Rock("jade_ore", "Jade Ore", Tex.JadeOre, 3.5f, 4); b.TierNeeded = 3; b.DropItem = "jade"; JadeOre = b.Id;
             b = Add("jade_block", "Block of Jade", Tex.JadeBlock); b.Hardness = 5; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Stone; JadeBlock = b.Id;
+
+            // ---------------------------------------------------------------- 0.2: rails
+            void RailDef(BlockDef d, int i, bool booster)
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.FlatIcon = true;
+                d.Hardness = 0.7f; d.Tool = Tool.Pickaxe; d.Sound = Sound.Metal;
+                bool rising = booster ? i >= 2 : i >= 6, curve = !booster && i >= 2 && i < 6;
+                d.Top = d.Bottom = d.Side = booster ? Tex.BoosterRail : curve ? Tex.RailCurve : Tex.Rail;
+                if (!rising) d.Boxes = new[] { Box.Px(0, 0, 0, 16, 1, 16) };
+                else d.Boxes = new[] { Box.Px(0, 0, 0, 16, 1, 4), Box.Px(0, 4, 4, 16, 5, 8), Box.Px(0, 8, 8, 16, 9, 12), Box.Px(0, 12, 12, 16, 13, 16) };
+            }
+            Rail = Facings("rail", "Rail", 10, (d, i) => RailDef(d, i, false), i => i < 2 ? i : i < 6 ? i - 2 : i - 6);
+            BoosterRail = Facings("booster_rail", "Booster Rail", 6, (d, i) => RailDef(d, i, true), i => i < 2 ? i : i - 2);
 
             // ---------------------------------------------------------------- 0.2: enchanting
             b = Add("enchanting_table", "Enchanting Table", Tex.EnchantTop, Tex.EnchantSide, Tex.Obsidian);

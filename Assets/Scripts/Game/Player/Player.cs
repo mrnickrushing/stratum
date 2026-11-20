@@ -36,6 +36,13 @@ namespace Stratum.Game
         public System.Action Died;
         public System.Action<float> Hurt;
 
+        // In a boat or a minecart: the vehicle goes where the player goes until they get out (sneak).
+        public MobKind? Riding;
+        public float RideYaw, RideSpeed;
+        public System.Action<MobKind, Vector3, float> GotOut;         // leave it parked here
+        public System.Func<int, int, int, bool> Powered;              // is a booster rail switched on
+        Vector3Int _railCell; int _railFrom; float _railT; bool _onRail;
+
         const float HalfW = 0.3f, Tall = 1.8f, TallSneak = 1.5f, Eye = 1.62f, EyeSneak = 1.32f;
         const float Gravity = 30f, JumpSpeed = 8.6f, Walk = 4.4f, Run = 6.2f, SneakSpeed = 1.6f, FlySpeed = 11f, FlyFast = 24f;
 
@@ -93,6 +100,22 @@ namespace Stratum.Game
                 down = sneakKey;
             }
             if (move.sqrMagnitude > 1) move.Normalize();
+
+            if (Riding != null)
+            {
+                Sneaking = Sprinting = false; Flying = false;
+                InWater = InLava = OnLadder = false;
+                HeadInWater = Blocks.IsWater(World.Get(Mathf.FloorToInt(EyePos.x), Mathf.FloorToInt(EyePos.y), Mathf.FloorToInt(EyePos.z)));
+                if (InputEnabled && kb != null && (kb.leftCtrlKey.wasPressedThisFrame || kb.cKey.wasPressedThisFrame)) GetOut();
+                else
+                {
+                    if (Riding == MobKind.Boat) RideBoat(dt, move); else RideCart(dt, move);
+                    _fallStart = Feet.y;
+                    Survival(dt);
+                    UpdateCamera(dt, 0);
+                    return;
+                }
+            }
 
             // Double-tap space to fly in Creative.
             if (jumpPressed && Creative)
@@ -183,6 +206,143 @@ namespace Stratum.Game
             UpdateCamera(dt, horiz);
         }
 
+        // ------------------------------------------------------------------ boats and carts
+
+        public void GetIn(MobKind kind, Vector3 at, float yaw)
+        {
+            Riding = kind; Feet = at; RideYaw = yaw; RideSpeed = 0; Velocity = Vector3.zero; _onRail = false;
+            Sfx.I?.Play("door_close", 0.4f, 0.8f);
+        }
+
+        public void GetOut()
+        {
+            if (Riding == null) return;
+            var kind = Riding.Value; var at = Feet;
+            Riding = null; RideSpeed = 0; Velocity = Vector3.zero;
+            GotOut?.Invoke(kind, at, RideYaw);
+            // Step off to the side (or up on top if there's no room).
+            var side = Quaternion.Euler(0, RideYaw, 0) * Vector3.right;
+            foreach (var off in new[] { side * 1.2f, -side * 1.2f, Quaternion.Euler(0, RideYaw, 0) * Vector3.forward * 1.4f, Quaternion.Euler(0, RideYaw, 0) * Vector3.back * 1.4f })
+            {
+                for (int up = 0; up <= 1; up++)
+                {
+                    var p = at + off + Vector3.up * (up + 0.05f);
+                    if (!Blocked(p, Tall)) { Feet = p; return; }
+                }
+            }
+            Feet = at + Vector3.up * 0.9f;
+        }
+
+        void RideBoat(float dt, Vector2 move)
+        {
+            RideYaw += move.x * 95 * dt;
+            int fx = Mathf.FloorToInt(Feet.x), fz = Mathf.FloorToInt(Feet.z), fy = Mathf.FloorToInt(Feet.y + 0.3f);
+            float surface = float.NaN;
+            for (int y = fy + 1; y >= fy - 2; y--)
+                if (Blocks.IsWater(World.Get(fx, y, fz)) && !Blocks.IsWater(World.Get(fx, y + 1, fz))) { surface = y + 0.875f; break; }
+            var fwd = Quaternion.Euler(0, RideYaw, 0) * Vector3.forward;
+            bool afloat = !float.IsNaN(surface) && Feet.y < surface + 0.2f;
+            if (afloat)
+            {
+                RideSpeed += move.y * 7 * dt;
+                RideSpeed *= Mathf.Exp(-dt * 0.7f);
+                RideSpeed = Mathf.Clamp(RideSpeed, -2.5f, 8f);
+                Velocity.y = (surface - 0.32f - Feet.y) * 6;
+            }
+            else
+            {
+                // Dragged over land: barely moves.
+                RideSpeed += move.y * 2 * dt;
+                RideSpeed *= Mathf.Exp(-dt * 5);
+                RideSpeed = Mathf.Clamp(RideSpeed, -0.6f, 1.2f);
+                Velocity.y -= Gravity * dt;
+                if (Velocity.y < -40) Velocity.y = -40;
+            }
+            Velocity.x = fwd.x * RideSpeed; Velocity.z = fwd.z * RideSpeed;
+            _hitWall = false;
+            MoveAll(Velocity * dt);
+            if (_hitWall) RideSpeed *= 0.2f;
+            if (afloat && Mathf.Abs(RideSpeed) > 1.5f && Random.value < dt * 3) Sfx.I?.Play("splash", 0.08f, 1.4f);
+        }
+
+        void RideCart(float dt, Vector2 move)
+        {
+            if (!_onRail)
+            {
+                var f = Vector3Int.FloorToInt(Feet + Vector3.up * 0.1f);
+                foreach (var c in new[] { f, f + Vector3Int.down })
+                    if (Rails.Is(World.Get(c.x, c.y, c.z)))
+                    {
+                        _railCell = c; _onRail = true;
+                        var (a, b, _) = Rails.Ends(World.Get(c.x, c.y, c.z));
+                        // Start out heading the way the player looks.
+                        var look = Quaternion.Euler(0, Yaw, 0) * Vector3.forward;
+                        float da = look.x * Rails.DX[a] + look.z * Rails.DZ[a];
+                        _railFrom = da > 0 ? b : a;
+                        _railT = 0.5f;
+                        break;
+                    }
+                if (!_onRail)
+                {
+                    Velocity.x = Velocity.z = 0;
+                    Velocity.y -= Gravity * dt;
+                    MoveAll(Velocity * dt);
+                    return;
+                }
+            }
+            byte id = World.Get(_railCell.x, _railCell.y, _railCell.z);
+            if (!Rails.Is(id)) { _onRail = false; return; }
+            var (ea, eb, up) = Rails.Ends(id);
+            int to = _railFrom == ea ? eb : ea;
+            var travel = new Vector3(Rails.DX[to] - Rails.DX[_railFrom], 0, Rails.DZ[to] - Rails.DZ[_railFrom]).normalized;
+            // Downhill speeds up, uphill slows.
+            if (up >= 0) RideSpeed += (up == to ? -1 : 1) * 6f * dt;
+            // The rider can give it a shove the way they're looking.
+            var lookFwd = Quaternion.Euler(0, Yaw, 0) * Vector3.forward;
+            if (Mathf.Abs(RideSpeed) < 3.5f) RideSpeed += Vector3.Dot(lookFwd, travel) * move.y * 4f * dt;
+            if (Rails.Booster(id))
+            {
+                bool on = Powered == null || Powered(_railCell.x, _railCell.y, _railCell.z);
+                if (on) RideSpeed = Mathf.Abs(RideSpeed) < 0.05f ? 0.5f * Mathf.Sign(Vector3.Dot(lookFwd, travel) + 0.001f) : RideSpeed + Mathf.Sign(RideSpeed) * 18f * dt;
+                else RideSpeed *= Mathf.Exp(-dt * 6);
+            }
+            RideSpeed *= Mathf.Exp(-dt * 0.12f);
+            if (Mathf.Abs(RideSpeed) < 0.02f && up < 0) RideSpeed = 0;
+            RideSpeed = Mathf.Clamp(RideSpeed, -10, 10);
+            if (RideSpeed < 0) { _railFrom = to; _railT = 1 - _railT; RideSpeed = -RideSpeed; to = _railFrom == ea ? eb : ea; }
+            _railT += RideSpeed * dt / Rails.Length(id);
+            int guard = 0;
+            while (_railT >= 1 && guard++ < 4)
+            {
+                var (a2, b2, up2) = Rails.Ends(id);
+                int exit = _railFrom == a2 ? b2 : a2;
+                var next = new Vector3Int(_railCell.x + Rails.DX[exit], _railCell.y + (up2 == exit ? 1 : 0), _railCell.z + Rails.DZ[exit]);
+                byte nid = World.Get(next.x, next.y, next.z);
+                if (!Rails.Is(nid) && Rails.Is(World.Get(next.x, next.y - 1, next.z))) { next.y--; nid = World.Get(next.x, next.y, next.z); }
+                int entry = (exit + 2) & 3;
+                if (!Rails.Is(nid) || !Rails.Joins(nid, entry))
+                {
+                    // The end of the line: it bumps to a stop.
+                    if (RideSpeed > 2) Sfx.I?.Play("anvil", 0.15f, 0.6f);
+                    _railT = 1; RideSpeed = 0;
+                    break;
+                }
+                _railT = (_railT - 1) * Rails.Length(id) / Rails.Length(nid);
+                _railCell = next; _railFrom = entry; id = nid;
+            }
+            var (lx, ly, lz) = Rails.Along(id, _railFrom, Mathf.Clamp01(_railT));
+            var (ta, tb, _) = Rails.Ends(id);
+            int toNow = _railFrom == ta ? tb : ta;
+            var p0 = Rails.Along(id, _railFrom, Mathf.Clamp01(_railT - 0.05f)); var p1 = Rails.Along(id, _railFrom, Mathf.Clamp01(_railT + 0.05f));
+            float yawNow = Mathf.Atan2(p1.x - p0.x, p1.z - p0.z) * Mathf.Rad2Deg;
+            if (Mathf.Abs(p1.x - p0.x) + Mathf.Abs(p1.z - p0.z) > 0.001f) RideYaw = yawNow;
+            _ = toNow;
+            var target = new Vector3(_railCell.x + lx, _railCell.y + ly, _railCell.z + lz);
+            Velocity = (target - Feet) / Mathf.Max(dt, 0.001f);
+            Feet = target;
+            if (RideSpeed > 1 && Random.value < dt * RideSpeed * 0.6f) Sfx.I?.Block("step", Blocks.Rail, 0.12f);
+        }
+
         void Look(Mouse mouse)
         {
             if (!InputEnabled || mouse == null || Cursor.lockState != CursorLockMode.Locked) return;
@@ -195,7 +355,7 @@ namespace Stratum.Game
         void UpdateCamera(float dt, float horiz)
         {
             transform.rotation = Quaternion.Euler(0, Yaw, 0);
-            float eye = Sneaking ? EyeSneak : Eye;
+            float eye = Riding == MobKind.Boat ? 1.05f : Riding == MobKind.Cart ? 1.25f : Sneaking ? EyeSneak : Eye;
             _eye = Mathf.Lerp(_eye, eye, 1 - Mathf.Exp(-dt * 14));
             float bobAmt = OnGround && !Flying ? Mathf.Clamp01(horiz / Walk) : 0;
             float bx = Mathf.Sin(_bob * Mathf.PI) * 0.035f * bobAmt, by = Mathf.Abs(Mathf.Cos(_bob * Mathf.PI)) * 0.05f * bobAmt;

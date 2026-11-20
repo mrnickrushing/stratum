@@ -87,7 +87,7 @@ namespace Stratum.Game
             _menus.Create = (name, seed, creative, difficulty) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty)));
             _menus.Delete = WorldStore.Delete;
             _menus.Resume = Resume;
-            _menus.SaveAndQuit = () => { if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
+            _menus.SaveAndQuit = () => { _player?.GetOut(); if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
             _menus.Join = JoinServer;
             _menus.CancelJoin = CancelJoin;
             _menus.Respawn = Respawn;
@@ -416,6 +416,7 @@ namespace Stratum.Game
 
         void OnDied()
         {
+            _player.GetOut();
             _state = State.Dead;
             if (_player.Asleep) WakeUp();
             _player.InputEnabled = false; _act.InputEnabled = false;
@@ -510,6 +511,7 @@ namespace Stratum.Game
 
         void OnApplicationQuit()
         {
+            _player?.GetOut();
             if (Online) { SendMove(true); SendKeep(); _net.Close(200); System.Threading.Thread.Sleep(250); }
             if (_state == State.Playing || _state == State.Paused || _state == State.Dead) Save();
         }

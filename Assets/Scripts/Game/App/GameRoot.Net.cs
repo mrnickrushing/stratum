@@ -219,6 +219,8 @@ namespace Stratum.Game
             if (_player.InWater) flags |= Net.InWater;
             if (_player.Health <= 0) flags |= Net.Dead;
             if (_player.Asleep) flags |= Net.Asleep;
+            if (_player.Riding == MobKind.Boat) flags |= Net.InBoat;
+            if (_player.Riding == MobKind.Cart) flags |= Net.InCart;
             bool same = (f - _lastSentPos).sqrMagnitude < 0.0004f && Mathf.Abs(Mathf.DeltaAngle(_player.Yaw, _lastSentYaw)) < 0.5f &&
                         Mathf.Abs(_player.Pitch - _lastSentPitch) < 0.5f && flags == _lastSentFlags;
             if (same && !force) return;
@@ -334,6 +336,12 @@ namespace Stratum.Game
                 case Net.Msg.Mobs:
                     (_link as RemoteLink)?.Received(r);
                     break;
+                case Net.Msg.Mounted:
+                {
+                    var k = (MobKind)r.U8(); var at = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32();
+                    _link?.Mounted?.Invoke(k, at, yaw);
+                    break;
+                }
                 case Net.Msg.Hurt:
                 {
                     float dmg = r.F32(), fx = r.F32(), fz = r.F32(); var kind = (MobKind)r.U8();

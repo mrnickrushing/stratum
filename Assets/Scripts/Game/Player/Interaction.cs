@@ -170,6 +170,26 @@ namespace Stratum.Game
             return false;
         }
 
+        // The first water along the view (any depth), for putting a boat on.
+        bool WaterAim(out Vector3Int cell)
+        {
+            cell = default;
+            var o = P.Cam.transform.position; var d = P.Cam.transform.forward;
+            for (float t = 0.2f; t < 5.5f; t += 0.05f)
+            {
+                var p = o + d * t;
+                var c = new Vector3Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z));
+                byte id = World.Get(c.x, c.y, c.z);
+                if (Blocks.IsWater(id))
+                {
+                    while (Blocks.IsWater(World.Get(c.x, c.y + 1, c.z))) c.y++;
+                    cell = c; return true;
+                }
+                if (Blocks.Get(id).Solid) return false;
+            }
+            return false;
+        }
+
         // Swap the held item for another (a bucket filled or emptied).
         void SwapHeld(string to)
         {
@@ -228,6 +248,36 @@ namespace Stratum.Game
                     if (!P.Creative) P.Inv.UseHeld();
                     _swing = 0;
                 }
+                return;
+            }
+
+            // Into a boat or cart (right-click it), or putting one down.
+            if (rmb && mouse.rightButton.wasPressedThisFrame && HasMob && P.Riding == null && Creatures != null && Creatures.TryGet(TargetMob, out var ride)
+                && MobSim.Def(ride.Kind).Vehicle)
+            {
+                Link?.Mount(TargetMob); _swing = 0;
+                return;
+            }
+            if (heldDef != null && heldDef.Id == "boat" && mouse.rightButton.wasPressedThisFrame && P.Riding == null)
+            {
+                Vector3? spot = null;
+                if (WaterAim(out var w)) spot = new Vector3(w.x + 0.5f, w.y + 0.875f - 0.32f, w.z + 0.5f);
+                else if (HasTarget && TargetNormal.y > 0) spot = new Vector3(Target.x + 0.5f, Target.y + 1, Target.z + 0.5f);
+                if (spot != null)
+                {
+                    Link?.Park(MobKind.Boat, spot.Value, P.Yaw);
+                    if (!P.Creative) P.Inv.UseHeld();
+                    Sfx.I?.Play("splash", 0.35f, 1.2f); _swing = 0;
+                    return;
+                }
+            }
+            if (heldDef != null && heldDef.Id == "minecart" && mouse.rightButton.wasPressedThisFrame && HasTarget && Rails.Is(World.Get(Target.x, Target.y, Target.z)))
+            {
+                var (a, _, up) = Rails.Ends(World.Get(Target.x, Target.y, Target.z));
+                float yaw = a * 90;
+                Link?.Park(MobKind.Cart, new Vector3(Target.x + 0.5f, Target.y + (up >= 0 ? 0.5f : 1 / 16f), Target.z + 0.5f), yaw);
+                if (!P.Creative) P.Inv.UseHeld();
+                Sfx.I?.Block("place", Blocks.Rail, 0.8f); _swing = 0;
                 return;
             }
 
@@ -503,6 +553,15 @@ namespace Stratum.Game
                 if (TargetNormal.y != 0 || !Blocks.Get(target).Solid) return;
                 place = (byte)(Blocks.Ladder + DirOf(-TargetNormal));
             }
+            else if (id == Blocks.Rail || id == Blocks.BoosterRail)
+            {
+                if (!Blocks.Get(below).Solid || !Blocks.Get(below).Opaque && !Blocks.Slabs.Contains(below)) return;
+                place = Rails.Shape(World.Get, at.x, at.y, at.z, id, f);
+                if (!World.Set(at.x, at.y, at.z, place)) return;
+                Rails.Settle(World.Get, (x, y, z, b) => World.Set(x, y, z, b), at.x, at.y, at.z);
+                Placed(id);
+                return;
+            }
             else if (id == Blocks.Sign)
             {
                 if (TargetNormal.y > 0) place = (byte)(Blocks.Sign + f);
@@ -540,7 +599,7 @@ namespace Stratum.Game
                 var up = p + Vector3Int.up;
                 byte id = World.Get(up.x, up.y, up.z);
                 var d = Blocks.Get(id);
-                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0;
+                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0 || Rails.Is(id);
                 if (id == 0 || !needs) return;
                 if (d.BaseId == Blocks.OakDoor) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);

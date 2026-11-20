@@ -22,6 +22,9 @@ namespace Stratum.Game
         public abstract void Drop(Vector3 at, Stack[] stacks);   // into a satchel on the ground
         public abstract void SetSign(Vector3Int at, string text);
         public abstract void Fertilize(Vector3Int at);           // bone meal
+        public abstract void Mount(int mob);                     // into a boat or cart: Mounted answers
+        public abstract void Park(MobKind kind, Vector3 at, float yaw);
+        public Action<MobKind, Vector3, float> Mounted;
         public Action<Vector3Int, string> SignChanged;
         public virtual void Tick(float dt) { }
         public virtual void Save() { }
@@ -146,6 +149,13 @@ namespace Stratum.Game
         }
 
         public override void Fertilize(Vector3Int at) => _world.Growth?.BoneMeal(at.x, at.y, at.z);
+        public override void Mount(int mob)
+        {
+            var f = _player.Feet;
+            var k = Sim.Mount(mob, f.x, f.y, f.z, out float x, out float y, out float z, out float yaw);
+            if (k != null) Mounted?.Invoke(k.Value, new Vector3(x, y, z), yaw);
+        }
+        public override void Park(MobKind kind, Vector3 at, float yaw) => Sim.Park(kind, at.x, at.y, at.z, yaw);
 
         public override void Save()
         {

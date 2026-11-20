@@ -11,6 +11,7 @@ namespace Stratum.Game
     public sealed partial class GameRoot
     {
         Link _link;
+        readonly List<MobState> _shown = new List<MobState>();
         Creatures _creatures;
         SignView _signs;
         WeatherFx _weatherFx;
@@ -28,6 +29,8 @@ namespace Stratum.Game
             _creatures = Creatures.Create(_world, _cam.transform);
             _signs = SignView.Create(_world);
             _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
+            _link.Mounted = (k, at, yaw) => _player.GetIn(k, at, yaw);
+            _player.GotOut = (k, at, yaw) => _link.Park(k, at, yaw);
             _act.OpenTrade = (id, job) => { _hud.SetTrade(job, id); OpenInventory("trade"); };
             _hud.SpawnPoint = () => Online ? _netSpawn : new Vector3(_meta.sx, _meta.sy, _meta.sz);
             _hud.Others = () =>
@@ -89,7 +92,10 @@ namespace Stratum.Game
         {
             if (_link == null) return;
             _link.Tick(Time.deltaTime);
-            _creatures.Show(_link.Mobs, Time.deltaTime);
+            _shown.Clear(); _shown.AddRange(_link.Mobs);
+            if (_player.Riding != null) _shown.Add(new MobState { Id = -1, Kind = _player.Riding.Value, Pos = _player.Feet, Yaw = _player.RideYaw, Health = 1 });
+            _avatars?.Rides(_shown);
+            _creatures.Show(_shown, Time.deltaTime);
             if (_player.Asleep)
             {
                 _sleptFor += Time.deltaTime;
@@ -324,6 +330,8 @@ namespace Stratum.Game
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
         public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));
         public override void Fertilize(Vector3Int at) => Send(new Packet(Net.Msg.Fertilize).I32(at.x).I32(at.y).I32(at.z));
+        public override void Mount(int mob) => Send(new Packet(Net.Msg.Mount).I32(mob));
+        public override void Park(MobKind kind, Vector3 at, float yaw) => Send(new Packet(Net.Msg.Park).U8((byte)kind).F32(at.x).F32(at.y).F32(at.z).F32(yaw));
         public override void SetSign(Vector3Int at, string text) => Send(new Packet(Net.Msg.SignText).I32(at.x).I32(at.y).I32(at.z).Str(Containers.CleanSign(text)));
 
         // The creatures near us, as the server last saw them.

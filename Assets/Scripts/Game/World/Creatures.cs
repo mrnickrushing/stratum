@@ -118,7 +118,7 @@ namespace Stratum.Game
             bool hit = false;
             foreach (var v in _views.Values)
             {
-                if (v.S.Kind == MobKind.Arrow || (v.S.Flags & Mob.FDead) != 0) continue;
+                if (v.S.Kind == MobKind.Arrow || (v.S.Flags & Mob.FDead) != 0 || v.S.Id < 0) continue;
                 var def = MobSim.Def(v.S.Kind);
                 var p = v.Pos;
                 float hw = def.HalfW + 0.08f;
@@ -146,7 +146,18 @@ namespace Stratum.Game
             v.Speed = Mathf.Lerp(v.Speed, speed, 1 - Mathf.Exp(-dt * 8));
             bool dead = (s.Flags & Mob.FDead) != 0;
 
+            if (s.Id < 0) { v.Pos = s.Pos; v.Yaw = s.Yaw; }               // a boat or cart someone's in: no easing
             m.Root.position = v.Pos;
+            if (def.Vehicle)
+            {
+                // Afloat, a boat rocks a little; a cart rolls level.
+                float rock = s.Kind == MobKind.Boat ? Mathf.Sin(Time.time * 1.6f + s.Id) * 2.5f : 0;
+                m.Root.rotation = Quaternion.Euler(0, v.Yaw, rock);
+                v.Hurt = Mathf.Max(0, v.Hurt - dt);
+                Light(v, dt);
+                Paint(v, v.Hurt > 0 ? 0.4f : 0, 0);
+                return;
+            }
             if (s.Kind == MobKind.Arrow)
             {
                 m.Root.rotation = Quaternion.Euler(v.Pitch, v.Yaw, 0);
@@ -300,6 +311,8 @@ namespace Stratum.Game
                 case MobKind.EmberImp: Imp(m); break;
                 case MobKind.Colossus: Colossus(m); break;
                 case MobKind.Villager: Villager(m); break;
+                case MobKind.Boat: Boat(m); break;
+                case MobKind.Cart: Cart(m); break;
             }
             return m;
         }
@@ -562,6 +575,36 @@ namespace Stratum.Game
             B(m, m.ArmR, 0, -1.05f, 0, 0.7f, 2.2f, 0.7f, rock);
             B(m, m.ArmR, 0, -2.25f, 0.05f, 0.9f, 0.5f, 0.9f, rock2);
             m.Swing = 18; m.Stride = 2.2f;
+        }
+
+        void Boat(Model m)
+        {
+            Color wood = Hex(0x9c7446), dark = Hex(0x6e4e2e), rim = Hex(0x5a3e24);
+            m.Body = Pivot(m.Root, Vector3.zero);
+            B(m, m.Body, 0, 0.06f, 0, 1.2f, 0.12f, 2.3f, dark);                        // the bottom
+            foreach (int sx in new[] { -1, 1 }) B(m, m.Body, sx * 0.64f, 0.3f, 0, 0.12f, 0.48f, 2.3f, wood);
+            foreach (int sz in new[] { -1, 1 }) B(m, m.Body, 0, 0.3f, sz * 1.1f, 1.4f, 0.48f, 0.12f, wood);
+            foreach (int sx in new[] { -1, 1 }) B(m, m.Body, sx * 0.66f, 0.57f, 0, 0.16f, 0.06f, 2.34f, rim, 0, false);   // the gunwale
+            foreach (int sz in new[] { -1, 1 }) B(m, m.Body, 0, 0.57f, sz * 1.12f, 1.42f, 0.06f, 0.16f, rim, 0, false);
+            B(m, m.Body, 0, 0.36f, -0.2f, 1.2f, 0.07f, 0.36f, wood);                   // the seat
+            foreach (int sx in new[] { -1, 1 })
+            {
+                var oar = Pivot(m.Body, new Vector3(sx * 0.72f, 0.52f, -0.1f));
+                B(m, oar, sx * 0.45f, -0.08f, 0, 0.9f, 0.06f, 0.06f, wood, 0, false);
+                B(m, oar, sx * 0.95f, -0.12f, 0, 0.32f, 0.04f, 0.18f, dark, 0, false);
+            }
+        }
+
+        void Cart(Model m)
+        {
+            Color iron = Hex(0x6a6e76), dark = Hex(0x3a3c42), rust = Hex(0x5a4a40);
+            m.Body = Pivot(m.Root, Vector3.zero);
+            B(m, m.Body, 0, 0.26f, 0, 0.96f, 0.1f, 1.24f, dark);
+            foreach (int sx in new[] { -1, 1 }) B(m, m.Body, sx * 0.48f, 0.52f, 0, 0.08f, 0.55f, 1.3f, iron);
+            foreach (int sz in new[] { -1, 1 }) B(m, m.Body, 0, 0.52f, sz * 0.62f, 1.04f, 0.55f, 0.08f, iron);
+            foreach (int sx in new[] { -1, 1 }) B(m, m.Body, sx * 0.5f, 0.8f, 0, 0.12f, 0.04f, 1.34f, rust, 0, false);
+            foreach (int sz in new[] { -1, 1 }) B(m, m.Body, 0, 0.8f, sz * 0.64f, 1.08f, 0.04f, 0.12f, rust, 0, false);
+            foreach (int sx in new[] { -1, 1 }) foreach (int sz in new[] { -1, 1 }) B(m, m.Body, sx * 0.42f, 0.16f, sz * 0.4f, 0.1f, 0.3f, 0.3f, Hex(0x222326));
         }
 
         static readonly Color RobeBase = Hex(0x6a4a2e);

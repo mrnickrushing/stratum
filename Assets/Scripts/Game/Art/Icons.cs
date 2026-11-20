@@ -166,7 +166,7 @@ namespace Stratum.Game
             foreach (var item in Items.Order)
             {
                 if (item.Block == 0) continue;
-                if (Blocks.Get(item.Block).FlatIcon) { _icons[item.Id] = item.Id == "ladder" ? Flat(Tex.Ladder) : ItemArt.Paint(item); continue; }
+                if (Blocks.Get(item.Block).FlatIcon) { _icons[item.Id] = item.Id == "ladder" ? Flat(Tex.Ladder) : item.Id == "rail" ? Flat(Tex.Rail) : item.Id == "booster_rail" ? Flat(Tex.BoosterRail) : ItemArt.Paint(item); continue; }
                 if (BlockMesh.IsFlat(item.Block)) { _icons[item.Id] = Flat(Blocks.Get(item.Block).Top); continue; }
                 mf.sharedMesh = BlockMesh.Cube(item.Block);
                 cam.Render();

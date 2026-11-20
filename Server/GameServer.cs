@@ -264,6 +264,8 @@ namespace Stratum.Server
                     case Net.Msg.Drop: Drop(p, r); break;
                     case Net.Msg.SignText: SignText(p, r); break;
                     case Net.Msg.Fertilize: Fertilize(p, r); break;
+                    case Net.Msg.Mount: Mount(p, r); break;
+                    case Net.Msg.Park: Park(p, r); break;
                     case Net.Msg.Ping: c.Send(new Packet(Net.Msg.Pong).F64(r.F64()).Str(_cfg.Name).Str(_cfg.Motd).I32(_onlineCount).I32(_cfg.MaxPlayers)); break;
                 }
             }
@@ -342,6 +344,9 @@ namespace Stratum.Server
         {
             if (!_players.TryGetValue(c.Id, out var p)) return;
             _players.Remove(c.Id);
+            // Leaving in a boat or cart leaves it where they were.
+            if (p.Joined && (p.Flags & Net.InBoat) != 0) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
+            if (p.Joined && (p.Flags & Net.InCart) != 0) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
             foreach (long k in p.Waiting) if (_waiters.TryGetValue(k, out var l)) l.Remove(p);
             if (!p.Joined) return;
             SavePlayer(p);
@@ -577,6 +582,24 @@ namespace Stratum.Server
             World.SetRaw(sx, sy, sz, Blocks.Satchel);
             Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
+        }
+
+        void Mount(Player p, Reader r)
+        {
+            int id = r.I32();
+            if (!p.Alive) return;
+            var k = _mobs.Mount(id, p.X, p.Y, p.Z, out float x, out float y, out float z, out float yaw);
+            if (k == null) return;
+            p.Conn.Send(new Packet(Net.Msg.Mounted).U8((byte)k.Value).F32(x).F32(y).F32(z).F32(yaw));
+        }
+
+        void Park(Player p, Reader r)
+        {
+            var k = (MobKind)r.U8(); float x = r.F32(), y = r.F32(), z = r.F32(), yaw = r.F32();
+            if ((int)k >= (int)MobKind.Count || !MobSim.Def(k).Vehicle || ++p.Edits > 40) return;
+            float dx = x - p.X, dy = y - p.Y, dz = z - p.Z;
+            if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
+            _mobs.Park(k, x, y, z, yaw);
         }
 
         void Fertilize(Player p, Reader r)

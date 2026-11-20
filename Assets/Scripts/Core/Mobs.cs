@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace Stratum.Core
 {
-    public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Count }
+    public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Boat, Cart, Count }
 
     public sealed class MobDef
     {
         public MobKind Kind;
         public string Name;
         public float Health = 10, Speed = 1.4f, HalfW = 0.4f, Height = 1.2f;
-        public bool Hostile, Burns, Climbs, Ranged, Floats, Boss, Fireproof;
+        public bool Hostile, Burns, Climbs, Ranged, Floats, Boss, Fireproof, Vehicle;
         public float Damage, Reach = 1.7f, AttackEvery = 1.1f, Sight = 18;
         public (string item, int min, int max, float chance)[] Drops = Array.Empty<(string, int, int, float)>();
         public int Xp;
@@ -92,6 +92,8 @@ namespace Stratum.Core
                 Fireproof = true, Damage = 9, Reach = 3.4f, AttackEvery = 1.6f, Sight = 48, Xp = 200,
                 Drops = new[] { ("colossus_heart", 1, 1, 1f), ("gold_ingot", 6, 12, 1f), ("ember", 6, 10, 1f) } });
             D(new MobDef { Kind = MobKind.Villager, Name = "Villager", Health = 20, Speed = 1.1f, HalfW = 0.3f, Height = 1.9f });
+            D(new MobDef { Kind = MobKind.Boat, Name = "Boat", Health = 4, HalfW = 0.7f, Height = 0.6f, Vehicle = true, Drops = new[] { ("boat", 1, 1, 1f) } });
+            D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
         public static MobDef Def(MobKind k) => Defs[(int)k];
@@ -147,6 +149,27 @@ namespace Stratum.Core
 
         // ------------------------------------------------------------------ what players do to them
 
+        // Getting into a boat or cart: it leaves the world (the player carries it) until they get out again.
+        public MobKind? Mount(int id, float px, float py, float pz, out float x, out float y, out float z, out float yaw)
+        {
+            x = y = z = yaw = 0;
+            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || !m.Def.Vehicle) return null;
+            float dx = m.X - px, dy = m.Y - py, dz = m.Z - pz;
+            if (dx * dx + dy * dy + dz * dz > 7 * 7) return null;
+            x = m.X; y = m.Y; z = m.Z; yaw = m.Yaw;
+            Remove(m);
+            return m.Kind;
+        }
+
+        // A boat or cart put down (from the hand, or got out of).
+        public Mob Park(MobKind kind, float x, float y, float z, float yaw)
+        {
+            if (!Def(kind).Vehicle) return null;
+            var m = Spawn(kind, x, y, z);
+            m.Yaw = yaw; m.Kept = true;
+            return m;
+        }
+
         // A melee hit by a player standing at (px, py, pz). False if it's out of reach or already gone.
         public bool Strike(int id, int player, float damage, float px, float py, float pz)
         {
@@ -168,9 +191,10 @@ namespace Stratum.Core
             if (len > 0.01f && !m.Def.Boss) { m.VX += dx / len * 6 * knock; m.VZ += dz / len * 6 * knock; if (m.OnGround) m.VY = 4.5f * knock; }
             if (!m.Def.Hostile) m.Flee = 5;
             else if (player > 0) { m.Target = player; m.Angry = true; }
+            if (m.Def.Vehicle) { m.VX = m.VZ = m.VY = 0; m.Flee = 0; }
             if (m.Health <= 0)
             {
-                m.Health = 0; m.Dead = 1f;
+                m.Health = 0; m.Dead = m.Def.Vehicle ? 0.05f : 1f;
                 Sound?.Invoke(m, "die");
                 Died?.Invoke(m, player);
             }
@@ -273,6 +297,13 @@ namespace Stratum.Core
                 if (!Loaded((int)Math.Floor(m.X), (int)Math.Floor(m.Z))) continue;    // frozen until its ground is back
                 m.Age += dt;
                 if (m.Kind == MobKind.Arrow) { Arrow(m, dt, players); continue; }
+                if (m.Def.Vehicle)
+                {
+                    // A boat or cart that nobody is in stays where it was left.
+                    m.Hurt = Math.Max(0, m.Hurt - dt);
+                    if (m.Dead > 0 && (m.Dead -= dt) <= 0) Remove(m);
+                    continue;
+                }
                 if (m.Dead > 0)
                 {
                     m.Dead -= dt;
@@ -696,7 +727,7 @@ namespace Stratum.Core
             int passive = 0, hostile = 0;
             foreach (var m in All)
             {
-                if (m.Kind == MobKind.Arrow || m.Kind == MobKind.Villager || m.Def.Boss) continue;
+                if (m.Kind == MobKind.Arrow || m.Kind == MobKind.Villager || m.Def.Boss || m.Def.Vehicle) continue;
                 float dx = m.X - p.X, dz = m.Z - p.Z;
                 if (dx * dx + dz * dz > 80 * 80) continue;
                 if (m.Def.Hostile) hostile++; else passive++;

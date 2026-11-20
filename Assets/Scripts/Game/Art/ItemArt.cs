@@ -225,6 +225,24 @@ namespace Stratum.Game
                     });
                     c.Poly(new[] { new Vector2(46, 52), new Vector2(52, 42), new Vector2(40, 42) }, (x, y) => Hex(0xffffff));
                     break;
+                case "boat":
+                {
+                    // A rowing boat side on: a curved hull of planks, the gunwale, an oar resting across.
+                    var hull = new[] { new Vector2(6, 62), new Vector2(90, 62), new Vector2(78, 30), new Vector2(60, 22), new Vector2(36, 22), new Vector2(18, 30) };
+                    c.Poly(hull, (x, y) => { float plank = Mathf.Repeat(y, 10) < 1.4f ? 0.7f : 1; var k = Color.Lerp(Hex(0x7a5634), Hex(0xb88a56), (y - 22) / 40f) * plank; k.a = 1; return k; });
+                    c.Line(new Vector2(6, 62), new Vector2(90, 62), 5, (t, ss) => Hex(0x5a3e24));
+                    c.Line(new Vector2(14, 78), new Vector2(84, 50), 4, (t, ss) => Hex(0xc8a070));
+                    c.Line(new Vector2(70, 56), new Vector2(84, 50), 9, (t, ss) => Hex(0xa87e50));
+                    break;
+                }
+                case "minecart":
+                {
+                    var box = new[] { new Vector2(10, 70), new Vector2(86, 70), new Vector2(78, 30), new Vector2(18, 30) };
+                    c.Poly(box, (x, y) => { bool rivet = (Mathf.Abs(x - 20) < 2 || Mathf.Abs(x - 76) < 2) && Mathf.Repeat(y, 12) < 2.5f; return rivet ? Hex(0x2e3036) : Color.Lerp(Hex(0x5a5e66), Hex(0x8e939c), (y - 30) / 40f); });
+                    c.Line(new Vector2(8, 70), new Vector2(88, 70), 5, (t, ss) => Hex(0xa4a8b0));
+                    foreach (float wx in new[] { 28f, 68f }) { c.Disc(new Vector2(wx, 26), 10, (x, y) => Hex(0x26272b)); c.Disc(new Vector2(wx, 26), 4, (x, y) => Hex(0x6a6e76)); }
+                    break;
+                }
                 case "jade":
                     c.Poly(new[] { new Vector2(48, 88), new Vector2(76, 62), new Vector2(66, 18), new Vector2(30, 18), new Vector2(20, 62) },
                         (x, y) => Color.Lerp(Hex(0x147a40), Hex(0x6ae8a4), Mathf.Clamp01((y - 18) / 70f * 0.6f + (76 - x) / 56f * 0.4f)));
