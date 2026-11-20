@@ -69,6 +69,10 @@ Output goes to `Builds/Linux/Stratum.x86_64` or `Builds/Windows/Stratum.exe`.
    static page in `site/public`, `/download/{windows,windows-zip,linux,sums}` streamed from R2).
 4. `gh release create v<version>` with the same files, and merge to `main` (Railway redeploys the server).
 
+The Multiplayer screen fills in the default server by itself (`Game/Net/DefaultServer.cs`): built in, and checked at
+launch against `site/public/server.json`. If the server's address ever changes, edit that file and redeploy the site;
+installed games follow (and keep their remembered logins). Only an address a player types is saved as theirs.
+
 The icon is drawn by `Tools/brand/icon.py` (`Assets/Art/Icon.png`, `Tools/brand/stratum.ico`).
 
 ## Checking a build

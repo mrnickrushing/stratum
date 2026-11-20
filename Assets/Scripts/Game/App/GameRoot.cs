@@ -93,6 +93,7 @@ namespace Stratum.Game
             _menus.Respawn = Respawn;
             _menus.Quit = () => { Application.Quit(); };
             _menus.SettingsChanged = OnSettingsChanged;
+            StartCoroutine(DefaultServer.Refresh(_menus.DefaultServerChanged));
 
             Step("title");
             ToTitle();
