@@ -34,6 +34,8 @@ namespace Stratum.Game
         Text _craftTitle;
         readonly List<SlotView> _invSlots = new List<SlotView>();
         Image _cursorIcon; Text _cursorCount;
+        Image _tag; Text _tagText; string _tagFor = "";
+        Image _blockTag; Text _blockTagText;
         Text _tip;
         Stack _cursor;
         string _station;
@@ -117,6 +119,13 @@ namespace Stratum.Game
             _mobBack = Bar("MobHealth", new Color(0.86f, 0.22f, 0.2f), 0, 0, 200, out _mobBar);
             _mobBack.rectTransform.anchorMin = _mobBack.rectTransform.anchorMax = new Vector2(0.5f, 0.5f); _mobBack.rectTransform.anchoredPosition = new Vector2(0, 48);
             _mobBack.rectTransform.sizeDelta = new Vector2(200, 12);
+            _blockTag = UIKit.Panel(_root, "BlockTag", new Color(0.06f, 0.06f, 0.08f, 0.6f));
+            _blockTag.raycastTarget = false;
+            _blockTag.rectTransform.Place(0.5f, 0.5f, 0, -64, 120, 28);
+            _blockTagText = UIKit.Label(_blockTag.transform, "", 18, new Color(1, 1, 1, 0.92f), TextAnchor.MiddleCenter);
+            _blockTagText.raycastTarget = false; _blockTagText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _blockTagText.rectTransform.Fill();
+            _blockTag.gameObject.SetActive(false);
             _bossName = UIKit.Label(_root, "", 28, new Color(1, 0.8f, 0.6f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed();
             _bossName.rectTransform.Place(0.5f, 1, 0, -6, 900, 40);
             _bossBack = Bar("Boss", new Color(0.9f, 0.35f, 0.1f), 0, 0, 900, out _bossBar);
@@ -246,6 +255,16 @@ namespace Stratum.Game
                 _mobName.text = MobSim.Def(m.Kind).Name;
                 _mobBar.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, m.Health), 1);
             }
+            // The block being pointed at gets a small name under the crosshair.
+            bool block = show && !has && Act.HasTarget;
+            string bn = block ? Blocks.Get(World.Get(Act.Target.x, Act.Target.y, Act.Target.z)).Name : null;
+            block = !string.IsNullOrEmpty(bn);
+            if (_blockTag.gameObject.activeSelf != block) _blockTag.gameObject.SetActive(block);
+            if (block && _blockTagText.text != bn)
+            {
+                _blockTagText.text = bn;
+                _blockTag.rectTransform.sizeDelta = new Vector2(_blockTagText.preferredWidth + 22, 28);
+            }
             // A boss nearby shows its health across the top.
             MobState boss = default; bool any = false;
             if (Link != null)
@@ -309,6 +328,14 @@ namespace Stratum.Game
             _cursorIcon = UIKit.Icon(r, null); _cursorIcon.rectTransform.sizeDelta = new Vector2(72, 72);
             _cursorCount = UIKit.Label(_cursorIcon.transform, "", 24, Color.white, TextAnchor.LowerRight, FontStyle.Bold).Shadowed();
             _cursorCount.rectTransform.Fill(-4);
+            // A small name tag beside the mouse for whatever it's over.
+            _tag = UIKit.Panel(r, "NameTag", new Color(0.06f, 0.06f, 0.08f, 0.96f));
+            _tag.raycastTarget = false;
+            var edge = _tag.gameObject.AddComponent<Outline>(); edge.effectColor = new Color(1, 1, 1, 0.16f); edge.effectDistance = new Vector2(1, -1);
+            _tagText = UIKit.Label(_tag.transform, "", 21, UIKit.Ink, TextAnchor.MiddleCenter);
+            _tagText.raycastTarget = false; _tagText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _tagText.rectTransform.Fill();
+            _tag.gameObject.SetActive(false);
             _inv.SetActive(false);
         }
 
@@ -342,6 +369,7 @@ namespace Stratum.Game
 
         public void CloseInventory()
         {
+            _tagFor = ""; if (_tag != null) _tag.gameObject.SetActive(false);
             if (!_cursor.Empty)
             {
                 if (!P.Creative) GiveBack(_cursor);
@@ -446,10 +474,11 @@ namespace Stratum.Game
 
         void Tip(Stack s)
         {
-            if (s.Empty) { _tip.text = P.Creative ? "Pick anything up from the palette. Click empty space to clear." : ""; return; }
+            if (s.Empty) { _tagFor = ""; _tip.text = P.Creative ? "Pick anything up from the palette. Click empty space to clear." : ""; return; }
             var d = Items.Get(s.Item);
             string extra = d.Durability > 0 ? $"  ·  {d.Durability - s.Wear} uses left" : d.Tool != Tool.None ? "" : "";
             _tip.text = d.Name + (s.Count > 1 ? $" × {s.Count}" : "") + extra;
+            _tagFor = d.Name;
         }
 
         // What a click does to a slot with whatever the cursor holds (pick up, put down, swap, split, add one).
@@ -476,6 +505,7 @@ namespace Stratum.Game
                 }
             }
             Sfx.I?.Play("click", 0.25f);
+            _tagFor = "";          // what was under the pointer has changed
         }
 
         void ArmourClick(int i, int type, PointerEventData.InputButton button)
@@ -663,6 +693,19 @@ namespace Stratum.Game
                 _cursorIcon.rectTransform.anchoredPosition = lp;
                 _cursorIcon.rectTransform.anchorMin = _cursorIcon.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
                 _cursorIcon.transform.SetAsLastSibling();
+                // The name tag sits up and to the right of the pointer, kept on the screen; hidden while carrying something.
+                bool show = _tagFor != "" && _cursor.Empty;
+                if (_tag.gameObject.activeSelf != show) _tag.gameObject.SetActive(show);
+                if (show)
+                {
+                    if (_tagText.text != _tagFor) _tagText.text = _tagFor;
+                    var box = (RectTransform)_inv.transform; var tr = _tag.rectTransform;
+                    float w = _tagText.preferredWidth + 26, h = 36;
+                    tr.anchorMin = tr.anchorMax = new Vector2(0.5f, 0.5f); tr.pivot = new Vector2(0, 0); tr.sizeDelta = new Vector2(w, h);
+                    float hw = box.rect.width / 2, hh = box.rect.height / 2;
+                    tr.anchoredPosition = new Vector2(Mathf.Min(lp.x + 18, hw - w - 6), Mathf.Min(lp.y + 14, hh - h - 6));
+                    _tag.transform.SetAsLastSibling();
+                }
                 // Clicking outside every slot in Creative clears the cursor.
                 if (P.Creative && Mouse.current.leftButton.wasPressedThisFrame && !_cursor.Empty && EventSystem.current != null && !EventSystem.current.IsPointerOverGameObject())
                     _cursor = Stack.None;

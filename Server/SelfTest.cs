@@ -92,7 +92,7 @@ namespace Stratum.Server
             return null;
         }
 
-        public float Food; public bool HasBed; public int BX, XpLevel; public string ServerName; public bool Creative; public int Difficulty; public WorldKind Kind; public List<WorldKind> Kinds;
+        public float Food; public bool HasBed; public int BX, XpLevel; public string ServerName; public bool Creative; public int Difficulty; public WorldKind Kind; public List<WorldKind> Kinds; public bool Keeps;
 
         public bool Welcome()
         {
@@ -105,6 +105,7 @@ namespace Stratum.Server
             Name = r.Str(); Token = r.Str();
             Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); Difficulty = r.U8(); XpLevel = r.I32(); r.I32();
             Kind = r.More ? (WorldKind)r.U8() : WorldKind.Normal;
+            Keeps = r.More && r.Bool();
             return true;
         }
 
@@ -264,7 +265,7 @@ namespace Stratum.Server
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
             int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
             var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4,
-                Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat;tall|Towering Wilds|survival|easy||Cliffs|towering", Seed) };
+                Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat;tall|Towering Wilds|survival|easy||Cliffs|towering|keep", Seed) };
             var srv = new GameServer(cfg); srv.Start();
             try
             {
@@ -294,12 +295,13 @@ namespace Stratum.Server
                 using (var old = new Bot(srv.Port) { Features = 1 })
                 {
                     old.Login("Sky", "sky-password", world: "sky");
-                    Check(old.Welcome() && old.Kind == WorldKind.Sky, "but still gets into Sky Islands");
+                    Check(old.Welcome() && old.Kind == WorldKind.Sky && !old.Keeps, "but still gets into Sky Islands (where things drop as usual)");
                 }
                 using (var now = new Bot(srv.Port))
                 {
                     now.Login("Sky", "sky-password", world: "tall");
                     Check(now.Welcome() && now.Kind == WorldKind.Towering, "and a 0.5 game gets into Towering Wilds");
+                    Check(now.Keeps, "a world marked keep tells the game things are kept on death");
                 }
                 using (var old = new Bot(srv.Port) { Features = 0 })
                 {
@@ -308,6 +310,8 @@ namespace Stratum.Server
                 }
             }
             finally { srv.Stop(); }
+            var saved = Directory.Exists(Path.Combine(dir, "backups")) ? Directory.GetDirectories(Path.Combine(dir, "backups")) : new string[0];
+            Check(saved.Length == 0, "a brand-new server has nothing to back up yet");
             cfg.Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Changed my mind|frozen", Seed);
             var srv2 = new GameServer(cfg); srv2.Start();
             try
@@ -319,6 +323,12 @@ namespace Stratum.Server
                 }
             }
             finally { srv2.Stop(); }
+            saved = Directory.Exists(Path.Combine(dir, "backups")) ? Directory.GetDirectories(Path.Combine(dir, "backups")) : new string[0];
+            Check(saved.Length == 1 && File.Exists(Path.Combine(saved[0], "accounts.json")) && File.Exists(Path.Combine(saved[0], "worlds", "sky", "world.json"))
+                  && !Directory.Exists(Path.Combine(saved[0], "backups")), "starting again backs up the accounts and every world first");
+            for (int i = 0; i < Backups.Keep + 3; i++) { Directory.CreateDirectory(Path.Combine(dir, "backups", $"2020010{i}-000000")); }
+            System.Threading.Thread.Sleep(1100); Backups.Take(dir);
+            Check(Directory.GetDirectories(Path.Combine(dir, "backups")).Length == Backups.Keep, $"only the newest {Backups.Keep} backups are kept");
         }
 
         // Several worlds on one server: the list, choosing one, each keeping its own things, moving between them.

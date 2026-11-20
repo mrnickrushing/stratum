@@ -284,7 +284,8 @@ namespace Stratum.Server
                 .Stacks(p.Rec.Stacks())
                 .Str(name).Str(res.Token ?? "")
                 .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints)
-                .U8((byte)World.Gen.Kind);                                  // 0.4: what sort of world (older clients stop reading before it)
+                .U8((byte)World.Gen.Kind)                                   // 0.4: what sort of world (older clients stop reading before it)
+                .Bool(_cfg.Keep);                                           // 0.5.1: things are kept on death here
             p.Conn.Send(w);
             foreach (var kv in _boxes.Signs)
             {

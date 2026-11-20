@@ -117,6 +117,13 @@ there). Chat with T. **Voice chat:** hold V to talk (Settings > Voice chat: Hold
 and microphone boost). Voices are 16 kHz IMA ADPCM (~8 KB/s while talking), relayed by the server and played from the
 speaker's figure (60% placed in the world, so a friend far away is still heard); a speaker's name tag turns green.
 
+**Keeping things and backups (0.5.1):** `keep` as a world's 8th part (or `STRATUM_KEEP=1` for every world) lets players
+keep what they carry when they die there; single-player worlds choose it on New World or with `/keep on|off`. The
+server copies its whole data folder to `<data>/backups/<date-time>` at start and twice a day and keeps the newest six
+(`STRATUM_BACKUPS=0` turns it off); to go back, stop the server and copy a backup's contents over the data folder.
+Single-player worlds are copied to `<game data>/backups/<world>/` each time they are opened (newest five kept) and
+restored from the Backups button on the world list.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,
@@ -142,7 +149,7 @@ their things are kept), `STRATUM_CREATIVE` (1), `STRATUM_DIFFICULTY` (peaceful, 
 chunks seen each way, 10). The world saves every minute and on SIGTERM.
 
 `STRATUM_WORLDS` lists the worlds to choose from, `;` between worlds and `|` between each world's parts:
-`id|Name|survival or creative|peaceful, easy or normal|seed|a line about it|kind` (kind: normal, sky, frozen, dunes,
+`id|Name|survival or creative|peaceful, easy or normal|seed|a line about it|kind|keep` (kind: normal, sky, frozen, dunes,
 islands, peaks, flat, towering, vast, or `all meadow`, `all oakwood`, `all birch`, `all pine`, `all frost`, `all dunes`,
 `all peaks`; a world keeps the kind it was made with, so changing it later needs a new id). Blank parts take the defaults (survival,
 normal, `STRATUM_SEED` for `main`, a new seed for the others). The world called `main` is the one in the data folder

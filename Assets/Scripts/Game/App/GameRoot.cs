@@ -84,7 +84,9 @@ namespace Stratum.Game
             DontDestroyOnLoad(_menus.gameObject);
             _menus.ListWorlds = WorldStore.List;
             _menus.Play = m => StartCoroutine(Enter(m));
-            _menus.Create = (name, seed, creative, difficulty, kind) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty, kind)));
+            _menus.Create = (name, seed, creative, difficulty, kind, keep) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty, kind, keep)));
+            _menus.ListBackups = WorldStore.Backups;
+            _menus.Restore = WorldStore.Restore;
             _menus.Delete = WorldStore.Delete;
             _menus.Resume = Resume;
             _menus.SaveAndQuit = () => { _player?.GetOut(); if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
@@ -201,7 +203,9 @@ namespace Stratum.Game
             _state = State.Loading;
             _menus.ShowLoading();
             _meta = meta;
+            _keepInv = meta.keepInventory;
             yield return null;
+            if (meta.hasPlayer) WorldStore.Backup(meta);       // the world as it was left, before anything changes
 
             _world = VoxelWorld.Create(meta.seed, meta.Folder, _blockMat, _waterMat, Settings.ViewDistance, (WorldKind)Mathf.Clamp(meta.kind, 0, (int)WorldKind.Count - 1));
             _sky.ViewDistanceMeters = _world.ViewDistance * 16;
@@ -426,8 +430,8 @@ namespace Stratum.Game
             _player.InputEnabled = false; _act.InputEnabled = false;
             if (_hud.InventoryOpen) _hud.CloseInventory();
             bool carried = false; foreach (var st in _player.Inv.Slots) if (!st.Empty) carried = true;
-            DropAll();
-            _menus.SetDeathText(_player.Creative || !carried ? "" : "Everything you carried is in a satchel where you fell.");
+            if (!_keepInv) DropAll();
+            _menus.SetDeathText(_player.Creative || !carried ? "" : _keepInv ? "You kept everything you were carrying." : "Everything you carried is in a satchel where you fell.");
             if (Online) { SendMove(true); SendKeep(); }
             _menus.ShowDeath();
             SetCursor(false);
@@ -449,6 +453,8 @@ namespace Stratum.Game
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
         }
+
+        bool _keepInv;      // this world lets players keep their things when they die
 
         // ------------------------------------------------------------------ saving
 
