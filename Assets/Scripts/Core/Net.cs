@@ -132,6 +132,7 @@ namespace Stratum.Core
             Type = (Net.Msg)_r.ReadByte();
         }
 
+        public bool More => _r.BaseStream.Position < _r.BaseStream.Length;      // fields added later in a message
         public byte U8() => _r.ReadByte();
         public bool Bool() => _r.ReadByte() != 0;
         public int I32() => _r.ReadInt32();

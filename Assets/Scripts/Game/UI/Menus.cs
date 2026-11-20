@@ -273,22 +273,47 @@ namespace Stratum.Game
             ((RectTransform)done.transform).Place(0.5f, 0, 0, 36, 340, 72);
         }
 
+        public Action ChangeWorld;                 // online, on a server with several worlds
+        Button _worldBtn;
+        Image _pauseCard;
+        int _worldCount = 1;
+
         void BuildPause()
         {
             _pause = Screen("Pause");
-            var card = Card(_pause, 620, 500, "Paused");
+            var card = _pauseCard = Card(_pause, 620, 500, "Paused");
             _pauseInfo = UIKit.Label(card.transform, "", 22, UIKit.Dim, TextAnchor.MiddleCenter);
             _pauseInfo.rectTransform.Place(0.5f, 1, 0, -92, 560, 30);
             float y = -150;
             foreach (var (label, act, primary) in new (string, Action, bool)[]
-                     { ("Back to Game", () => Resume?.Invoke(), true), ("Settings", () => ShowSettings(ShowPause), false), ("Save and Quit to Title", () => SaveAndQuit?.Invoke(), false) })
+                     { ("Back to Game", () => Resume?.Invoke(), true), ("Settings", () => ShowSettings(ShowPause), false),
+                       ("Change World", () => ChangeWorld?.Invoke(), false), ("Save and Quit to Title", () => SaveAndQuit?.Invoke(), false) })
             {
                 var b = UIKit.Button(card.transform, label, act, 30, primary);
                 ((RectTransform)b.transform).Place(0.5f, 1, 0, y, 460, 76);
                 y -= 96;
+                if (label == "Change World") _worldBtn = b;
                 _quitBtn = b;
             }
+            LayPause(false);
         }
+
+        // The Change World button only shows online on a server with more than one world.
+        void LayPause(bool worlds)
+        {
+            _worldBtn.gameObject.SetActive(worlds);
+            ((RectTransform)_quitBtn.transform).anchoredPosition = new Vector2(0, worlds ? -438 : -342);
+            _pauseCard.rectTransform.sizeDelta = new Vector2(620, worlds ? 596 : 500);
+        }
+
+        public void SetWorldCount(int n)
+        {
+            if (n == _worldCount) return;
+            _worldCount = n;
+            LayPause(_online && n > 1);
+        }
+
+        bool _online;
 
         void BuildDeath()
         {
@@ -325,6 +350,9 @@ namespace Stratum.Game
         public void SetOnline(bool online, string info)
         {
             _quitBtn.SetText(online ? "Disconnect" : "Save and Quit to Title");
+            _online = online;
+            if (!online) _worldCount = 1;
+            LayPause(online && _worldCount > 1);
             _pauseInfo.text = online ? info : "";
             _deathSub.text = online ? "You wake at the server's spawn, your pack still with you." : "Everything you carried is in a satchel where you fell.";
         }

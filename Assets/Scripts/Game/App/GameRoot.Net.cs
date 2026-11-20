@@ -23,10 +23,53 @@ namespace Stratum.Game
         Vector3 _lastSentPos; float _lastSentYaw, _lastSentPitch; byte _lastSentFlags; float _forceMove;
         bool Online => _net != null;
 
-        void JoinServer(string address, byte mode, string user, string secret, string invite)
+        void JoinServer(string address, byte mode, string user, string secret, string invite, string world = "")
         {
             if (_joining != null) StopCoroutine(_joining);
-            _joining = StartCoroutine(EnterRemote(address, mode, user, secret, invite));
+            _joining = StartCoroutine(EnterRemote(address, mode, user, secret, invite, world));
+        }
+
+        // Asks a server which worlds it has (a ping answers with the list) for the Multiplayer screen.
+        Coroutine _finding;
+        void FindWorlds(string address)
+        {
+            if (_finding != null) StopCoroutine(_finding);
+            _finding = StartCoroutine(AskWorlds(address));
+        }
+
+        IEnumerator AskWorlds(string address)
+        {
+            if (!NetClient.ParseAddress(address, out var host, out int port)) yield break;
+            using (var net = new NetClient(host, port))
+            {
+                float t = 0;
+                while (net.Connected == null && t < 6) { t += Time.unscaledDeltaTime; yield return null; }
+                if (net.Connected != true) { _menus.SetWorlds(address, null, "Couldn't reach this server to see its worlds."); yield break; }
+                net.Send(new Packet(Net.Msg.Ping).F64(Time.realtimeSinceStartupAsDouble));
+                t = 0;
+                while (t < 6)
+                {
+                    var r = net.Poll();
+                    if (r == null) { if (!net.Open) break; t += Time.unscaledDeltaTime; yield return null; continue; }
+                    if (r.Type != Net.Msg.Pong) continue;
+                    _menus.SetWorlds(address, ReadWorlds(r), null);
+                    net.Close();
+                    yield break;
+                }
+                _menus.SetWorlds(address, null, "This server didn't say what worlds it has.");
+            }
+        }
+
+        // A pong: time, name, message, online, max, then (servers from 0.3 on) the worlds.
+        static List<Menus.WorldInfo> ReadWorlds(Reader r)
+        {
+            r.F64(); r.Str(); r.Str(); r.I32(); r.I32();
+            var list = new List<Menus.WorldInfo>();
+            if (!r.More) return list;
+            int n = r.U8();
+            for (int i = 0; i < n; i++)
+                list.Add(new Menus.WorldInfo { Id = r.Str(), Name = r.Str(), Desc = r.Str(), Creative = r.Bool(), Difficulty = r.U8(), Online = r.I32() });
+            return list;
         }
 
         void CancelJoin()
@@ -39,7 +82,7 @@ namespace Stratum.Game
 
         NetClient _pendingNet;
 
-        IEnumerator EnterRemote(string address, byte mode, string user, string secret, string invite)
+        IEnumerator EnterRemote(string address, byte mode, string user, string secret, string invite, string world = "")
         {
             if (!NetClient.ParseAddress(address, out var host, out int port)) { _menus.ShowJoin("That address doesn't look right."); yield break; }
             var net = _pendingNet = new NetClient(host, port);
@@ -52,7 +95,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform));
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? ""));
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -321,6 +364,7 @@ namespace Stratum.Game
                 case Net.Msg.Pong:
                 {
                     double sent = r.F64(); r.Str(); r.Str(); _online = r.I32(); _serverMax = r.I32();
+                    _menus.SetWorldCount(r.More ? r.U8() : 1);
                     _pingMs = (float)((Time.realtimeSinceStartupAsDouble - sent) * 1000);
                     break;
                 }
@@ -386,6 +430,15 @@ namespace Stratum.Game
         }
 
         // Back to the join screen (with why, if it wasn't our choice), saying goodbye properly if we can.
+        // Saves this world's progress on the server and goes back to the Multiplayer screen to pick another; a
+        // remembered login makes going in again one press.
+        void ChangeWorld()
+        {
+            LeaveServer(null);
+            _menus.ShowJoin(null);
+            _menus.SetJoinStatus("Pick a world, then press the button to go in.", false);
+        }
+
         void LeaveServer(string why)
         {
             if (_net != null)

@@ -101,6 +101,14 @@ there). Chat with T. **Voice chat:** hold V to talk (Settings > Voice chat: Hold
 and microphone boost). Voices are 16 kHz IMA ADPCM (~8 KB/s while talking), relayed by the server and played from the
 speaker's figure (60% placed in the world, so a friend far away is still heard); a speaker's name tag turns green.
 
+**Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
+(its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
+is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,
+so creative blocks never reach a survival world; the account is the same everywhere, and a player is in one world at
+a time (logging in to another ends the session in the first). Pause > **Change World** saves and returns to the list.
+Clients before 0.3.0 don't choose and land in the first world. On the server, `GameServer` is the front door
+(listener, accounts, the world list) and each `WorldHost` runs one world on its own thread.
+
 ### Running a server
 
 ```bash
@@ -114,8 +122,18 @@ Settings are environment variables (or `--flag value`): `STRATUM_PORT`, `STRATUM
 Docker), `STRATUM_SEED` (a new world only; text works like the New World box), `STRATUM_NAME`, `STRATUM_MOTD`,
 `STRATUM_MAX_PLAYERS` (10), `STRATUM_PASSWORD` (the invite code needed to make an account; logging in never needs it),
 `STRATUM_RESET` (`Name1,Name2`: clears those accounts' passwords once, and each owner's next login sets a new one;
-their things are kept), `STRATUM_CREATIVE` (1), `STRATUM_VIEW` (most chunks seen each way, 10). The world saves every
-minute and on SIGTERM.
+their things are kept), `STRATUM_CREATIVE` (1), `STRATUM_DIFFICULTY` (peaceful, easy, normal), `STRATUM_VIEW` (most
+chunks seen each way, 10). The world saves every minute and on SIGTERM.
+
+`STRATUM_WORLDS` lists the worlds to choose from, `;` between worlds and `|` between each world's parts:
+`id|Name|survival or creative|peaceful, easy or normal|seed|a line about it`. Blank parts take the defaults (survival,
+normal, `STRATUM_SEED` for `main`, a new seed for the others). The world called `main` is the one in the data folder
+itself, so an existing server keeps its world; the others are made in `worlds/<id>`. Unset, the server runs one world
+from `STRATUM_CREATIVE` and `STRATUM_DIFFICULTY`. The live server's list:
+
+```
+main|Survival|survival|normal||The world we started in. Monsters at night.;newlands|New Lands|survival|easy|newlands|A fresh world to explore together.;peaceful|Peaceful|survival|peaceful||No monsters and no hunger. Just build.;creative|Creative|creative|||Every block, flying, nothing can hurt you.
+```
 
 **Railway:** a service from this repository built from `Server/Dockerfile` (the service's Dockerfile path), a volume
 mounted at `/data`, and a TCP proxy to port 25600. Players join at the proxy's

@@ -16,8 +16,8 @@ namespace Stratum.Server
         readonly TcpClient _tcp;
         readonly NetworkStream _stream;
         readonly BlockingCollection<byte[]> _out = new BlockingCollection<byte[]>();
-        readonly Action<Connection, byte[]> _onFrame;
-        readonly Action<Connection, string> _onClosed;
+        volatile Action<Connection, byte[]> _onFrame;
+        volatile Action<Connection, string> _onClosed;
         long _queued;
         int _closed;
         public long LastHeard = Environment.TickCount64;
@@ -38,6 +38,9 @@ namespace Stratum.Server
         }
 
         public bool Open => Volatile.Read(ref _closed) == 0;
+
+        // Hands the connection to whoever handles it next (the front door, then a world).
+        public void Route(Action<Connection, byte[]> onFrame, Action<Connection, string> onClosed) { _onClosed = onClosed; _onFrame = onFrame; }
 
         public void Send(byte[] frame)
         {
