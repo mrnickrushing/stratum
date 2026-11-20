@@ -153,6 +153,7 @@ namespace Stratum.Game
             int xpLevel = welcome.I32(), xpPoints = welcome.I32();
             var kind = welcome.More ? (WorldKind)welcome.U8() : WorldKind.Normal;
             if (kind >= WorldKind.Count) kind = WorldKind.Normal;
+            _keepInv = welcome.More && welcome.Bool();          // 0.5.1: the server's world lets players keep their things
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);

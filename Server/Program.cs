@@ -66,6 +66,9 @@ namespace Stratum.Server
             var diff = (Get("STRATUM_DIFFICULTY", "--difficulty") ?? "normal").ToLowerInvariant();
             c.Difficulty = diff.StartsWith("p") || diff == "0" ? 0 : diff.StartsWith("e") || diff == "1" ? 1 : 2;
             c.Kind = WorldGen.ParseKind(Get("STRATUM_KIND", "--kind"));
+            var keep = Get("STRATUM_KEEP", "--keep");
+            c.Keep = keep == "1" || string.Equals(keep, "true", StringComparison.OrdinalIgnoreCase);
+            c.Backup = Get("STRATUM_BACKUPS", "--backups") != "0";
             c.Worlds = WorldDef.Parse(Get("STRATUM_WORLDS", "--worlds"), SeedFrom);
             return c;
         }

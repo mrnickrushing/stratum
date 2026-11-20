@@ -9,7 +9,9 @@ namespace Stratum.Game
     public sealed partial class Menus : MonoBehaviour
     {
         public Action<WorldMeta> Play;
-        public Action<string, string, bool, int, Core.WorldKind> Create;   // name, seed text, creative, difficulty, kind
+        public Action<string, string, bool, int, Core.WorldKind, bool> Create;   // name, seed text, creative, difficulty, kind, keep things on death
+        public Func<WorldMeta, List<WorldStore.BackupInfo>> ListBackups;
+        public Func<WorldMeta, WorldStore.BackupInfo, bool> Restore;
         public Action<WorldMeta> Delete;
         public Action Resume, SaveAndQuit, Respawn, Quit, SettingsChanged;
         public Func<List<WorldMeta>> ListWorlds;
@@ -60,7 +62,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
             _shade = UIKit.Panel(_root, "Shade", new Color(0, 0, 0, 0.45f), UIKit.White); _shade.rectTransform.Fill();
 
-            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin();
+            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin(); BuildBackups();
             HideAll();
         }
 
@@ -147,15 +149,17 @@ namespace Stratum.Game
                     else Destroy(tex);
                 }
                 var name = UIKit.Label(row.transform, m.name, 32, UIKit.Ink, TextAnchor.UpperLeft, FontStyle.Bold);
-                name.rectTransform.Place(0, 1, 186, -12, 420, 40);
+                name.rectTransform.Place(0, 1, 186, -12, 410, 40);
                 var when = new DateTime(Math.Max(m.lastPlayed, 1), DateTimeKind.Utc).ToLocalTime();
                 var info = UIKit.Label(row.transform, $"{(m.kind > 0 && m.kind < (int)Core.WorldKind.Count ? Core.WorldGen.KindNames[m.kind] + "  ·  " : "")}{(m.creative ? "Creative" : "Survival")}  ·  day {m.day}  ·  {Math.Round(m.minutesPlayed)} min played", 20, UIKit.Dim, TextAnchor.UpperLeft);
-                info.rectTransform.Place(0, 1, 186, -54, 420, 26);
+                info.rectTransform.Place(0, 1, 186, -54, 410, 26);
                 var last = UIKit.Label(row.transform, $"Last played {when:d MMM yyyy, HH:mm}", 18, UIKit.Dim * 0.85f, TextAnchor.UpperLeft);
-                last.rectTransform.Place(0, 1, 186, -80, 420, 24);
+                last.rectTransform.Place(0, 1, 186, -80, 410, 24);
                 var mm = m;
                 var play = UIKit.Button(row.transform, "Play", () => Play?.Invoke(mm), 26, true);
-                ((RectTransform)play.transform).Place(1, 0.5f, -20, 0, 150, 64);
+                ((RectTransform)play.transform).Place(1, 0.5f, -20, 0, 130, 64);
+                var bk = UIKit.Button(row.transform, "Backups", () => ShowBackups(mm), 24);
+                ((RectTransform)bk.transform).Place(1, 0.5f, -160, 0, 130, 64);
                 Button del = null;
                 bool armed = false;
                 del = UIKit.Button(row.transform, "Delete", () =>
@@ -163,14 +167,57 @@ namespace Stratum.Game
                     if (!armed) { armed = true; del.SetText("Sure?"); return; }
                     Delete?.Invoke(mm); FillWorlds();
                 }, 24);
-                ((RectTransform)del.transform).Place(1, 0.5f, -186, 0, 140, 64);
+                ((RectTransform)del.transform).Place(1, 0.5f, -300, 0, 110, 64);
+            }
+        }
+
+        // ------------------------------------------------------------------ backups
+        GameObject _backups; Transform _backupList; Text _backupNote; WorldMeta _backupOf;
+
+        void BuildBackups()
+        {
+            _backups = Screen("Backups");
+            var card = Card(_backups, 900, 720, "Backups");
+            _backupNote = UIKit.Label(card.transform, "", 22, UIKit.Dim, TextAnchor.UpperCenter);
+            _backupNote.rectTransform.Place(0.5f, 1, 0, -96, 800, 60);
+            _backupList = UIKit.Rect(card.transform, "List").Place(0.5f, 1, 0, -196, 800, 420);
+            var back = UIKit.Button(card.transform, "Back", ShowWorlds, 30);
+            ((RectTransform)back.transform).Place(0.5f, 0, 0, 36, 320, 72);
+        }
+
+        public void ShowBackups(WorldMeta m)
+        {
+            _backupOf = m;
+            Show(_backups, true);
+            foreach (Transform t in _backupList) Destroy(t.gameObject);
+            var list = ListBackups?.Invoke(m) ?? new List<WorldStore.BackupInfo>();
+            _backupNote.text = list.Count == 0
+                ? $"No backups of \"{m.name}\" yet. One is saved each time you open the world."
+                : $"\"{m.name}\" is copied each time you open it, and the newest {WorldStore.KeepBackups} copies are kept.\nRestoring puts the world back as it was then. The world as it is now is backed up first.";
+            float y = 0;
+            foreach (var b in list)
+            {
+                var row = UIKit.Panel(_backupList, "Backup", new Color(0.15f, 0.16f, 0.2f, 0.95f), UIKit.RoundSmall);
+                row.rectTransform.Place(0.5f, 1, 0, y, 800, 72);
+                var l = UIKit.Label(row.transform, $"{b.When:d MMM yyyy, HH:mm}   ·   day {b.Day}", 26, UIKit.Ink, TextAnchor.MiddleLeft);
+                l.rectTransform.Place(0, 0.5f, 24, 0, 520, 40);
+                var bb = b; Button rb = null; bool armed = false;
+                rb = UIKit.Button(row.transform, "Restore", () =>
+                {
+                    if (!armed) { armed = true; rb.SetText("Sure?"); return; }
+                    bool ok = Restore != null && Restore(_backupOf, bb);
+                    ShowBackups(_backupOf);
+                    _backupNote.text = ok ? $"\"{_backupOf.name}\" is back as it was on {bb.When:d MMM, HH:mm}." : "That backup couldn't be restored. Nothing was changed.";
+                }, 24);
+                ((RectTransform)rb.transform).Place(1, 0.5f, -16, 0, 160, 52);
+                y -= 82;
             }
         }
 
         void BuildNew()
         {
             _new = Screen("NewWorld");
-            var card = Card(_new, 900, 724, "New World");
+            var card = Card(_new, 900, 806, "New World");
             var l1 = UIKit.Label(card.transform, "Name", 24, UIKit.Dim); l1.rectTransform.Place(0, 1, 70, -120, 400, 30);
             _newName = UIKit.Field(card.transform, "New World", "New World"); ((RectTransform)_newName.transform).Place(0, 1, 70, -156, 760, 64);
             var l2 = UIKit.Label(card.transform, "Seed (leave blank for a random world)", 24, UIKit.Dim); l2.rectTransform.Place(0, 1, 70, -246, 760, 30);
@@ -199,16 +246,18 @@ namespace Stratum.Game
             ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -462, 372, 68);
             _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 3; UpdateMode(); }, 28);
             ((RectTransform)_diffBtn.transform).Place(0, 1, 458, -462, 372, 68);
-            var hint = UIKit.Label(card.transform, "", 21, UIKit.Dim, TextAnchor.UpperLeft); hint.rectTransform.Place(0, 1, 74, -546, 760, 60);
+            _keepBtn = UIKit.Button(card.transform, "", () => { _newKeep = !_newKeep; UpdateMode(); }, 28);
+            ((RectTransform)_keepBtn.transform).Place(0, 1, 70, -546, 760, 68);
+            var hint = UIKit.Label(card.transform, "", 21, UIKit.Dim, TextAnchor.UpperLeft); hint.rectTransform.Place(0, 1, 74, -630, 760, 60);
             hint.name = "ModeHint";
-            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative, _newDifficulty, _newKind), 30, true);
+            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative, _newDifficulty, _newKind, _newKeep && !_newCreative), 30, true);
             ((RectTransform)create.transform).Place(0.5f, 0, 170, 36, 320, 72);
             var back = UIKit.Button(card.transform, "Back", ShowWorlds, 30);
             ((RectTransform)back.transform).Place(0.5f, 0, -170, 36, 320, 72);
             UpdateMode();
         }
 
-        Button _kindBtn, _biomeBtn;
+        Button _kindBtn, _biomeBtn, _keepBtn; bool _newKeep;
         Core.WorldKind _newKind, _lastOnly = Core.WorldGen.FirstOnly;
 
         void UpdateMode()
@@ -221,6 +270,8 @@ namespace Stratum.Game
             _modeBtn.SetText(_newCreative ? "Mode: Creative" : "Mode: Survival");
             _diffBtn.SetText("Difficulty: " + GameRoot.DifficultyNames[_newDifficulty]);
             _diffBtn.gameObject.SetActive(!_newCreative);
+            _keepBtn.SetText(_newKeep ? "When you fall: keep your things" : "When you fall: things drop in a satchel");
+            _keepBtn.gameObject.SetActive(!_newCreative);
             var hint = _new.transform.Find("Card/ModeHint")?.GetComponent<Text>();
             if (hint != null) hint.text = Core.WorldGen.KindHints[(int)_newKind] + "\n" + (_newCreative ? "Every block in the palette, instant breaking, flight. Nothing can hurt you." :
                 _newDifficulty == 0 ? "Gather, craft and build. No monsters, and you never go hungry." :
@@ -387,7 +438,7 @@ namespace Stratum.Game
 
         public void HideAll()
         {
-            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join }) g.SetActive(false);
+            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups }) g.SetActive(false);
             _shade.gameObject.SetActive(false);
         }
 

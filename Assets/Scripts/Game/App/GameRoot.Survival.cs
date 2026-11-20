@@ -253,7 +253,12 @@ namespace Stratum.Game
             {
                 case "/help":
                 case "/?":
-                    _hud.AddChat("", "Commands: /spawn  /home  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night (single player)");
+                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night (single player)");
+                    return true;
+                case "/keep":
+                    if (Online) { _hud.AddChat("", _keepInv ? "This world lets you keep your things when you fall." : "In this world your things drop in a satchel when you fall. The server decides."); return true; }
+                    if (arg == "on" || arg == "off") { _keepInv = _meta.keepInventory = arg == "on"; Save(); }
+                    _hud.AddChat("", _keepInv ? "Keep your things when you fall: on" : "Keep your things when you fall: off  (/keep on to change)");
                     return true;
                 case "/spawn":
                     Teleport(Online ? GroundAt(_netSpawn) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz), "Back at the spawn");

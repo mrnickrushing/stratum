@@ -25,6 +25,8 @@ namespace Stratum.Server
         public int MaxView = 10;
         public int Difficulty = 2;                 // 0 peaceful, 1 easy, 2 normal (STRATUM_DIFFICULTY)
         public WorldKind Kind;                     // a new world's sort (STRATUM_KIND); a world keeps the one it was made with
+        public bool Keep;                          // players keep their things when they die (STRATUM_KEEP, or "keep" on a world)
+        public bool Backup = true;                 // copies of the data folder at start and twice a day (STRATUM_BACKUPS=0 turns it off)
         public List<WorldDef> Worlds = new List<WorldDef>();   // STRATUM_WORLDS; none: one world from the settings above
 
         // The settings one world runs with: these, with its own folder, mode, difficulty and seed.
@@ -32,7 +34,7 @@ namespace Stratum.Server
         {
             var c = (ServerConfig)MemberwiseClone();
             c.Dir = w.Id == WorldDef.Main ? Dir : Path.Combine(Dir, "worlds", w.Id);
-            c.Creative = w.Creative; c.Difficulty = w.Difficulty; c.Kind = w.Kind;
+            c.Creative = w.Creative; c.Difficulty = w.Difficulty; c.Kind = w.Kind; c.Keep = w.Keep || Keep;
             c.Seed = w.Seed ?? (w.Id == WorldDef.Main ? Seed : null);
             return c;
         }
@@ -48,8 +50,10 @@ namespace Stratum.Server
         public int Difficulty = 2;
         public int? Seed;
         public WorldKind Kind;
+        public bool Keep;
 
-        // "id|Name|survival or creative|peaceful, easy or normal|seed|what it's like|kind" separated by ";", where kind
+        // "id|Name|survival or creative|peaceful, easy or normal|seed|what it's like|kind|keep" separated by ";" ("keep":
+        // players keep their things when they die there), where kind
         // is normal, sky, frozen, dunes, islands, peaks, flat, towering, vast, or "all <biome>" (meadow, oakwood, birch,
         // pine, frost, dunes, peaks). Blank parts take the defaults; the first world is where
         // old clients (that can't choose) go.
@@ -69,6 +73,7 @@ namespace Stratum.Server
                 w.Difficulty = d.StartsWith("p") || d == "0" ? 0 : d.StartsWith("e") || d == "1" ? 1 : 2;
                 if (Part(4) != "") w.Seed = seedFrom(Part(4));
                 w.Kind = WorldGen.ParseKind(Part(6));
+                w.Keep = Part(7).StartsWith("keep", StringComparison.OrdinalIgnoreCase);
                 list.Add(w);
             }
             return list;
@@ -106,8 +111,9 @@ namespace Stratum.Server
             Directory.CreateDirectory(cfg.Dir);
             _accounts = new Accounts(cfg.Dir);
             _accounts.ApplyReset(cfg.Reset);
+            if (cfg.Backup) Backups.Take(cfg.Dir);          // before any world opens its files
             var defs = cfg.Worlds.Count > 0 ? cfg.Worlds
-                     : new List<WorldDef> { new WorldDef { Id = WorldDef.Main, Name = "World", Creative = cfg.Creative, Difficulty = cfg.Difficulty, Kind = cfg.Kind } };
+                     : new List<WorldDef> { new WorldDef { Id = WorldDef.Main, Name = "World", Creative = cfg.Creative, Difficulty = cfg.Difficulty, Kind = cfg.Kind, Keep = cfg.Keep } };
             foreach (var d in defs) Worlds.Add(new WorldHost(this, cfg.For(d), d));
         }
 
@@ -152,7 +158,7 @@ namespace Stratum.Server
         void Loop()
         {
             var clock = Stopwatch.StartNew();
-            double nextKick = 1;
+            double nextKick = 1, nextBackup = 12 * 3600;
             while (!_stop)
             {
                 try
@@ -161,6 +167,11 @@ namespace Stratum.Server
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) _pending.Remove(cl.c.Id);
                     while (_later.TryDequeue(out var a)) a();
+                    if (_cfg.Backup && clock.Elapsed.TotalSeconds >= nextBackup)
+                    {
+                        nextBackup = clock.Elapsed.TotalSeconds + 12 * 3600;
+                        System.Threading.Tasks.Task.Run(() => Backups.Take(_cfg.Dir));
+                    }
                     if (clock.Elapsed.TotalSeconds >= nextKick)
                     {
                         nextKick = clock.Elapsed.TotalSeconds + 1;
