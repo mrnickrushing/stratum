@@ -9,7 +9,7 @@ namespace Stratum.Game
     public sealed partial class Menus : MonoBehaviour
     {
         public Action<WorldMeta> Play;
-        public Action<string, string, bool, int> Create;   // name, seed text, creative, difficulty
+        public Action<string, string, bool, int, Core.WorldKind> Create;   // name, seed text, creative, difficulty, kind
         public Action<WorldMeta> Delete;
         public Action Resume, SaveAndQuit, Respawn, Quit, SettingsChanged;
         public Func<List<WorldMeta>> ListWorlds;
@@ -149,7 +149,7 @@ namespace Stratum.Game
                 var name = UIKit.Label(row.transform, m.name, 32, UIKit.Ink, TextAnchor.UpperLeft, FontStyle.Bold);
                 name.rectTransform.Place(0, 1, 186, -12, 420, 40);
                 var when = new DateTime(Math.Max(m.lastPlayed, 1), DateTimeKind.Utc).ToLocalTime();
-                var info = UIKit.Label(row.transform, $"{(m.creative ? "Creative" : "Survival")}  ·  day {m.day}  ·  {Math.Round(m.minutesPlayed)} min played", 20, UIKit.Dim, TextAnchor.UpperLeft);
+                var info = UIKit.Label(row.transform, $"{(m.kind > 0 && m.kind < (int)Core.WorldKind.Count ? Core.WorldGen.KindNames[m.kind] + "  ·  " : "")}{(m.creative ? "Creative" : "Survival")}  ·  day {m.day}  ·  {Math.Round(m.minutesPlayed)} min played", 20, UIKit.Dim, TextAnchor.UpperLeft);
                 info.rectTransform.Place(0, 1, 186, -54, 420, 26);
                 var last = UIKit.Label(row.transform, $"Last played {when:d MMM yyyy, HH:mm}", 18, UIKit.Dim * 0.85f, TextAnchor.UpperLeft);
                 last.rectTransform.Place(0, 1, 186, -80, 420, 24);
@@ -170,34 +170,47 @@ namespace Stratum.Game
         void BuildNew()
         {
             _new = Screen("NewWorld");
-            var card = Card(_new, 900, 620, "New World");
+            var card = Card(_new, 900, 724, "New World");
             var l1 = UIKit.Label(card.transform, "Name", 24, UIKit.Dim); l1.rectTransform.Place(0, 1, 70, -120, 400, 30);
             _newName = UIKit.Field(card.transform, "New World", "New World"); ((RectTransform)_newName.transform).Place(0, 1, 70, -156, 760, 64);
             var l2 = UIKit.Label(card.transform, "Seed (leave blank for a random world)", 24, UIKit.Dim); l2.rectTransform.Place(0, 1, 70, -246, 760, 30);
             _newSeed = UIKit.Field(card.transform, "random", ""); ((RectTransform)_newSeed.transform).Place(0, 1, 70, -282, 760, 64);
+            // The sort of world: click to go through them (right-click or Shift goes back).
+            _kindBtn = UIKit.Button(card.transform, "World: Normal", () =>
+            {
+                int n = (int)Core.WorldKind.Count;
+                bool back = UnityEngine.InputSystem.Keyboard.current?.shiftKey.isPressed == true;
+                _newKind = (Core.WorldKind)(((int)_newKind + (back ? n - 1 : 1)) % n);
+                UpdateMode();
+            }, 28);
+            ((RectTransform)_kindBtn.transform).Place(0, 1, 70, -378, 760, 68);
             _modeBtn = UIKit.Button(card.transform, "Mode: Survival", () => { _newCreative = !_newCreative; UpdateMode(); }, 28);
-            ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -378, 372, 68);
+            ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -462, 372, 68);
             _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 3; UpdateMode(); }, 28);
-            ((RectTransform)_diffBtn.transform).Place(0, 1, 458, -378, 372, 68);
-            var hint = UIKit.Label(card.transform, "", 21, UIKit.Dim, TextAnchor.UpperLeft); hint.rectTransform.Place(0, 1, 74, -456, 760, 60);
+            ((RectTransform)_diffBtn.transform).Place(0, 1, 458, -462, 372, 68);
+            var hint = UIKit.Label(card.transform, "", 21, UIKit.Dim, TextAnchor.UpperLeft); hint.rectTransform.Place(0, 1, 74, -546, 760, 60);
             hint.name = "ModeHint";
-            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative, _newDifficulty), 30, true);
+            var create = UIKit.Button(card.transform, "Create World", () => Create?.Invoke(_newName.text, _newSeed.text, _newCreative, _newDifficulty, _newKind), 30, true);
             ((RectTransform)create.transform).Place(0.5f, 0, 170, 36, 320, 72);
             var back = UIKit.Button(card.transform, "Back", ShowWorlds, 30);
             ((RectTransform)back.transform).Place(0.5f, 0, -170, 36, 320, 72);
             UpdateMode();
         }
 
+        Button _kindBtn;
+        Core.WorldKind _newKind;
+
         void UpdateMode()
         {
+            _kindBtn.SetText("World:  " + Core.WorldGen.KindName(_newKind) + "    ›");
             _modeBtn.SetText(_newCreative ? "Mode: Creative" : "Mode: Survival");
             _diffBtn.SetText("Difficulty: " + GameRoot.DifficultyNames[_newDifficulty]);
             _diffBtn.gameObject.SetActive(!_newCreative);
             var hint = _new.transform.Find("Card/ModeHint")?.GetComponent<Text>();
-            if (hint != null) hint.text = _newCreative ? "Every block in the palette, instant breaking, flight. Nothing can hurt you." :
+            if (hint != null) hint.text = Core.WorldGen.KindHints[(int)_newKind] + "\n" + (_newCreative ? "Every block in the palette, instant breaking, flight. Nothing can hurt you." :
                 _newDifficulty == 0 ? "Gather, craft and build. No monsters, and you never go hungry." :
                 _newDifficulty == 1 ? "Monsters come out at night but hit softly. Hunger won't take you below half health." :
-                "Monsters at night and in the dark. Keep fed, build a shelter, sleep in a bed.";
+                "Monsters at night and in the dark. Keep fed, build a shelter, sleep in a bed.");
         }
 
         Image _micMeter; Button _micBtn; float _micRefresh;

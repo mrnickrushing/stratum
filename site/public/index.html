@@ -117,7 +117,7 @@ footer a { color: var(--dim); }
     <div class="get">
       <a class="btn" id="dl" href="/download/windows">
         <svg id="dl-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13 7.5 1.1v-7H3zm8.4 1.2L21 21v-8.4h-9.6zm0-15.4v7.2H21V3z"/></svg>
-        <span><span id="dl-label">Download for Windows</span><small id="dl-meta">Version 0.3.0 · free · 29 MB</small></span>
+        <span><span id="dl-label">Download for Windows</span><small id="dl-meta">Version 0.4.0 · free · 29 MB</small></span>
       </a>
       <span class="alt" id="dl-alt">Also for <a href="/download/linux">Linux</a> · <a href="#install">How to install</a></span>
     </div>
@@ -138,6 +138,8 @@ footer a { color: var(--dim); }
       <div class="card"><img src="/img/dawn.jpg" alt="Snowy mountains at dawn" loading="lazy"><div><h3>Days, nights and weather</h3><p>Rain, storms and snow roll in. When night falls, creatures come out. Build a bed and a shelter before dark.</p></div></div>
       <div class="card half ember"><img src="/img/deep.jpg" alt="Glowing caverns of the Ember Deep" loading="lazy"><div><h3>The Ember Deep</h3><p>Build an obsidian frame, light it with a fire striker, and step through into a burning underworld of lava seas and glowing ore.</p></div></div>
       <div class="card half ember"><img src="/img/keep.jpg" alt="A brick keep above a lava sea" loading="lazy"><div><h3>The Cinder Colossus</h3><p>Brick keeps stand on stilts above the lava. Something huge waits inside each one. Bring your best armour.</p></div></div>
+      <div class="card half"><img src="/img/sky.jpg" alt="Floating islands with trees above a sea of clouds" loading="lazy"><div><h3>Sky Islands</h3><p>Start on a floating island above a sea of clouds. Bridge your way across snowy, sandy and wooded islands. Just don't look down.</p></div></div>
+      <div class="card half"><img src="/img/frozen.jpg" alt="Snowy pine forest and a tall frozen peak" loading="lazy"><div><h3>Themed worlds</h3><p>Make a world your way: Frozen Wilds, Endless Dunes, the Archipelago, Giant Peaks, or Flatlands for building.</p></div></div>
     </div>
     <ul class="list">
       <li>Survival or creative mode</li>
@@ -162,7 +164,7 @@ footer a { color: var(--dim); }
       <ul>
         <li>Your account keeps your things, wherever you log in.</li>
         <li>Talk with push-to-talk voice chat. Headsets work too.</li>
-        <li>Pick a world: survival, peaceful, or creative with every block.</li>
+        <li>Pick a world: survival, creative, Sky Islands, Frozen Wilds, Endless Dunes and more.</li>
         <li>Type to chat, and share the same world, day and weather.</li>
       </ul>
       <p class="alt">Whoever runs your server will give you its address and, if there is one, an invite code. In the game, choose <b>Multiplayer</b> and enter them.</p>
@@ -180,7 +182,7 @@ footer a { color: var(--dim); }
       <div class="os">
         <h3><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13 7.5 1.1v-7H3zm8.4 1.2L21 21v-8.4h-9.6zm0-15.4v7.2H21V3z"/></svg>Windows 10 or 11</h3>
         <ol>
-          <li><b>Download</b> <code>Stratum-0.3.0-Setup.exe</code> and open it.</li>
+          <li><b>Download</b> <code>Stratum-0.4.0-Setup.exe</code> and open it.</li>
           <li>If Windows says <b>"Windows protected your PC"</b>, click <b>More info</b>, then <b>Run anyway</b>. (Small games like this one aren't signed by Microsoft.)</li>
           <li>Click <b>Install</b>. You don't need an administrator password.</li>
           <li>Play from the <b>Stratum</b> icon on your desktop or in the Start menu.</li>
@@ -216,7 +218,7 @@ footer a { color: var(--dim); }
 
 <footer>
   <div class="wrap">
-    <span>Stratum 0.3.0 · made by Rushing Technologies</span>
+    <span>Stratum 0.4.0 · made by Rushing Technologies</span>
     <span><a href="/download/sums">Checksums</a> · Text set in Lato (SIL Open Font License)</span>
   </div>
 </footer>
@@ -231,7 +233,7 @@ footer a { color: var(--dim); }
     dl.href = "/download/linux";
     document.getElementById("dl-icon").innerHTML = tux;
     document.getElementById("dl-label").textContent = "Download for Linux";
-    document.getElementById("dl-meta").textContent = "Version 0.3.0 · free · 55 MB";
+    document.getElementById("dl-meta").textContent = "Version 0.4.0 · free · 55 MB";
     document.getElementById("dl-alt").innerHTML = 'Also for <a href="/download/windows">Windows</a> · <a href="#install">How to install</a>';
   }
   if (mac) document.getElementById("mac-note").hidden = false;

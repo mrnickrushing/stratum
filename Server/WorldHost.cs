@@ -71,7 +71,7 @@ namespace Stratum.Server
         public WorldHost(GameServer hub, ServerConfig cfg, WorldDef def)
         {
             _hub = hub; _cfg = cfg; Def = def;
-            World = new ServerWorld(cfg.Dir, cfg.Seed);
+            World = new ServerWorld(cfg.Dir, cfg.Seed, cfg.Kind);
             World.Changed += (x, y, z, id) => Broadcast(BlockPacket(x, y, z, id, 0));
             try { _boxes.Load(BoxFile); }
             catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
@@ -109,7 +109,7 @@ namespace Stratum.Server
             _loop = new Thread(Loop) { Name = "world " + Def.Id };
             _loop.Start();
             Log.Info($"world \"{Def.Name}\" ({Def.Id}): {System.IO.Path.GetFullPath(_cfg.Dir)}, seed {World.Meta.seed}, " +
-                     $"{(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal" }[Math.Clamp(_cfg.Difficulty, 0, 2)]}");
+                     $"{WorldGen.KindName(World.Gen.Kind)}, {(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal" }[Math.Clamp(_cfg.Difficulty, 0, 2)]}");
         }
 
         // A logged-in player chose this world.
@@ -282,7 +282,8 @@ namespace Stratum.Server
                 .Bool(p.Rec.hasPos).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).F32(p.Rec.health).U8((byte)Math.Clamp(p.Rec.selected, 0, 8))
                 .Stacks(p.Rec.Stacks())
                 .Str(name).Str(res.Token ?? "")
-                .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints);
+                .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints)
+                .U8((byte)World.Gen.Kind);                                  // 0.4: what sort of world (older clients stop reading before it)
             p.Conn.Send(w);
             foreach (var kv in _boxes.Signs)
             {

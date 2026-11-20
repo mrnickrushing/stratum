@@ -84,7 +84,7 @@ namespace Stratum.Game
             DontDestroyOnLoad(_menus.gameObject);
             _menus.ListWorlds = WorldStore.List;
             _menus.Play = m => StartCoroutine(Enter(m));
-            _menus.Create = (name, seed, creative, difficulty) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty)));
+            _menus.Create = (name, seed, creative, difficulty, kind) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty, kind)));
             _menus.Delete = WorldStore.Delete;
             _menus.Resume = Resume;
             _menus.SaveAndQuit = () => { _player?.GetOut(); if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
@@ -173,7 +173,7 @@ namespace Stratum.Game
             _titleFocus = new Vector3(spawn.x, spawn.y, spawn.z);
             _world.SetFocus(_titleFocus);
             _sky.ViewDistanceMeters = _world.ViewDistance * 16;
-            _sky.Time01 = 0.29f; _sky.Frozen = true;
+            _sky.Time01 = 0.29f; _sky.Frozen = true; _sky.Islands = false;
             _cam.transform.SetParent(null);
             _cam.fieldOfView = 62;
             Time.timeScale = 1;
@@ -203,9 +203,9 @@ namespace Stratum.Game
             _meta = meta;
             yield return null;
 
-            _world = VoxelWorld.Create(meta.seed, meta.Folder, _blockMat, _waterMat, Settings.ViewDistance);
+            _world = VoxelWorld.Create(meta.seed, meta.Folder, _blockMat, _waterMat, Settings.ViewDistance, (WorldKind)Mathf.Clamp(meta.kind, 0, (int)WorldKind.Count - 1));
             _sky.ViewDistanceMeters = _world.ViewDistance * 16;
-            _sky.Frozen = false;
+            _sky.Frozen = false; _sky.Islands = _world.Gen.Kind == WorldKind.Sky;
             _sky.Time01 = meta.time; _sky.Day = Math.Max(1, meta.day);
 
             if (!meta.hasPlayer)

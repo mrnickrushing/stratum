@@ -17,6 +17,7 @@ namespace Stratum.Game
         public string name;
         public int seed;
         public bool creative;
+        public int kind;                   // WorldKind (0 normal); worlds made before 0.4 have none, so normal
         public float time = 0.3f;
         public int day = 1;
         public bool hasPlayer;
@@ -59,7 +60,7 @@ namespace Stratum.Game
             return list.OrderByDescending(m => m.lastPlayed).ToList();
         }
 
-        public static WorldMeta Create(string name, int seed, bool creative, int difficulty = 2)
+        public static WorldMeta Create(string name, int seed, bool creative, int difficulty = 2, Core.WorldKind kind = Core.WorldKind.Normal)
         {
             Directory.CreateDirectory(Root);
             string safe = new string((name ?? "World").Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '_').ToArray()).Trim();
@@ -67,7 +68,7 @@ namespace Stratum.Game
             string folder = Path.Combine(Root, safe);
             for (int i = 2; Directory.Exists(folder); i++) folder = Path.Combine(Root, safe + " " + i);
             Directory.CreateDirectory(folder);
-            var m = new WorldMeta { name = string.IsNullOrWhiteSpace(name) ? "New World" : name.Trim(), seed = seed, creative = creative, difficulty = difficulty, created = DateTime.UtcNow.Ticks, lastPlayed = DateTime.UtcNow.Ticks, Folder = folder };
+            var m = new WorldMeta { name = string.IsNullOrWhiteSpace(name) ? "New World" : name.Trim(), seed = seed, creative = creative, difficulty = difficulty, kind = (int)kind, created = DateTime.UtcNow.Ticks, lastPlayed = DateTime.UtcNow.Ticks, Folder = folder };
             Save(m);
             return m;
         }

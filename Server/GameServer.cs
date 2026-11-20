@@ -24,6 +24,7 @@ namespace Stratum.Server
         public bool Creative;
         public int MaxView = 10;
         public int Difficulty = 2;                 // 0 peaceful, 1 easy, 2 normal (STRATUM_DIFFICULTY)
+        public WorldKind Kind;                     // a new world's sort (STRATUM_KIND); a world keeps the one it was made with
         public List<WorldDef> Worlds = new List<WorldDef>();   // STRATUM_WORLDS; none: one world from the settings above
 
         // The settings one world runs with: these, with its own folder, mode, difficulty and seed.
@@ -31,7 +32,7 @@ namespace Stratum.Server
         {
             var c = (ServerConfig)MemberwiseClone();
             c.Dir = w.Id == WorldDef.Main ? Dir : Path.Combine(Dir, "worlds", w.Id);
-            c.Creative = w.Creative; c.Difficulty = w.Difficulty;
+            c.Creative = w.Creative; c.Difficulty = w.Difficulty; c.Kind = w.Kind;
             c.Seed = w.Seed ?? (w.Id == WorldDef.Main ? Seed : null);
             return c;
         }
@@ -46,9 +47,11 @@ namespace Stratum.Server
         public bool Creative;
         public int Difficulty = 2;
         public int? Seed;
+        public WorldKind Kind;
 
-        // "id|Name|survival or creative|peaceful, easy or normal|seed|what it's like" separated by ";". Blank parts
-        // take the defaults; the first world is where old clients (that can't choose) go.
+        // "id|Name|survival or creative|peaceful, easy or normal|seed|what it's like|kind" separated by ";", where kind
+        // is normal, sky, frozen, dunes, islands, peaks or flat. Blank parts take the defaults; the first world is where
+        // old clients (that can't choose) go.
         public static List<WorldDef> Parse(string text, Func<string, int> seedFrom)
         {
             var list = new List<WorldDef>();
@@ -64,6 +67,7 @@ namespace Stratum.Server
                 string d = Part(3).ToLowerInvariant();
                 w.Difficulty = d.StartsWith("p") || d == "0" ? 0 : d.StartsWith("e") || d == "1" ? 1 : 2;
                 if (Part(4) != "") w.Seed = seedFrom(Part(4));
+                w.Kind = WorldGen.ParseKind(Part(6));
                 list.Add(w);
             }
             return list;
@@ -102,7 +106,7 @@ namespace Stratum.Server
             _accounts = new Accounts(cfg.Dir);
             _accounts.ApplyReset(cfg.Reset);
             var defs = cfg.Worlds.Count > 0 ? cfg.Worlds
-                     : new List<WorldDef> { new WorldDef { Id = WorldDef.Main, Name = "World", Creative = cfg.Creative, Difficulty = cfg.Difficulty } };
+                     : new List<WorldDef> { new WorldDef { Id = WorldDef.Main, Name = "World", Creative = cfg.Creative, Difficulty = cfg.Difficulty, Kind = cfg.Kind } };
             foreach (var d in defs) Worlds.Add(new WorldHost(this, cfg.For(d), d));
         }
 
@@ -175,6 +179,9 @@ namespace Stratum.Server
         {
             var pk = new Packet(Net.Msg.Pong).F64(t).Str(_cfg.Name).Str(_cfg.Motd).I32(Online).I32(_cfg.MaxPlayers).U8((byte)Worlds.Count);
             foreach (var w in Worlds) pk.Str(w.Def.Id).Str(w.Def.Name).Str(w.Def.Desc).Bool(w.Def.Creative).U8((byte)w.Def.Difficulty).I32(w.Online);
+            // 0.4: each world's sort, after the list so 0.3 clients (which stop reading there) aren't thrown.
+            pk.U8((byte)Worlds.Count);
+            foreach (var w in Worlds) pk.U8((byte)w.World.Gen.Kind);
             return pk.Bytes();
         }
 
@@ -206,6 +213,7 @@ namespace Stratum.Server
             var mode = (Accounts.Mode)r.U8();
             string name = r.Str().Trim(), secret = r.Str(), invite = r.Str(), version = r.Str();
             string world = r.More ? r.Str().Trim().ToLowerInvariant() : "";     // clients before 0.3.0 don't choose
+            int features = r.More ? r.I32() : 0;                                  // 1: knows the themed world kinds (0.4)
             p.Checking = true;
             // Password hashing takes a moment on purpose; do it off the loop, and answer a wrong one slowly.
             System.Threading.Tasks.Task.Run(async () =>
@@ -214,15 +222,20 @@ namespace Stratum.Server
                 try { res = _accounts.Enter(mode, name, secret, invite, _cfg.Password); }
                 catch (Exception e) { Log.Warn("login failed: " + e); res = new Accounts.Result("The server had trouble with that login. Try again."); }
                 if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
-                _later.Enqueue(() => Admit(p, res, mode, version, world));
+                _later.Enqueue(() => Admit(p, res, mode, version, world, features));
             });
         }
 
-        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world)
+        public const int KnowsKinds = 1;
+
+        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features)
         {
             if (!_pending.TryGetValue(p.Conn.Id, out var still) || still != p) return;    // gone meanwhile
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
             var host = Worlds.FirstOrDefault(w => w.Def.Id == world) ?? Worlds[0];
+            // An older game would draw a themed world's land right but get its look and creatures wrong.
+            if (host.World.Gen.Kind != WorldKind.Normal && (features & KnowsKinds) == 0)
+            { Refuse(p.Conn, $"{host.Def.Name} needs the newest Stratum. Get it at stratum.rushingtechnologies.com"); return; }
             // Coming back replaces the old session wherever it is; a full server only turns away someone new.
             int others = Worlds.Sum(w => w.OnlineExcept(res.Key));
             if (others >= _cfg.MaxPlayers) { Refuse(p.Conn, "The server is full."); return; }

@@ -49,6 +49,7 @@ namespace Stratum.Core
         Plan Make(int cx, int cz)
         {
             var plan = new Plan();
+            if (_gen.Kind == WorldKind.Sky) return plan;           // nowhere to put one
             uint h = Noise.Hash(cx, 401, cz, _seed);
             if (h % 100 >= 60) return plan;
             // A few spots in the cell; the flattest dry grassland one wins.

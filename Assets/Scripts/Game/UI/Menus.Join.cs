@@ -17,7 +17,7 @@ namespace Stratum.Game
         public Action<string> FindWorlds;                                   // ask a server which worlds it has (answer: SetWorlds)
 
         // A world on the server, as its ping lists it.
-        public struct WorldInfo { public string Id, Name, Desc; public bool Creative; public int Difficulty, Online; }
+        public struct WorldInfo { public string Id, Name, Desc; public bool Creative; public int Difficulty, Online; public Core.WorldKind Kind; }
         System.Collections.Generic.List<WorldInfo> _worldsOn;              // null: not known (yet)
         string _worldsFor = "", _pickedWorld;
         float _findAt = -1;
@@ -224,28 +224,45 @@ namespace Stratum.Game
             _worldNote.text = list == null ? (error ?? "Looking for this server's worlds...")
                             : list.Count == 0 ? "This server has one world." : "";
             if (list == null || list.Count == 0) return;
+            // Four or fewer: a roomy card each. More: slim rows, with the chosen one opened up to say what it's like.
+            bool roomy = list.Count <= 4;
             float y = 0;
-            for (int i = 0; i < list.Count && i < 4; i++)
+            for (int i = 0; i < list.Count && i < 10; i++)
             {
                 var w = list[i];
-                bool on = w.Id == _pickedWorld;
+                bool on = w.Id == _pickedWorld, open = roomy || on;
+                float hgt = roomy ? 124 : on ? 108 : 48;
                 var b = UIKit.Button(_serverWorlds, "", () => { _pickedWorld = w.Id; DrawWorlds(null); }, 20);
                 var img = (Image)b.targetGraphic;
                 img.color = on ? new Color(0.36f, 0.29f, 0.14f, 1) : new Color(0.17f, 0.18f, 0.22f, 0.95f);
                 if (on) { var o = b.gameObject.AddComponent<Outline>(); o.effectColor = UIKit.Accent; o.effectDistance = new Vector2(3, -3); }
-                ((RectTransform)b.transform).Place(0, 1, 0, y, 470, 124);
-                var name = UIKit.Label(b.transform, w.Name, 30, on ? UIKit.Accent : UIKit.Ink, TextAnchor.UpperLeft, FontStyle.Bold);
-                name.rectTransform.Place(0, 1, 20, -12, 300, 40);
-                string mode = (w.Creative ? "Creative" : "Survival") + (w.Creative ? "" : " · " + new[] { "Peaceful", "Easy", "Normal" }[Mathf.Clamp(w.Difficulty, 0, 2)]);
-                var info = UIKit.Label(b.transform, mode, 20, UIKit.Dim, TextAnchor.UpperRight);
-                info.rectTransform.Place(1, 1, -18, -18, 200, 30);
-                var desc = UIKit.Label(b.transform, w.Desc, 21, UIKit.Ink, TextAnchor.UpperLeft);
-                desc.rectTransform.Place(0, 1, 20, -54, 330, 64);
-                var here = UIKit.Label(b.transform, w.Online == 0 ? "nobody here" : w.Online == 1 ? "1 playing" : $"{w.Online} playing", 20,
-                                       w.Online > 0 ? new Color(0.55f, 0.85f, 0.45f) : UIKit.Dim, TextAnchor.LowerRight);
-                here.rectTransform.Place(1, 0, -18, 14, 140, 30);
-                y -= 136;
+                ((RectTransform)b.transform).Place(0, 1, 0, y, 470, hgt);
+                var name = UIKit.Label(b.transform, w.Name, open ? 28 : 24, on ? UIKit.Accent : UIKit.Ink, TextAnchor.UpperLeft, FontStyle.Bold);
+                name.rectTransform.Place(0, 1, 18, open ? -11 : -9, 230, 40);
+                var info = UIKit.Label(b.transform, WorldLine(w), 18, UIKit.Dim, TextAnchor.UpperRight);
+                info.rectTransform.Place(1, 1, -16, open ? -17 : -14, 250, 28);
+                if (open)
+                {
+                    var desc = UIKit.Label(b.transform, w.Desc, 20, UIKit.Ink, TextAnchor.UpperLeft);
+                    desc.rectTransform.Place(0, 1, 18, -50, 320, 56);
+                }
+                if (open || w.Online > 0)
+                {
+                    var here = UIKit.Label(b.transform, w.Online == 0 ? "nobody here" : w.Online == 1 ? "1 playing" : $"{w.Online} playing", 18,
+                                           w.Online > 0 ? new Color(0.55f, 0.85f, 0.45f) : UIKit.Dim, open ? TextAnchor.LowerRight : TextAnchor.UpperRight);
+                    if (open) here.rectTransform.Place(1, 0, -16, 10, 140, 28);
+                    else { here.rectTransform.Place(1, 1, -16, -14, 90, 28); info.rectTransform.Place(1, 1, -110, -14, 210, 28); }
+                }
+                y -= hgt + (roomy ? 12 : 6);
             }
+        }
+
+        // "Sky Islands · Survival · Easy": the sort of world (unless its name says it), then how it's played.
+        static string WorldLine(WorldInfo w)
+        {
+            string mode = w.Creative ? "Creative" : "Survival · " + new[] { "Peaceful", "Easy", "Normal" }[Mathf.Clamp(w.Difficulty, 0, 2)];
+            string kind = Core.WorldGen.KindName(w.Kind);
+            return w.Kind == Core.WorldKind.Normal || w.Name.IndexOf(kind, StringComparison.OrdinalIgnoreCase) >= 0 ? mode : kind + " · " + mode;
         }
 
         public void ShowJoin(string status)

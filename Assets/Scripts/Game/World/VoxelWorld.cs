@@ -66,11 +66,11 @@ namespace Stratum.Game
             new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.UNorm8, 4),
         };
 
-        public static VoxelWorld Create(int seed, string saveDir, Material block, Material water, int viewDistance)
+        public static VoxelWorld Create(int seed, string saveDir, Material block, Material water, int viewDistance, WorldKind kind = WorldKind.Normal)
         {
             var go = new GameObject("World");
             var w = go.AddComponent<VoxelWorld>();
-            w.Gen = new WorldGen(seed);
+            w.Gen = new WorldGen(seed, kind);
             w.SaveDir = saveDir;
             w.BlockMaterial = block; w.WaterMaterial = water;
             w.ViewDistance = viewDistance;
