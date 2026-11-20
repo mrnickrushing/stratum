@@ -24,7 +24,25 @@ namespace Stratum.Game
             }
         }
 
-        [Serializable] class Answer { public string address; }
+        [Serializable] class Name { public string name, address; }
+        [Serializable] class Answer { public string address; public Name[] names; }
+
+        // Short names: one easy word typed as the address ("play") stands for a server's real address. "play" and
+        // "stratum" always mean the default server; the site's server.json can name more (kept for next time).
+        const string NamesKey = "mp_names";
+
+        public static string Resolve(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+            string w = text.Trim().ToLowerInvariant();
+            if (w.IndexOf('.') >= 0 || w.IndexOf(':') >= 0 || w == "localhost") return text;
+            foreach (var pair in PlayerPrefs.GetString(NamesKey, "").Split(';'))
+            {
+                int eq = pair.IndexOf('=');
+                if (eq > 0 && pair.Substring(0, eq) == w && NetClient.ParseAddress(pair.Substring(eq + 1), out _, out _)) return pair.Substring(eq + 1);
+            }
+            return w == "play" || w == "stratum" ? Address : text;
+        }
 
         // Calls changed(old, now) if the site names a different server than the one in use.
         public static IEnumerator Refresh(Action<string, string> changed)
@@ -37,6 +55,17 @@ namespace Stratum.Game
                 string now;
                 try { now = JsonUtility.FromJson<Answer>(req.downloadHandler.text)?.address?.Trim(); }
                 catch (Exception) { yield break; }
+                try
+                {
+                    var names = JsonUtility.FromJson<Answer>(req.downloadHandler.text)?.names;
+                    var sb = new System.Text.StringBuilder();
+                    if (names != null)
+                        foreach (var n in names)
+                            if (!string.IsNullOrWhiteSpace(n?.name) && NetClient.ParseAddress(n.address, out _, out _) && n.name.IndexOfAny(new[] { ';', '=', '.', ':' }) < 0)
+                                sb.Append(n.name.Trim().ToLowerInvariant()).Append('=').Append(n.address.Trim()).Append(';');
+                    PlayerPrefs.SetString(NamesKey, sb.ToString());
+                }
+                catch (Exception) { }
                 if (string.IsNullOrEmpty(now) || !NetClient.ParseAddress(now, out _, out _)) yield break;
                 string old = Address;
                 if (now == old) yield break;
