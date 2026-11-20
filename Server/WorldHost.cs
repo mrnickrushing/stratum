@@ -20,6 +20,7 @@ namespace Stratum.Server
         {
             public Connection Conn;
             public string Name, Key;
+            public byte Outfit;                          // what other players see them wearing (the game's Extras page)
             public PlayerRecord Rec;
             public bool Joined;
             public float X, Y, Z, Yaw, Pitch;
@@ -44,7 +45,7 @@ namespace Stratum.Server
         public readonly ServerWorld World;
         readonly ConcurrentQueue<(Connection c, byte[] f)> _inbox = new ConcurrentQueue<(Connection, byte[])>();
         readonly ConcurrentQueue<(Connection c, string why)> _closed = new ConcurrentQueue<(Connection, string)>();
-        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string)>();
+        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string, int)>();
         readonly GameServer _hub;
         public readonly WorldDef Def;
         readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
@@ -114,10 +115,10 @@ namespace Stratum.Server
         }
 
         // A logged-in player chose this world.
-        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version)
+        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit = 0)
         {
             c.Route((cn, f) => _inbox.Enqueue((cn, f)), (cn, why) => _closed.Enqueue((cn, why)));
-            _arrivals.Enqueue((c, res, mode, version));
+            _arrivals.Enqueue((c, res, mode, version, outfit));
         }
 
         // The same account is coming in to another world: end its session here.
@@ -149,7 +150,7 @@ namespace Stratum.Server
                 last = now;
                 try
                 {
-                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
+                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c, Outfit = (byte)Math.Clamp(a.outfit, 0, 255) }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) Leave(cl.c, cl.why);
                     while (_later.TryDequeue(out var a)) a();
@@ -657,7 +658,7 @@ namespace Stratum.Server
         }
 
         static Packet BlockPacket(int x, int y, int z, byte id, int by) => new Packet(Net.Msg.Block).I32(x).I32(y).I32(z).U8(id).I32(by);
-        Packet JoinedPacket(Player p) => new Packet(Net.Msg.Joined).I32(p.Conn.Id).Str(p.Name).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw);
+        Packet JoinedPacket(Player p) => new Packet(Net.Msg.Joined).I32(p.Conn.Id).Str(p.Name).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).U8(p.Outfit);
         Packet ClockPacket() => new Packet(Net.Msg.Clock).F64(World.Meta.time).I32(World.Meta.day).U8((byte)_weather.State);
         static Packet SaidPacket(string from, string text) => new Packet(Net.Msg.Said).Str(from).Str(text);
     }

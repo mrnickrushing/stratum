@@ -226,6 +226,7 @@ namespace Stratum.Server
             string name = r.Str().Trim(), secret = r.Str(), invite = r.Str(), version = r.Str();
             string world = r.More ? r.Str().Trim().ToLowerInvariant() : "";     // clients before 0.3.0 don't choose
             int features = r.More ? r.I32() : 0;                                  // 1: knows the themed world kinds (0.4)
+            int outfit = r.More ? r.U8() : 0;                                     // 0.6: the outfit others see them in
             p.Checking = true;
             // Password hashing takes a moment on purpose; do it off the loop, and answer a wrong one slowly.
             System.Threading.Tasks.Task.Run(async () =>
@@ -234,14 +235,14 @@ namespace Stratum.Server
                 try { res = _accounts.Enter(mode, name, secret, invite, _cfg.Password); }
                 catch (Exception e) { Log.Warn("login failed: " + e); res = new Accounts.Result("The server had trouble with that login. Try again."); }
                 if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
-                _later.Enqueue(() => Admit(p, res, mode, version, world, features));
+                _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit));
             });
         }
 
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
-        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features)
+        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit)
         {
             if (!_pending.TryGetValue(p.Conn.Id, out var still) || still != p) return;    // gone meanwhile
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
@@ -255,7 +256,7 @@ namespace Stratum.Server
             if (others >= _cfg.MaxPlayers) { Refuse(p.Conn, "The server is full."); return; }
             foreach (var w in Worlds) if (w != host) w.Drop(res.Key);
             _pending.Remove(p.Conn.Id);
-            host.Adopt(p.Conn, res, mode, version);
+            host.Adopt(p.Conn, res, mode, version, outfit);
         }
     }
 }

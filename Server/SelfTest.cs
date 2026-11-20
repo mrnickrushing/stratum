@@ -43,12 +43,13 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
+        public int Outfit;
         public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
             var pk = new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest");
-            if (world != null) { pk.Str(world); if (Features != 0) pk.I32(Features); }   // clients before 0.3.0 don't say which world
+            if (world != null) { pk.Str(world); if (Features != 0) { pk.I32(Features); if (Outfit != 0) pk.U8((byte)Outfit); } }   // clients before 0.3.0 don't say which world
             Send(pk);
         }
         public void Create(string name, string pw, string invite = "", string world = null) => Hello(Accounts.Mode.Create, name, pw, invite, world: world);
@@ -435,9 +436,12 @@ namespace Stratum.Server
                     a.Create("Ada", pwA);
                     Check(a.Welcome() && a.Seed == 20261119 && !a.HasPos && a.Name == "Ada" && a.Token.Length == 64, "Ada makes an account, joins, gets the seed and a remember-me token");
                     tokenA = a.Token;
-                    b.Create("Bea", "bea-password");
+                    b.Outfit = 3;
+                    b.Create("Bea", "bea-password", world: "");
                     Check(b.Welcome(), "Bea makes an account and joins");
-                    Check(a.Wait(Net.Msg.Joined, r => { r.I32(); return r.Str() == "Bea"; }) != null, "Ada hears that Bea joined");
+                    int wears = -1;
+                    Check(a.Wait(Net.Msg.Joined, r => { r.I32(); if (r.Str() != "Bea") return false; r.F32(); r.F32(); r.F32(); r.F32(); wears = r.More ? r.U8() : -1; return true; }) != null, "Ada hears that Bea joined");
+                    Check(wears == 3, $"and which outfit Bea is wearing ({wears})");
 
                     int scx = a.SX >> 4, scz = a.SZ >> 4;
                     var keys = new List<(int, int)>();

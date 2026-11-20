@@ -124,6 +124,11 @@ server copies its whole data folder to `<data>/backups/<date-time>` at start and
 Single-player worlds are copied to `<game data>/backups/<world>/` each time they are opened (newest five kept) and
 restored from the Backups button on the world list.
 
+**Extras (0.6):** the main menu's Extras page lists free packs with a USE button (`Game/App/Extras.cs`, `UI/Menus.Extras.cs`).
+World packs are a kind, a seed, a way to play and a starting kit; USE makes the world once and reopens it after
+that. Tile pictures are `Resources/Extras/<id>.jpg` (800x392). Outfits are colour sets for the avatar; the choice is
+sent as one byte after the Hello's features and relayed in `Joined`, so other players see it.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,

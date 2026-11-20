@@ -100,7 +100,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(3));    // 1: knows the world kinds
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(3).U8((byte)Extras.Outfit));    // 1: knows the world kinds
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -332,7 +332,8 @@ namespace Stratum.Game
                 {
                     int id = r.I32(); string name = r.Str();
                     var p = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32();
-                    if (id != _myId) _avatars.Add(id, name, p, yaw);
+                    int outfit = r.More ? r.U8() : 0;               // 0.6: what they're wearing
+                    if (id != _myId) _avatars.Add(id, name, p, yaw, outfit);
                     _online = _avatars.Count + 1;
                     break;
                 }
