@@ -1,0 +1,14 @@
+# Deploy: cd site && npx wrangler deploy   (uploads: see README "Releasing")
+name = "stratum-site"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+account_id = "2e9f8521c5b27a3dede0ef667a6b8151"
+routes = [{ pattern = "stratum.rushingtechnologies.com", custom_domain = true }]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "stratum-downloads"
