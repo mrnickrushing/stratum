@@ -9,6 +9,7 @@ namespace Stratum.Core
     public sealed class Containers
     {
         public const int ChestSlots = 27;
+        public const int MaxSlots = 200;         // the most a satchel grows to
         public const int SignChars = 90;
         const int Version = 2;
         readonly Dictionary<long, Stack[]> _boxes = new Dictionary<long, Stack[]>();
@@ -92,6 +93,7 @@ namespace Stratum.Core
         public void Load(string file)
         {
             _boxes.Clear();
+            file = SafeFile.Pick(file);
             if (!File.Exists(file)) return;
             using var r = new BinaryReader(File.OpenRead(file));
             Signs.Clear();
@@ -141,8 +143,7 @@ namespace Stratum.Core
                 w.Write(Signs.Count);
                 foreach (var kv in Signs) { w.Write(kv.Key); w.Write(kv.Value); }
             }
-            if (File.Exists(file)) File.Delete(file);
-            File.Move(tmp, file);
+            SafeFile.Swap(tmp, file, keep: true);
             Dirty = false;
         }
 

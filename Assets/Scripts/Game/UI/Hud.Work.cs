@@ -68,6 +68,7 @@ namespace Stratum.Game
         }
 
 #if UNITY_EDITOR
+        public void DevCursor(Stack s) => _cursor = s;
         public void DevWork(Stack a, Stack b) { _work[0] = a; _work[1] = b; _workShown = null; }
 #endif
 
@@ -90,10 +91,28 @@ namespace Stratum.Game
             {
                 if (_work[i].Empty) continue;
                 var s = _work[i];
-                int left = s.Wear > 0 || s.Item.Contains("@") ? Put(s) : P.Inv.Add(s.Item, s.Count);
-                if (left > 0) Toast("Your pack is full");
+                GiveBack(s);
                 _work[i] = Stack.None;
             }
+        }
+
+        // Something held by the cursor or a station goes back into the pack exactly as it was (wear and
+        // enchantments kept); whatever doesn't fit lands in a satchel at the player's feet, never nowhere.
+        void GiveBack(Stack s)
+        {
+            if (s.Empty) return;
+            int left = s.Wear > 0 || s.Item.Contains("@") ? Put(s) : P.Inv.Add(s.Item, s.Count);
+            if (left <= 0) return;
+            var rest = s; rest.Count = left;
+            if (Link != null) { Link.Drop(P.Feet, new[] { rest }); Toast("Your pack is full: the rest is in a satchel at your feet"); }
+            else Toast("Your pack is full");
+        }
+
+        // What the cursor and the station slots hold right now (not in the pack, so a save has to ask for them).
+        public System.Collections.Generic.IEnumerable<Stack> Loose()
+        {
+            if (!_cursor.Empty && !P.Creative) yield return _cursor;
+            foreach (var s in _work) if (!s.Empty) yield return s;
         }
 
         int Put(Stack s)

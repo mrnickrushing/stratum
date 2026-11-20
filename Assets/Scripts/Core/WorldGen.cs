@@ -43,49 +43,77 @@ namespace Stratum.Core
         }
 
         // Bottom and Water are for Sky Islands (the underside, and a pond's surface); Sky marks its columns.
-        public struct Column { public float Height, Temp, Humid, River, Mountain, Bottom; public int Water; public bool Sky; }
+        // Lift raises where bare peaks begin (Towering Wilds); Only is a single-biome world's biome + 1.
+        public struct Column { public float Height, Temp, Humid, River, Mountain, Bottom, Lift; public int Water; public bool Sky; public byte Only; }
+
+        // The climate that goes with each biome, for a single-biome world's grass colour and weather.
+        static readonly float[] OnlyTemp = { 0.15f, 0.1f, 0.1f, -0.3f, -0.7f, 0.7f, -0.2f };
+        static readonly float[] OnlyHumid = { 0.0f, 0.3f, 0.6f, 0.2f, 0.0f, -0.4f, 0.0f };
 
         public Column Sample(int x, int z)
         {
             if (Kind == WorldKind.Sky) return SkySample(x, z);
             if (Kind == WorldKind.Flat) return new Column { Height = FlatTop, Temp = 0.15f, Humid = 0.1f };
             float fx = x + 0.5f, fz = z + 0.5f;
+            bool tower = Kind == WorldKind.Towering, only = IsOnly(Kind);
+            bool crags = Kind == WorldKind.Peaks || Kind == WorldKind.OnlyPeaks;
+            float wide = Kind == WorldKind.Vast ? 0.25f : 1f;                  // regions four times as wide
             float c = Kind == WorldKind.Islands
                 ? Clamp(_cont.Fbm2(fx / 420f, fz / 420f, 4) * 1.7f, -1, 1) * 0.8f - 0.24f    // small islands in warm sea
-                : Clamp(_cont.Fbm2(fx / 1100f, fz / 1100f, 4) * 1.7f, -1, 1);
+                : Clamp(_cont.Fbm2(fx * wide / 1100f, fz * wide / 1100f, 4) * 1.7f, -1, 1);
             if (Kind == WorldKind.Dunes || Kind == WorldKind.Peaks) c = Math.Min(1, c * 0.7f + 0.3f);     // mostly land
-            float e = Clamp(_eros.Fbm2(fx / 700f, fz / 700f, 3) * 1.7f, -1, 1) * 0.5f + 0.5f;
-            if (Kind == WorldKind.Peaks) e *= 0.55f;                                                     // mountains everywhere
+            if (only) c = 0.22f + Math.Abs(c) * 0.6f;                                                     // all land: no seas, just rivers
+            float e = Clamp(_eros.Fbm2(fx * wide / 700f, fz * wide / 700f, 3) * 1.7f, -1, 1) * 0.5f + 0.5f;
+            if (crags) e *= 0.55f;                                                                       // mountains everywhere
+            if (tower) e *= 0.75f;
             float land = Smooth(-0.12f, 0.15f, c);
             float mountain = Smooth(0.25f, 0.85f, 1 - e) * land;
             float peaks = _peak.Ridge2(fx / 420f, fz / 420f, 4);
             float h = Spline(ContX, ContY, c);
-            h += mountain * (float)Math.Pow(peaks, 1.5) * (Kind == WorldKind.Peaks ? 175f : 115f);
+            h += mountain * (float)Math.Pow(peaks, 1.5) * (crags ? 175f : 115f);
             h += _hill.Fbm2(fx / 150f, fz / 150f, 4) * (4f + 12f * land) * (1 - mountain * 0.5f);
             h += _detail.Fbm2(fx / 37f, fz / 37f, 2) * 2.2f;
+            if (tower && h > Chunk.SeaLevel)
+            {
+                // Everything above the sea doubles, and broad terraces and spires stand on top of that.
+                float up = h - Chunk.SeaLevel;
+                float mesa = Smooth(0.05f, 0.3f, _patch.Fbm2(fx / 95f + 11.7f, fz / 95f - 4.3f, 3)) * land;
+                float spire = (float)Math.Pow(Math.Max(0, _strata.Fbm2(fx / 85f - 9.1f, fz / 85f + 2.9f, 3) * 1.6f), 2);
+                h = Chunk.SeaLevel + up * 2.1f + mesa * 42f + spire * 40f * land;
+            }
 
             float rv = Math.Abs(_river.Fbm2(fx / 650f, fz / 650f, 3));
             float river = Smooth(0.045f, 0.012f, rv) * land * (1 - mountain);
+            if (tower || Kind == WorldKind.OnlyPeaks) river = Smooth(0.05f, 0.012f, rv) * land;   // rivers cut gorges right through the heights
             h = Lerp(h, Math.Min(h, 58f), river);
 
-            float t = Clamp(_temp.Fbm2(fx / 1500f + 31.3f, fz / 1500f - 12.7f, 3) * 1.8f, -1, 1);
-            t -= Math.Max(0, h - 95) / 90f;
-            float u = Clamp(_humid.Fbm2(fx / 1100f - 70.1f, fz / 1100f + 44.9f, 3) * 1.8f, -1, 1);
+            float t = Clamp(_temp.Fbm2(fx * wide / 1500f + 31.3f, fz * wide / 1500f - 12.7f, 3) * 1.8f, -1, 1);
+            float lift = tower ? 55 : 0;
+            t -= Math.Max(0, h - 95 - lift * 1.6f) / 90f;
+            float u = Clamp(_humid.Fbm2(fx * wide / 1100f - 70.1f, fz * wide / 1100f + 44.9f, 3) * 1.8f, -1, 1);
             switch (Kind)
             {
                 case WorldKind.Frozen: t = -0.48f + t * 0.3f; break;                         // snowfields and pinewoods
                 case WorldKind.Dunes: t = 0.62f + t * 0.25f; u = -0.32f + u * 0.4f; break;     // sand, and dry grass by the rivers
                 case WorldKind.Islands: t = 0.22f + t * 0.3f; u = 0.2f + u * 0.5f; break;      // warm and green
             }
-            return new Column { Height = Clamp(h, 6, 245), Temp = t, Humid = u, River = river, Mountain = mountain };
+            byte one = 0;
+            if (only)
+            {
+                int k = (int)Kind - (int)FirstOnly;
+                one = (byte)((int)OnlyBiome(Kind) + 1);
+                t = OnlyTemp[k] + t * 0.08f; u = OnlyHumid[k] + u * 0.08f;       // a little drift, so the grass isn't one flat colour
+            }
+            return new Column { Height = Clamp(h, 6, 245), Temp = t, Humid = u, River = river, Mountain = mountain, Lift = lift, Only = one };
         }
 
         public static Biome BiomeOf(in Column col)
         {
             if (col.Sky) return SkyBiome(col);
             int h = (int)col.Height;
-            if (h < Chunk.SeaLevel) return col.River > 0.4f ? Biome.River : Biome.Ocean;
-            if (h > 150) return Biome.Peaks;
+            if (h < Chunk.SeaLevel) return col.River > 0.4f || col.Only != 0 ? Biome.River : Biome.Ocean;
+            if (col.Only != 0) return (Biome)(col.Only - 1);
+            if (h > 150 + col.Lift) return Biome.Peaks;
             if (h <= Chunk.SeaLevel + 2 && col.River < 0.3f && col.Temp > -0.45f) return Biome.Beach;
             if (col.Temp > 0.4f && col.Humid < 0.05f) return Biome.Desert;
             if (col.Temp < -0.45f) return Biome.Tundra;
@@ -144,7 +172,7 @@ namespace Stratum.Core
                         case Biome.Desert: top = Blocks.Sand; fill = Blocks.Sand; fillDepth = 4; break;
                         case Biome.Beach: top = Blocks.Sand; fill = Blocks.Sand; break;
                         case Biome.Tundra: top = Blocks.SnowyGrass; fill = Blocks.Dirt; break;
-                        case Biome.Peaks: top = h > 168 ? Blocks.Snow : Blocks.Stone; fill = Blocks.Stone; break;
+                        case Biome.Peaks: top = h > 168 + col.Lift ? Blocks.Snow : Blocks.Stone; fill = Blocks.Stone; break;
                         case Biome.Ocean:
                         case Biome.River:
                             float p = _patch.S2(wx / 18f, wz / 18f);
@@ -153,7 +181,7 @@ namespace Stratum.Core
                     }
                     if (steep && biome != Biome.Ocean && biome != Biome.River && biome != Biome.Beach)
                     {
-                        top = h > 165 ? Blocks.Snow : Blocks.Stone; fill = Blocks.Stone;
+                        top = h > 165 + col.Lift || biome == Biome.Tundra && col.Only != 0 ? Blocks.Snow : Blocks.Stone; fill = Blocks.Stone;
                     }
                     if (biome == Biome.Taiga && (h > 120 || Kind == WorldKind.Frozen)) top = Blocks.SnowyGrass;
 
@@ -172,11 +200,12 @@ namespace Stratum.Core
                         b[ci | (y << 8)] = id;
                     }
                     for (int y = h + 1; y <= Chunk.SeaLevel; y++)
-                        b[ci | (y << 8)] = (y == Chunk.SeaLevel && (biome == Biome.Tundra || Kind == WorldKind.Frozen)) ? Blocks.Ice : Blocks.Water;
+                        b[ci | (y << 8)] = (y == Chunk.SeaLevel && (biome == Biome.Tundra || Kind == WorldKind.Frozen || Kind == WorldKind.OnlyFrost)) ? Blocks.Ice : Blocks.Water;
                 }
 
             ch.MaxY = Math.Max(maxH, Chunk.SeaLevel);
             if (Kind != WorldKind.Flat) Caves(ch, cols);
+            if (Kind == WorldKind.Towering) Overhangs(ch, cols);
             Ores(ch);
             Trees(ch, cols);
             Flora(ch, cols);
@@ -269,6 +298,67 @@ namespace Stratum.Core
                 }
         }
 
+        // Towering Wilds: bites out of the high ground, leaving overhangs, arches and ledges. Whatever ends up open to
+        // the sky under a bite grows over again.
+        void Overhangs(Chunk ch, Column[] cols)
+        {
+            const int Low = 88;
+            int top = Math.Min(ch.MaxY + 1, 250);
+            if (top <= Low) return;
+            int ny = top / 4 + 2;
+            int n = 5 * 5 * ny;
+            var A = _cA = (_cA == null || _cA.Length < n) ? new float[n] : _cA;
+            int bx = ch.X * 16, bz = ch.Z * 16;
+            for (int gy = Low / 4; gy < ny; gy++)
+                for (int gz = 0; gz < 5; gz++)
+                    for (int gx = 0; gx < 5; gx++)
+                        A[gx + gz * 5 + gy * 25] = _cheese.Fbm3((bx + gx * 4 + 0.37f) / 46f + 19.3f, (gy * 4 + 0.21f) / 30f + 7.7f, (bz + gz * 4 + 0.63f) / 46f - 5.1f, 3);
+
+            var b = ch.Blocks;
+            for (int z = 0; z < 16; z++)
+                for (int x = 0; x < 16; x++)
+                {
+                    ref var col = ref cols[(x + M) + (z + M) * W];
+                    int h = (int)col.Height;
+                    if (h < Low + 6 || h >= top) continue;
+                    var biome = (Biome)ch.Biome[x + z * 16];
+                    int gx = x >> 2, gz = z >> 2; float fx = (x & 3) / 4f, fz = (z & 3) / 4f;
+                    bool cut = false;
+                    for (int y = Low; y <= h; y++)
+                    {
+                        // Nothing near the foot of the hill, more the higher it goes.
+                        float need = 0.38f - Math.Min(0.13f, (y - Low) * 0.004f);
+                        if (Tri(A, gx, y >> 2, gz, fx, (y & 3) / 4f, fz) < need) continue;
+                        int idx = x | (z << 4) | (y << 8);
+                        if (b[idx] == Blocks.Water || b[idx] == Blocks.Ice) continue;
+                        b[idx] = 0; cut = true;
+                    }
+                    if (!cut) continue;
+                    // Nothing loose is left hanging over a bite.
+                    for (int y = Low; y <= h; y++)
+                    {
+                        int idx = x | (z << 4) | (y << 8);
+                        if ((b[idx] == Blocks.Sand || b[idx] == Blocks.Gravel) && b[idx - 256] == 0) b[idx] = b[idx] == Blocks.Sand ? Blocks.Sandstone : Blocks.Stone;
+                    }
+                    // New ground wherever the cut left rock or soil under open air.
+                    byte turf = biome == Biome.Desert ? Blocks.Sand : biome == Biome.Tundra ? Blocks.SnowyGrass : biome == Biome.Peaks ? (byte)0 : Blocks.Grass;
+                    if (turf == 0) continue;
+                    int air = 0;
+                    for (int y = h + 1; y >= Low - 1; y--)
+                    {
+                        int idx = x | (z << 4) | (y << 8);
+                        byte cur = b[idx];
+                        if (cur == 0) { air++; continue; }
+                        if (air >= 3 && y < h && (cur == Blocks.Stone || cur == Blocks.Dirt || cur == Blocks.Slate))
+                        {
+                            b[idx] = turf;
+                            for (int d = 1; d <= 2; d++) { byte under = b[idx - d * 256]; if (under == Blocks.Stone || under == Blocks.Slate) b[idx - d * 256] = turf == Blocks.Sand ? Blocks.Sand : Blocks.Dirt; }
+                        }
+                        air = 0;
+                    }
+                }
+        }
+
         static float Tri(float[] g, int x, int y, int z, float fx, float fy, float fz)
         {
             int i = x + z * 5 + y * 25;
@@ -342,7 +432,7 @@ namespace Stratum.Core
                     float roll = ((h >> 8) & 0xFFFF) / 65536f;
                     if (roll >= chance) continue;
                     int gy = (int)col.Height;
-                    if (gy <= Chunk.SeaLevel || gy > 200) continue;
+                    if (gy <= Chunk.SeaLevel || gy > 200 + col.Lift * 0.6f) continue;
                     // Slope check: no trees on cliffs.
                     if (lx > 0 && lz > 0 && lx < W - 1 && lz < W - 1)
                     {
@@ -534,7 +624,9 @@ namespace Stratum.Core
                     int x = (int)(Math.Cos(ang) * ring), z = (int)(Math.Sin(ang) * ring);
                     var col = Sample(x, z);
                     var bio = BiomeOf(col);
-                    if (col.Height > Chunk.SeaLevel + 1 && col.Height < 110 && bio != (Kind == WorldKind.Dunes ? Biome.Ocean : Biome.Desert) && bio != Biome.Peaks && bio != Biome.Beach
+                    bool anyBiome = IsOnly(Kind);          // a world that's all desert or all rock has nowhere else
+                    if (col.Height > Chunk.SeaLevel + 1 && col.Height < (Kind == WorldKind.OnlyPeaks ? 150 : 110)
+                        && (anyBiome || bio != (Kind == WorldKind.Dunes ? Biome.Ocean : Biome.Desert) && bio != Biome.Peaks && bio != Biome.Beach)
                         && (Kind != WorldKind.Islands || Roomy(x, z)))
                         return (x, (int)col.Height + 1, z);
                 }

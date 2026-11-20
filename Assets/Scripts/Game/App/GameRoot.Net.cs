@@ -100,7 +100,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(1));    // 1: knows the world kinds
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(3));    // 1: knows the world kinds
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -282,7 +282,7 @@ namespace Stratum.Game
         void SendKeep()
         {
             if (_net == null || _player == null) return;
-            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(_player.Inv.Slots)
+            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(SaveSlots())
                 .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints));
         }
 

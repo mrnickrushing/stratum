@@ -344,7 +344,7 @@ namespace Stratum.Game
         {
             if (!_cursor.Empty)
             {
-                if (!P.Creative) { int left = P.Inv.Add(_cursor.Item, _cursor.Count); if (left > 0) Toast("Your pack is full"); }
+                if (!P.Creative) GiveBack(_cursor);
                 _cursor = Stack.None;
             }
             if (_station == "chest") { _box = null; Sfx.I?.Play("chest_close", 0.6f); CloseBoxed?.Invoke(); }
@@ -412,7 +412,9 @@ namespace Stratum.Game
             if (chest)
             {
                 const float CS = 62, CG = 5;
-                for (int i = 0; i < Containers.ChestSlots; i++)
+                int slots = Mathf.Max(Containers.ChestSlots, _box.Length);        // a satchel can hold a whole pack and more
+                _boxGrid.sizeDelta = new Vector2(600, (slots + 8) / 9 * (CS + CG) + 40);
+                for (int i = 0; i < slots; i++)
                 {
                     int idx = i;
                     var v = SlotView.Make(_boxGrid, CS);
@@ -422,7 +424,7 @@ namespace Stratum.Game
                     _boxSlots.Add(v);
                 }
                 var hint = UIKit.Label(_boxGrid, "Shift-click moves a stack between the chest and your pack.", 19, UIKit.Dim);
-                hint.rectTransform.Place(0, 1, 0, -3 * (CS + CG) - 10, 600, 30);
+                hint.rectTransform.Place(0, 1, 0, -((slots + 8) / 9) * (CS + CG) - 10, 600, 30);
             }
             if (creative)
             {

@@ -475,8 +475,7 @@ namespace Stratum.Game
                 var path = ChunkPath(c.X, c.Z);
                 var tmp = path + ".tmp";
                 using (var f = File.Create(tmp)) c.Write(f);
-                if (File.Exists(path)) File.Delete(path);
-                File.Move(tmp, path);
+                SafeFile.Swap(tmp, path);
             }
             catch (Exception e) { Debug.LogWarning("could not save chunk: " + e.Message); }
         }

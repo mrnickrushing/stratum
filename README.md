@@ -42,6 +42,13 @@ an underworld reached through lit obsidian frames (a strip of the same world at 
   and dry, mostly land), Archipelago (small continents in warm sea; the spawn needs room around it), Giant Peaks
   (mountains everywhere, half as high again), Flatlands (grass at `FlatTop`, no caves). `WorldGen.KindNames/KindHints`
   are the names and blurbs shown in the menus.
+- World types added in 0.5 (same `WorldKind` byte, so nothing new on the wire; games before 0.5 are refused from
+  them by the Hello features bit `KnowsTypes`): **Towering Wilds** (everything above the sea doubled, mesas and
+  spires on top, rivers cut through as gorges, then `WorldGen.Overhangs` bites arches and ledges out of ground above
+  y 88 and regrows turf under them; `Column.Lift` raises where bare peaks and snow begin), **Vast Lands** (continent,
+  erosion and climate noise sampled at a quarter scale, so regions are four times as wide) and the single-biome
+  worlds `OnlyMeadow`..`OnlyPeaks` (all land with rivers, `Column.Only` forces the biome; New World shows them as
+  "One Biome" plus a Biome button).
 - `Assets/Scripts/Game`: `App` (GameRoot boots in the empty `Main` scene, sky, sound, settings, saving),
   `World/VoxelWorld` (chunk streaming on worker threads, saving edited chunks), `Player`, `Art` (textures, icons),
   `UI` (HUD, backpack, menus).
@@ -136,13 +143,14 @@ chunks seen each way, 10). The world saves every minute and on SIGTERM.
 
 `STRATUM_WORLDS` lists the worlds to choose from, `;` between worlds and `|` between each world's parts:
 `id|Name|survival or creative|peaceful, easy or normal|seed|a line about it|kind` (kind: normal, sky, frozen, dunes,
-islands, peaks or flat; a world keeps the kind it was made with, so changing it later needs a new id). Blank parts take the defaults (survival,
+islands, peaks, flat, towering, vast, or `all meadow`, `all oakwood`, `all birch`, `all pine`, `all frost`, `all dunes`,
+`all peaks`; a world keeps the kind it was made with, so changing it later needs a new id). Blank parts take the defaults (survival,
 normal, `STRATUM_SEED` for `main`, a new seed for the others). The world called `main` is the one in the data folder
 itself, so an existing server keeps its world; the others are made in `worlds/<id>`. Unset, the server runs one world
 from `STRATUM_CREATIVE` and `STRATUM_DIFFICULTY`. The live server's list:
 
 ```
-main|Survival|survival|normal||The world we started in. Monsters at night.;newlands|New Lands|survival|easy|newlands|A fresh world to explore together.;peaceful|Peaceful|survival|peaceful||No monsters and no hunger. Just build.;creative|Creative|creative|||Every block, flying, nothing can hurt you.;sky|Sky Islands|survival|easy||Floating islands over a sea of clouds. Build bridges, and don't fall!|sky;frozen|Frozen Wilds|survival|easy||Snow, pine forests and frozen seas.|frozen;dunes|Endless Dunes|survival|easy||Sand as far as you can see, with rivers for oases.|dunes;islands|Archipelago|survival|easy||Warm seas full of little islands. Bring a boat!|islands;peaks|Giant Peaks|survival|normal||Enormous mountains, cliffs and deep valleys.|peaks
+main|Survival|survival|normal||The world we started in. Monsters at night.;newlands|New Lands|survival|easy|newlands|A fresh world to explore together.;peaceful|Peaceful|survival|peaceful||No monsters and no hunger. Just build.;creative|Creative|creative|||Every block, flying, nothing can hurt you.;sky|Sky Islands|survival|easy||Floating islands over a sea of clouds. Build bridges, and don't fall!|sky;frozen|Frozen Wilds|survival|easy||Snow, pine forests and frozen seas.|frozen;dunes|Endless Dunes|survival|easy||Sand as far as you can see, with rivers for oases.|dunes;islands|Archipelago|survival|easy||Warm seas full of little islands. Bring a boat!|islands;peaks|Giant Peaks|survival|normal||Enormous mountains, cliffs and deep valleys.|peaks;towering|Towering Wilds|survival|easy||Huge cliffs, overhangs and arches. Everything is taller.|towering;vast|Vast Lands|survival|easy||The normal world, with every forest, desert and sea four times as wide.|vast;oakwood|All Oakwood|survival|easy||Oak forest everywhere, with rivers.|all oakwood
 ```
 
 **Railway:** a service from this repository built from `Server/Dockerfile` (the service's Dockerfile path), a volume

@@ -24,6 +24,35 @@ namespace Stratum.Game
             I._player.Yaw = yaw; I._player.Pitch = pitch; I._world.SetFocus(I._player.Feet);
         }
 
+        // Things held by the cursor when the backpack closes: a worn tool keeps its wear, and with a full pack the
+        // rest lands in a satchel. Then a whole pack dropped at once is opened as a satchel (for a screenshot).
+        public static string DevPack()
+        {
+            var g = I; var inv = g._player.Inv; var sb = new System.Text.StringBuilder();
+            g._player.Creative = false;
+            for (int i = 0; i < Inventory.Size; i++) inv.Slots[i] = Core.Stack.None;
+            g._hud.OpenInventory(null);
+            g._hud.DevCursor(new Core.Stack("iron_pickaxe", 1) { Wear = 150 });
+            g._hud.CloseInventory();
+            sb.Append($"pickaxe back with wear {inv.Slots[0].Wear}; ");
+            for (int i = 0; i < Inventory.Main; i++) inv.Slots[i] = new Core.Stack("cobble", 64);
+            g._hud.OpenInventory(null);
+            g._hud.DevCursor(new Core.Stack("iron_pickaxe", 1) { Wear = 77 });
+            g._hud.CloseInventory();
+            var f = g._player.Feet; int fx = Mathf.FloorToInt(f.x), fy = Mathf.FloorToInt(f.y), fz = Mathf.FloorToInt(f.z);
+            var l = (LocalLink)g._link;
+            string found = "no satchel";
+            for (int dy = -2; dy <= 3; dy++) for (int dz = -3; dz <= 3; dz++) for (int dx = -3; dx <= 3; dx++)
+                if (g._world.Get(fx + dx, fy + dy, fz + dz) == Blocks.Satchel) { var st = l.Boxes.At(fx + dx, fy + dy, fz + dz); found = $"satchel holds {st[0].Item} wear {st[0].Wear}"; g._world.Set(fx + dx, fy + dy, fz + dz, 0); }
+            sb.Append(found + "; ");
+            for (int i = 0; i < Inventory.Size; i++) inv.Slots[i] = Core.Stack.None;
+            var pack = new Core.Stack[41]; for (int i = 0; i < 41; i++) pack[i] = new Core.Stack(i % 3 == 0 ? "cobble" : i % 3 == 1 ? "torch" : "steak", i + 1);
+            g._link.Drop(f, pack);
+            for (int dy = -2; dy <= 3; dy++) for (int dz = -3; dz <= 3; dz++) for (int dx = -3; dx <= 3; dx++)
+                if (g._world.Get(fx + dx, fy + dy, fz + dz) == Blocks.Satchel) { g._link.OpenBox(new Vector3Int(fx + dx, fy + dy, fz + dz)); sb.Append($"opened a satchel of {l.Boxes.At(fx + dx, fy + dy, fz + dz).Length}"); return sb.ToString(); }
+            return sb + "no second satchel";
+        }
+
         public static string DevState() => I._state + (I._player != null ? $" at {I._player.Feet} hp {I._player.Health} food {I._player.Food}" : "") + (I._link != null ? $" mobs {I._link.Mobs.Count}" : "");
 
         // A creature a few metres in front of the player, on the ground.

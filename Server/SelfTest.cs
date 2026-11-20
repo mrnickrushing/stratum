@@ -43,7 +43,7 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
-        public int Features = GameServer.KnowsKinds;     // 0: act like a 0.3 client
+        public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
@@ -210,23 +210,96 @@ namespace Stratum.Server
             for (int i = 0; i < 400; i++) { if (peaks.HeightAt(i * 97 - 20000, i * 61 - 12000) > 130) hp++; if (norm.HeightAt(i * 97 - 20000, i * 61 - 12000) > 130) hn++; }
             Check(hp > hn * 2 && hp > 60, $"Giant Peaks: far more high ground than a normal world ({hp} vs {hn} of 400 above 130)");
 
+            // 0.5: Towering Wilds, Vast Lands and the single-biome worlds.
+            var tower = new WorldGen(19, WorldKind.Towering); int ht = 0, hn2 = 0, low = 0;
+            for (int i = 0; i < 400; i++) { int th = tower.HeightAt(i * 97 - 20000, i * 61 - 12000); if (th > 130) ht++; if (th < Chunk.SeaLevel + 12) low++; if (norm.HeightAt(i * 97 - 20000, i * 61 - 12000) > 130) hn2++; }
+            Check(ht > hn2 * 3 && ht > 80 && low > 20, $"Towering Wilds: far more high ground than a normal world, and still valleys and sea ({ht} vs {hn2} above 130, {low} low)");
+            int hang = 0, floaters = 0, turfed = 0, bare = 0;
+            for (int cz = -5; cz <= 5; cz++) for (int cx = -5; cx <= 5; cx++)
+            {
+                var c = Make(tower, cx * 2 + 40, cz * 2 - 17);
+                for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++)
+                {
+                    int ty; Top(c, x, z, out ty);
+                    bool gap = false;
+                    for (int y = ty - 1; y > 88; y--)
+                    {
+                        byte b = c.Get(x, y, z), up = c.Get(x, y + 1, z);
+                        if (b == 0 && Blocks.Get(up).Solid && !Blocks.Get(up).Sway) gap = true;                                  // rock with air beneath it
+                        if ((b == Blocks.Sand || b == Blocks.Gravel) && c.Get(x, y - 1, z) == 0) floaters++;
+                        if (up == 0 && c.Get(x, y + 2, z) == 0 && c.Get(x, y + 3, z) == 0 && y < ty - 3) { if (b == Blocks.Grass || b == Blocks.SnowyGrass || b == Blocks.Sand) turfed++; else if (b == Blocks.Dirt) bare++; }
+                    }
+                    if (gap) hang++;
+                }
+            }
+            Check(hang > 300, $"with overhangs and arches ({hang} columns with rock over open air)");
+            Check(floaters == 0, $"no sand or gravel left hanging to fall ({floaters})");
+            Check(turfed > 50 && bare < turfed / 10, $"and the ledges under them grow over ({turfed} grown, {bare} bare soil)");
+            var tAgain = Make(tower, 41, -16); Check(tAgain.Blocks.AsSpan().SequenceEqual(Make(tower, 41, -16).Blocks), "the same seed always gives the same cliffs");
+            var vast = new WorldGen(23, WorldKind.Vast); var plain = new WorldGen(23); int vRuns = 0, nRuns = 0; Biome pv = 0, pn = 0;
+            bool Region(Biome b) => b != Biome.River && b != Biome.Beach && b != Biome.Peaks && b != Biome.Ocean;
+            for (int i = 0; i < 4000; i++)
+            {
+                // Lowland only: a mountain is cold whatever region it stands in.
+                var cv = vast.Sample(i * 16 - 32000, 300); var cn = plain.Sample(i * 16 - 32000, 300);
+                var bv = WorldGen.BiomeOf(cv); var bn = WorldGen.BiomeOf(cn);
+                if (Region(bv) && cv.Height < 95) { if (bv != pv) vRuns++; pv = bv; }
+                if (Region(bn) && cn.Height < 95) { if (bn != pn) nRuns++; pn = bn; }
+            }
+            Check(vRuns * 2 < nRuns && vRuns > 3, $"Vast Lands: regions are far wider than normal ({vRuns} changes across 64,000 blocks, normal {nRuns})");
+            for (var k = WorldGen.FirstOnly; k <= WorldGen.LastOnly; k++)
+            {
+                var g = new WorldGen(31 + (int)k, k); var want = WorldGen.OnlyBiome(k); int ok = 0, wet = 0, other = 0;
+                for (int i = 0; i < 1500; i++) { var b = g.BiomeAt(i * 97 - 70000, i * 61 - 40000); if (b == want) ok++; else if (b == Biome.River) wet++; else other++; }
+                var (px, py, pz) = g.FindSpawn(); var sc = Make(g, px >> 4, pz >> 4);
+                bool stand = Blocks.Get(sc.Get(px & 15, py - 1, pz & 15)).Solid && py > Chunk.SeaLevel;
+                Check(other == 0 && ok > 1200 && wet > 0 && wet < 300 && stand, $"{WorldGen.KindName(k)}: nothing but {WorldGen.BiomeNames[(int)want]} and rivers ({ok} of 1500, {wet} river), with a dry start");
+                Check(WorldGen.ParseKind(WorldGen.KindName(k)) == k, $"and \"{WorldGen.KindName(k)}\" is how a server asks for it");
+            }
+            var frost = Make(new WorldGen(31 + (int)WorldKind.OnlyFrost, WorldKind.OnlyFrost), 0, 0); var oak = new WorldGen(5, WorldKind.OnlyOakwood); int logs = 0;
+            for (int cz = 0; cz < 4; cz++) for (int cx = 0; cx < 4; cx++) { var c = Make(oak, cx, cz); for (int i = 0; i < c.Blocks.Length; i++) if (c.Blocks[i] == Blocks.OakLog) logs++; }
+            Check(logs > 150, $"All Oakwood is wooded ({logs} oak logs in 16 chunks)");
+            Check(WorldGen.ParseKind("towering") == WorldKind.Towering && WorldGen.ParseKind("vast") == WorldKind.Vast && WorldGen.ParseKind("islands") == WorldKind.Islands, "the other kinds still parse");
+
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
             int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
             var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4,
-                Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat", Seed) };
+                Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat;tall|Towering Wilds|survival|easy||Cliffs|towering", Seed) };
             var srv = new GameServer(cfg); srv.Start();
             try
             {
-                using (var q = new Bot(srv.Port)) { q.Worlds(); Check(q.Kinds?.Count == 3 && q.Kinds[1] == WorldKind.Sky && q.Kinds[2] == WorldKind.Flat, "a ping says what sort each world is"); }
+                using (var q = new Bot(srv.Port)) { q.Worlds(); Check(q.Kinds?.Count == 4 && q.Kinds[1] == WorldKind.Sky && q.Kinds[2] == WorldKind.Flat && q.Kinds[3] == WorldKind.Towering, "a ping says what sort each world is"); }
                 using (var a = new Bot(srv.Port))
                 {
                     a.Create("Sky", "sky-password", world: "sky");
                     Check(a.Welcome() && a.Kind == WorldKind.Sky && a.SY > 60, "joining Sky Islands says so, and the spawn is up on an island");
+                    // Falling off: the things wait on the island where she last stood, not down in the sky.
+                    a.Want(new[] { (a.SX >> 4, a.SZ >> 4) }); a.Wait(Net.Msg.Chunk);
+                    a.Move(a.SX + 0.5f, a.SY, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
+                    a.Move(a.SX + 40.5f, -30, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
+                    a.Send(new Packet(Net.Msg.Drop).F32(a.SX + 0.5f).F32(a.SY + 0.5f).F32(a.SZ + 0.5f).Stacks(new[] { new Stack("torch", 4) }));
+                    var fell = a.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); return r.U8() == Blocks.Satchel && Math.Abs(qx - a.SX) <= 2 && Math.Abs(qz - a.SZ) <= 2 && Math.Abs(qy - a.SY) <= 3; });
+                    Check(fell != null, "after a fall into the sky the satchel is left on the island she fell from");
                 }
                 using (var old = new Bot(srv.Port) { Features = 0 })
                 {
                     old.Login("Sky", "sky-password", world: "sky");
                     Check(old.Refused()?.Contains("newest Stratum") == true, "a 0.3 game is asked to update before going to Sky Islands");
+                }
+                using (var old = new Bot(srv.Port) { Features = 1 })
+                {
+                    old.Login("Sky", "sky-password", world: "tall");
+                    Check(old.Refused()?.Contains("newest Stratum") == true, "a 0.4 game is asked to update before going to Towering Wilds");
+                }
+                using (var old = new Bot(srv.Port) { Features = 1 })
+                {
+                    old.Login("Sky", "sky-password", world: "sky");
+                    Check(old.Welcome() && old.Kind == WorldKind.Sky, "but still gets into Sky Islands");
+                }
+                using (var now = new Bot(srv.Port))
+                {
+                    now.Login("Sky", "sky-password", world: "tall");
+                    Check(now.Welcome() && now.Kind == WorldKind.Towering, "and a 0.5 game gets into Towering Wilds");
                 }
                 using (var old = new Bot(srv.Port) { Features = 0 })
                 {
@@ -386,17 +459,41 @@ namespace Stratum.Server
                     a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     var box = a.Wait(Net.Msg.Box);
                     Check(box != null && box.I32() == px && box.I32() == py + 1 && box.I32() == pz && box.Stacks().Length == Containers.ChestSlots, "she opens it: 27 empty slots");
-                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz)); b.Wait(Net.Msg.Box);
+                    // Only one of them in the chest at a time, so the same stack can't be taken twice.
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    Check(b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().StartsWith("Ada is using that")) != null, "Bea is told Ada is using the chest");
                     a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)));
-                    var set = b.Wait(Net.Msg.BoxSet);
-                    Check(set != null && set.I32() == px && set.I32() == py + 1 && set.I32() == pz && set.U8() == 2 && set.Slot().Count == 9, "Bea, looking in too, sees the cobble go in");
-                    a.Send(new Packet(Net.Msg.CloseBox)); b.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(Stack.None));      // Bea can't empty it from outside
+                    a.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    var bbox = b.Wait(Net.Msg.Box); Stack[] inBox = null;
+                    if (bbox != null) { bbox.I32(); bbox.I32(); bbox.I32(); inBox = bbox.Stacks(); }
+                    Check(inBox != null && inBox[2].Item == "cobble" && inBox[2].Count == 9, "once Ada closes it Bea opens it and finds the cobble");
+                    b.Send(new Packet(Net.Msg.CloseBox));
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
                     var give = a.Wait(Net.Msg.Give);
                     Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
                     Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
                     a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
                     Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
+
+                    // A whole pack (40 slots and the XP) in one satchel: every stack can be reached.
+                    var pack = new Stack[41]; for (int i = 0; i < pack.Length; i++) pack[i] = new Stack(i % 2 == 0 ? "cobble" : "torch", i + 1);
+                    b.Move(b.X + 3, b.Y, b.Z); System.Threading.Thread.Sleep(150);
+                    b.Send(new Packet(Net.Msg.Drop).F32(b.X + 3).F32(b.Y).F32(b.Z).Stacks(pack));
+                    int tx = 0, ty = 0, tz = 0;
+                    b.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); if (r.U8() != Blocks.Satchel) return false; tx = qx; ty = qy; tz = qz; return true; });
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
+                    var sbox = b.Wait(Net.Msg.Box); Stack[] held = null;
+                    if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
+                    Check(held != null && held.Length >= 41 && held[40].Count == 41, $"a satchel holds a full pack of 41 stacks ({held?.Length} slots)");
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(tx).I32(ty).I32(tz).U8(40).Slot(Stack.None));
+                    b.Send(new Packet(Net.Msg.CloseBox));
+                    b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
+                    sbox = b.Wait(Net.Msg.Box); held = null;
+                    if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
+                    Check(held != null && held.Length > 40 && held[40].Empty && held[39].Count == 40, "and the last stack can be taken out of it");
+                    b.Send(new Packet(Net.Msg.CloseBox));
 
                     var tone = new float[Voice.FrameSamples];
                     for (int i = 0; i < tone.Length; i++) tone[i] = 0.4f * (float)Math.Sin(2 * Math.PI * 440 * i / Voice.Rate);

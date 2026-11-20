@@ -452,6 +452,17 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ saving
 
+        // The pack as a save should record it: with whatever the cursor or a station holds tucked into free slots,
+        // so a crash with the backpack open doesn't lose it.
+        Core.Stack[] SaveSlots()
+        {
+            var a = (Core.Stack[])_player.Inv.Slots.Clone();
+            if (_hud == null) return a;
+            foreach (var s in _hud.Loose())
+                for (int k = 0; k < Inventory.Main; k++) if (a[k].Empty) { a[k] = s; break; }
+            return a;
+        }
+
         void Save()
         {
             if (_meta == null || _world == null || _player == null || _state == State.Loading && !_meta.hasPlayer) return;
@@ -467,7 +478,7 @@ namespace Stratum.Game
                 _meta.time = _sky.Time01; _meta.day = _sky.Day;
                 _meta.selected = _player.Inv.Selected;
                 _meta.slots.Clear();
-                foreach (var s in _player.Inv.Slots) _meta.slots.Add(new SlotSave { item = s.Empty ? "" : s.Item, count = s.Empty ? 0 : s.Count, wear = s.Wear });
+                foreach (var s in SaveSlots()) _meta.slots.Add(new SlotSave { item = s.Empty ? "" : s.Item, count = s.Empty ? 0 : s.Count, wear = s.Wear });
                 _meta.lastPlayed = DateTime.UtcNow.Ticks;
                 WorldStore.Save(_meta);
                 _world.SaveAll();

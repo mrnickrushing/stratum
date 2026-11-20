@@ -213,6 +213,9 @@ namespace Stratum.Game
                 string saved = PlayerPrefs.GetString("mp_world", "");
                 _pickedWorld = list.Exists(w => w.Id == saved) ? saved : list[0].Id;
             }
+            // Open the page the chosen world is on.
+            int at = list == null ? -1 : list.FindIndex(w => w.Id == _pickedWorld);
+            _worldTop = at > 0 && list.Count > 9 ? at / 8 * 8 : 0;
             DrawWorlds(error);
         }
 
@@ -225,9 +228,14 @@ namespace Stratum.Game
                             : list.Count == 0 ? "This server has one world." : "";
             if (list == null || list.Count == 0) return;
             // Four or fewer: a roomy card each. More: slim rows, with the chosen one opened up to say what it's like.
+            // More than nine: eight at a time, and a row at the bottom that turns the page.
             bool roomy = list.Count <= 4;
+            bool paged = list.Count > 9;
+            const int Page = 8;
+            if (!paged || _worldTop >= list.Count) _worldTop = 0;
+            int last = paged ? Math.Min(list.Count, _worldTop + Page) : list.Count;
             float y = 0;
-            for (int i = 0; i < list.Count && i < 10; i++)
+            for (int i = _worldTop; i < last; i++)
             {
                 var w = list[i];
                 bool on = w.Id == _pickedWorld, open = roomy || on;
@@ -255,7 +263,14 @@ namespace Stratum.Game
                 }
                 y -= hgt + (roomy ? 12 : 6);
             }
+            if (paged)
+            {
+                int next = last >= list.Count ? 0 : last;
+                var more = UIKit.Button(_serverWorlds, $"More worlds  ({_worldTop + 1}-{last} of {list.Count})  ›", () => { _worldTop = next; DrawWorlds(null); }, 20);
+                ((RectTransform)more.transform).Place(0, 1, 0, y, 470, 48);
+            }
         }
+        int _worldTop;
 
         // "Sky Islands · Survival · Easy": the sort of world (unless its name says it), then how it's played.
         static string WorldLine(WorldInfo w)
