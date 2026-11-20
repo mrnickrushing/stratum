@@ -89,6 +89,8 @@ namespace Stratum.Game
             _menus.Resume = Resume;
             _menus.SaveAndQuit = () => { _player?.GetOut(); if (Online) LeaveServer(null); else { Save(); ToTitle(); } };
             _menus.Join = JoinServer;
+            _menus.FindWorlds = FindWorlds;
+            _menus.ChangeWorld = ChangeWorld;
             _menus.CancelJoin = CancelJoin;
             _menus.Respawn = Respawn;
             _menus.Quit = () => { Application.Quit(); };

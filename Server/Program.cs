@@ -18,6 +18,9 @@ namespace Stratum.Server
     //   STRATUM_CREATIVE / --creative  1 for creative mode
     //   STRATUM_VIEW / --view          most chunks a player sees in each direction (default 10)
     //   STRATUM_DIFFICULTY / --difficulty  peaceful (no monsters, no hunger), easy, or normal (default)
+    //   STRATUM_WORLDS / --worlds      worlds to choose from: "id|Name|survival/creative|difficulty|seed|description;..."
+    //                                  ("main" is the world already in the data folder; others go in worlds/<id>).
+    //                                  Unset: one world, from STRATUM_CREATIVE and STRATUM_DIFFICULTY.
     // `--selftest` starts a private server with two scripted players and checks they see each other's world.
     public static class Program
     {
@@ -61,6 +64,7 @@ namespace Stratum.Server
             if (int.TryParse(Get("STRATUM_VIEW", "--view"), out int view)) c.MaxView = Math.Clamp(view, 4, 16);
             var diff = (Get("STRATUM_DIFFICULTY", "--difficulty") ?? "normal").ToLowerInvariant();
             c.Difficulty = diff.StartsWith("p") || diff == "0" ? 0 : diff.StartsWith("e") || diff == "1" ? 1 : 2;
+            c.Worlds = WorldDef.Parse(Get("STRATUM_WORLDS", "--worlds"), SeedFrom);
             return c;
         }
 

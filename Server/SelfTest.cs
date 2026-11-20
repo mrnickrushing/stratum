@@ -43,10 +43,34 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
-        public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol) =>
-            Send(new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest"));
-        public void Create(string name, string pw, string invite = "") => Hello(Accounts.Mode.Create, name, pw, invite);
-        public void Login(string name, string pw) => Hello(Accounts.Mode.Login, name, pw);
+        public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
+        {
+            var pk = new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest");
+            if (world != null) pk.Str(world);         // clients before 0.2.2 don't say which world
+            Send(pk);
+        }
+        public void Create(string name, string pw, string invite = "", string world = null) => Hello(Accounts.Mode.Create, name, pw, invite, world: world);
+        public void Login(string name, string pw, string world = null) => Hello(Accounts.Mode.Login, name, pw, world: world);
+
+        // Asks what worlds there are: (id, name, creative, difficulty, players in it).
+        public List<(string id, string name, bool creative, int difficulty, int online)> Worlds()
+        {
+            Send(new Packet(Net.Msg.Ping).F64(1));
+            var r = Wait(Net.Msg.Pong);
+            var l = new List<(string, string, bool, int, int)>();
+            if (r == null) return l;
+            r.F64(); r.Str(); r.Str(); r.I32(); r.I32();
+            int n = r.U8();
+            for (int i = 0; i < n; i++) { string id = r.Str(), name = r.Str(); r.Str(); bool c = r.Bool(); int d = r.U8(); l.Add((id, name, c, d, r.I32())); }
+            return l;
+        }
+
+        public bool Closed(int ms = 5000)
+        {
+            var end = DateTime.UtcNow.AddMilliseconds(ms);
+            while (DateTime.UtcNow < end) { if (_in.IsCompleted && _in.Count == 0) return true; if (_in.TryTake(out var r, 50)) _seen.Add(r); }
+            return _in.IsCompleted;
+        }
 
         public string Refused(int ms = 5000) { var r = Wait(Net.Msg.Refuse, null, ms); return r?.Str(); }
 
@@ -64,18 +88,18 @@ namespace Stratum.Server
             return null;
         }
 
-        public float Food; public bool HasBed; public int BX, XpLevel;
+        public float Food; public bool HasBed; public int BX, XpLevel; public string ServerName; public bool Creative; public int Difficulty;
 
         public bool Welcome()
         {
             var r = Wait(Net.Msg.Welcome);
             if (r == null) return false;
-            Id = r.I32(); Seed = r.I32(); r.Str(); r.Str(); r.Bool(); r.U8(); r.F64(); r.I32();
+            Id = r.I32(); Seed = r.I32(); ServerName = r.Str(); r.Str(); Creative = r.Bool(); r.U8(); r.F64(); r.I32();
             SX = r.I32(); SY = r.I32(); SZ = r.I32();
             HasPos = r.Bool(); X = r.F32(); Y = r.F32(); Z = r.F32(); r.F32(); r.F32(); r.F32(); r.U8();
             Slots = r.Stacks();
             Name = r.Str(); Token = r.Str();
-            Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); r.U8(); XpLevel = r.I32(); r.I32();
+            Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); Difficulty = r.U8(); XpLevel = r.I32(); r.I32();
             return true;
         }
 
@@ -104,6 +128,59 @@ namespace Stratum.Server
     public static class SelfTest
     {
         static int _fails;
+        // Several worlds on one server: the list, choosing one, each keeping its own things, moving between them.
+        static void WorldChecks(string dir)
+        {
+            int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
+            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, MaxView = 4,
+                Worlds = WorldDef.Parse("main|Survival|survival|normal||Where it began; calm|Peaceful|survival|peaceful|7|No monsters ; build|Creative|creative||| Build anything", Seed) };
+            var srv = new GameServer(cfg); srv.Start();
+            try
+            {
+                using (var q = new Bot(srv.Port))
+                {
+                    var l = q.Worlds();
+                    Check(l.Count == 3 && l[0].id == "main" && l[1].name == "Peaceful" && l[1].difficulty == 0 && l[2].creative && !l[0].creative,
+                          "a ping lists the three worlds with their modes");
+                }
+                float bx, bz;
+                using (var a = new Bot(srv.Port))
+                {
+                    a.Create("Ada", "ada-password", world: "build");
+                    Check(a.Welcome() && a.Creative && a.ServerName.EndsWith("Creative") && !a.HasPos, "Ada makes an account straight into the creative world");
+                    bx = a.X + 5; bz = a.Z + 3; a.Move(bx, a.Y, bz);
+                    Thread.Sleep(300);
+                    Check(srv.Worlds[2].Online == 1 && srv.Online == 1, "the creative world counts her");
+                    using (var b = new Bot(srv.Port))
+                    {
+                        b.Login("Ada", "ada-password", world: "calm");
+                        Check(b.Welcome() && !b.Creative && b.Difficulty == 0 && !b.HasPos, "logging in to the peaceful world starts her fresh there");
+                        Check(a.Closed(), "and ends her session in the creative world");
+                        Thread.Sleep(300);
+                        Check(srv.Worlds[2].Online == 0 && srv.Worlds[1].Online == 1, "so she is only in one world at a time");
+                    }
+                }
+                using (var a = new Bot(srv.Port))
+                {
+                    a.Login("Ada", "ada-password", world: "build");
+                    Check(a.Welcome() && a.HasPos && Math.Abs(a.X - bx) < 0.01f && Math.Abs(a.Z - bz) < 0.01f, "back in the creative world she is where she left it");
+                }
+                using (var a = new Bot(srv.Port))
+                {
+                    a.Login("Ada", "ada-password");
+                    Check(a.Welcome() && !a.Creative && a.Seed == 20261119, "a client that can't choose goes to the first world");
+                }
+                using (var a = new Bot(srv.Port))
+                {
+                    a.Login("Ada", "ada-password", world: "nowhere");
+                    Check(a.Welcome() && a.Seed == 20261119, "an unknown world name goes to the first world too");
+                }
+            }
+            finally { srv.Stop(); }
+            Check(File.Exists(Path.Combine(dir, "world.json")) || Directory.GetFiles(dir).Length > 0, "the first world keeps the data folder");
+            Check(Directory.Exists(Path.Combine(dir, "worlds", "build")) && Directory.Exists(Path.Combine(dir, "worlds", "calm")), "the others get folders of their own");
+        }
+
         // The Ember Deep: its land, lighting a frame, breaking it, and coming out by a portal on the far side.
         static void EmberChecks()
         {
@@ -268,6 +345,7 @@ namespace Stratum.Server
                 using (var a = new Bot(srv4.Port)) { a.Login("Ada", "someone-else"); Check(a.Refused() == "Wrong password.", "the same reset isn't applied twice"); }
                 srv4.Stop();
                 EmberChecks();
+                WorldChecks(Path.Combine(dir, "worlds-test"));
             }
             catch (Exception e) { Check(false, "threw " + e); }
             finally { try { Directory.Delete(dir, true); } catch { } }
