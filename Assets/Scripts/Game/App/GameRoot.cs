@@ -317,6 +317,7 @@ namespace Stratum.Game
             var kb = Keyboard.current;
             if (Online && _state != State.Loading) PumpNet();
             if (_looseBack.Count > 0 && _state == State.Playing) ReturnLoose();
+            if (_state == State.Playing) TickWaiting(Time.deltaTime);
             if (_world != null && _hud != null && _state == State.Playing) while (_world.Notices.TryDequeue(out var note)) { _hud.AddChat("", note); _hud.Toast("Part of this world was damaged. See the chat."); }
             switch (_state)
             {
@@ -489,7 +490,7 @@ namespace Stratum.Game
             var a = (Core.Stack[])_player.Inv.Slots.Clone();
             if (_hud == null) return a;
             List<Core.Stack> over = null;
-            foreach (var s in _hud.Loose())
+            foreach (var s in System.Linq.Enumerable.Concat(_hud.Loose(), _waiting))
             {
                 bool put = false;
                 for (int k = 0; k < Inventory.Main && !put; k++) if (a[k].Empty) { a[k] = s; put = true; }
@@ -503,7 +504,7 @@ namespace Stratum.Game
             return all;
         }
 
-        public const int MaxLoose = 16;        // the cursor, two station slots and nine squares, with room to spare
+        public const int MaxLoose = 40;        // the cursor, two station slots, nine squares, and things waiting for room
         readonly List<Core.Stack> _looseBack = new List<Core.Stack>();
 
         // Things a save recorded beyond the pack (held by the cursor, a station or the grid when it was written):
@@ -511,6 +512,7 @@ namespace Stratum.Game
         void ReturnLoose()
         {
             if (_looseBack.Count == 0 || _link == null || _player == null) return;
+            _waitDrop = 0;                     // a fresh start: these may go straight to the ground
             foreach (var s in _looseBack) Give(s.Item, s.Count, s.Wear);
             _looseBack.Clear();
             _hud.Toast("What you were holding is back with you");

@@ -53,6 +53,7 @@ namespace Stratum.Game
         {
             var a = _arrive.Value;
             _player.Feet = a; _player.Velocity = Vector3.zero;
+            _player.ResetFall();
             _arriveWait += dt;
             _hud.PortalGlow(Mathf.Clamp01(1 - _arriveWait * 0.5f) * 0.8f + 0.2f);
             if (_asked)
@@ -62,6 +63,7 @@ namespace Stratum.Game
                 {
                     _arrive = null; _hud.PortalGlow(0); _leftPortal = false;
                     _player.Feet = _departed; _player.Velocity = Vector3.zero; _world.SetFocus(_departed);
+                    _player.ResetFall();
                     if (Online) SendMove(true);
                     _hud.Toast("The portal didn't open. Step out and try again.");
                 }
@@ -90,6 +92,7 @@ namespace Stratum.Game
         {
             _arrive = null;
             _player.Feet = at; _player.Velocity = Vector3.zero;
+            _player.ResetFall();              // the wait above the far side isn't a fall
             _hud.PortalGlow(0);
             if (Online) SendMove(true);
         }

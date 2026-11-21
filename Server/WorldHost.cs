@@ -474,7 +474,7 @@ namespace Stratum.Server
             p.Rec.saturation = Math.Clamp(r.F32(), 0, 20);
             p.Rec.selected = r.U8();
             var st = r.Stacks();
-            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + 16) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
+            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + 40) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
         }
@@ -613,7 +613,6 @@ namespace Stratum.Server
                 if (made++ == 0) { sx = ax; sy = ay; sz = az; }
             }, ix, (int)Math.Floor(y), iz, st);
             foreach (var s in rest) p.Conn.Send(new Packet(Net.Msg.Give).Str(s.Item).U16(s.Count).U16(s.Wear));
-            if (rest.Count > 0) p.Conn.Send(SaidPacket("", "There was no room on the ground here: some things stayed with you."));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
         }
 
