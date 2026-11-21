@@ -87,6 +87,7 @@ namespace Stratum.Game
             _menus.Play = m => StartCoroutine(Enter(m));
             _menus.Create = (name, seed, creative, difficulty, kind, keep) => StartCoroutine(Enter(WorldStore.Create(name, WorldStore.SeedFrom(seed), creative, difficulty, kind, keep)));
             _menus.UseWorld = UsePack;
+            _menus.LookChanged = () => { BlockTextures.Repaint(); Icons.Rebuild(_blockMat); };
             _menus.ListBackups = WorldStore.Backups;
             _menus.Restore = WorldStore.Restore;
             _menus.Delete = WorldStore.Delete;

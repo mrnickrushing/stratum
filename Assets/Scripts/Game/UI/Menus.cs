@@ -226,11 +226,12 @@ namespace Stratum.Game
             _kindBtn = UIKit.Button(card.transform, "World: Normal", () =>
             {
                 // The single-biome worlds share one stop here; the button beside it picks the biome.
-                int first = (int)Core.WorldGen.FirstOnly, n = first + 1;
+                // After those come the four hand-built adventure worlds.
+                int first = (int)Core.WorldGen.FirstOnly, builds = (int)Core.WorldKind.Town - (int)Core.WorldKind.Castle + 1, n = first + 1 + builds;
                 bool back = UnityEngine.InputSystem.Keyboard.current?.shiftKey.isPressed == true;
-                int at = Core.WorldGen.IsOnly(_newKind) ? first : (int)_newKind;
+                int at = Core.WorldGen.IsOnly(_newKind) ? first : Core.Builds.Is(_newKind) ? first + 1 + ((int)_newKind - (int)Core.WorldKind.Castle) : (int)_newKind;
                 at = (at + (back ? n - 1 : 1)) % n;
-                _newKind = at == first ? _lastOnly : (Core.WorldKind)at;
+                _newKind = at == first ? _lastOnly : at > first ? (Core.WorldKind)((int)Core.WorldKind.Castle + at - first - 1) : (Core.WorldKind)at;
                 UpdateMode();
             }, 28);
             ((RectTransform)_kindBtn.transform).Place(0, 1, 70, -378, 760, 68);
@@ -440,7 +441,7 @@ namespace Stratum.Game
 
         public void HideAll()
         {
-            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups, _extras, _controls }) g.SetActive(false);
+            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups, _extras, _controls, _maker }) g.SetActive(false);
             _shade.gameObject.SetActive(false);
         }
 

@@ -261,6 +261,9 @@ namespace Stratum.Server
             int features = r.More ? r.I32() : 0;                                  // 1: knows the themed world kinds (0.4)
             int outfit = r.More ? r.U8() : 0;                                     // 0.6: the outfit others see them in
             byte[] sealedLogin = r.More ? r.Blob() : null;                        // 0.8: the password and invite, sealed to this server
+            if (sealedLogin != null && sealedLogin.Length == 0) sealedLogin = null;
+            byte[] look = r.More ? r.Blob() : null;                               // 0.12: an outfit made piece by piece
+            if (look != null && (look.Length == 0 || look.Length > 32)) look = null;
             byte[] loginKey = null;
             if (sealedLogin != null)
             {
@@ -280,7 +283,7 @@ namespace Stratum.Server
                 if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
                 // The remember-me token goes back hidden with the key the game chose for this login.
                 if (res.Ok && loginKey != null && !string.IsNullOrEmpty(res.Token)) res = new Accounts.Result(null, res.Name, res.Key, Secure.SealText(loginKey, res.Token));
-                _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit));
+                _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit, look));
             });
         }
 
@@ -290,7 +293,7 @@ namespace Stratum.Server
         public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
-        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit)
+        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit, byte[] look = null)
         {
             if (!_pending.TryGetValue(p.Conn.Id, out var still) || still != p) return;    // gone meanwhile
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
@@ -307,7 +310,7 @@ namespace Stratum.Server
             long order = ++_order;
             foreach (var w in Worlds) if (w != host) w.Drop(res.Key, order);
             _pending.Remove(p.Conn.Id);
-            host.Adopt(p.Conn, res, mode, version, outfit, order, features);
+            host.Adopt(p.Conn, res, mode, version, outfit, order, features, look);
         }
     }
 }

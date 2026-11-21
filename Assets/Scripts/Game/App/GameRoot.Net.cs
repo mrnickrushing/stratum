@@ -129,10 +129,10 @@ namespace Stratum.Game
                 byte[] sealedLogin;
                 try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
                 catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
-                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(sealedLogin);
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             }
             else   // a server from before 0.8 has no key to seal to
-                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit);
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             net.Send(hello);
 
             Reader welcome = null; t = 0;
@@ -376,7 +376,8 @@ namespace Stratum.Game
                     int id = r.I32(); string name = r.Str();
                     var p = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32();
                     int outfit = r.More ? r.U8() : 0;               // 0.6: what they're wearing
-                    if (id != _myId) _avatars.Add(id, name, p, yaw, outfit);
+                    byte[] made = r.More ? r.Blob() : null;         // 0.12: an outfit made piece by piece
+                    if (id != _myId) _avatars.Add(id, name, p, yaw, outfit, made);
                     _online = _avatars.Count + 1;
                     break;
                 }
