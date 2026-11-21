@@ -48,6 +48,7 @@ namespace Stratum.Game
             if (!Directory.Exists(Root)) return list;
             foreach (var dir in Directory.GetDirectories(Root))
             {
+                if (dir.EndsWith(".new") || dir.EndsWith(".old")) continue;       // a restore's working copies
                 var f = Path.Combine(dir, "world.json");
                 if (!File.Exists(f)) continue;
                 try
@@ -136,19 +137,28 @@ namespace Stratum.Game
         // Puts a backup in the world's place. The world as it is now is backed up first, so this can be undone.
         public static bool Restore(WorldMeta m, BackupInfo b)
         {
+            string staged = m?.Folder + ".new";
             try
             {
                 if (m?.Folder == null || !m.Folder.StartsWith(Root) || !Directory.Exists(b.Path)) return false;
+                // The chosen backup is copied out first: saving the world as it is now may push the oldest backup
+                // off the end of the list, and that can be the very one being restored.
+                CopyDir(b.Path, staged);
+                if (!File.Exists(Path.Combine(staged, "world.json"))) { Directory.Delete(staged, true); return false; }
                 Backup(m, true);
                 var old = m.Folder + ".old";
                 if (Directory.Exists(old)) Directory.Delete(old, true);
-                CopyDir(b.Path, m.Folder + ".new");
                 Directory.Move(m.Folder, old);
-                Directory.Move(m.Folder + ".new", m.Folder);
+                Directory.Move(staged, m.Folder);
                 Directory.Delete(old, true);
                 return true;
             }
-            catch (Exception e) { Debug.LogWarning("restore failed: " + e.Message); return false; }
+            catch (Exception e)
+            {
+                Debug.LogWarning("restore failed: " + e.Message);
+                try { if (staged != null && Directory.Exists(staged)) Directory.Delete(staged, true); } catch { }
+                return false;
+            }
         }
 
         static void CopyDir(string from, string to)

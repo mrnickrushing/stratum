@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Stratum.Core;
 using UnityEngine;
@@ -239,6 +240,12 @@ namespace Stratum.Game
                 var s = meta.slots[i];
                 if (!string.IsNullOrEmpty(s.item) && s.count > 0 && Items.Get(s.item) != null) _player.Inv.Slots[i] = new Core.Stack(s.item, s.count) { Wear = s.wear };
             }
+            _looseBack.Clear();
+            for (int i = Inventory.Size; i < meta.slots.Count && i < Inventory.Size + MaxLoose; i++)
+            {
+                var s = meta.slots[i];
+                if (!string.IsNullOrEmpty(s.item) && s.count > 0 && Items.Get(s.item) != null) _looseBack.Add(new Core.Stack(s.item, s.count) { Wear = s.wear });
+            }
             if (!meta.hasPlayer && meta.creative) StarterCreative(_player.Inv);
             _player.Died = OnDied;
             _player.InputEnabled = false;
@@ -309,6 +316,7 @@ namespace Stratum.Game
         {
             var kb = Keyboard.current;
             if (Online && _state != State.Loading) PumpNet();
+            if (_looseBack.Count > 0 && _state == State.Playing) ReturnLoose();
             switch (_state)
             {
                 case State.Title:
@@ -479,10 +487,35 @@ namespace Stratum.Game
         {
             var a = (Core.Stack[])_player.Inv.Slots.Clone();
             if (_hud == null) return a;
+            List<Core.Stack> over = null;
             foreach (var s in _hud.Loose())
-                for (int k = 0; k < Inventory.Main; k++) if (a[k].Empty) { a[k] = s; break; }
-            return a;
+            {
+                bool put = false;
+                for (int k = 0; k < Inventory.Main && !put; k++) if (a[k].Empty) { a[k] = s; put = true; }
+                if (!put) (over ??= new List<Core.Stack>()).Add(s);
+            }
+            if (over == null) return a;
+            // No free slot for these: they follow the pack's own slots in the save and come back on loading.
+            if (over.Count > MaxLoose) over.RemoveRange(MaxLoose, over.Count - MaxLoose);
+            var all = new Core.Stack[a.Length + over.Count];
+            Array.Copy(a, all, a.Length); over.CopyTo(all, a.Length);
+            return all;
         }
+
+        public const int MaxLoose = 16;        // the cursor, two station slots and nine squares, with room to spare
+        readonly List<Core.Stack> _looseBack = new List<Core.Stack>();
+
+        // Things a save recorded beyond the pack (held by the cursor, a station or the grid when it was written):
+        // back into the pack if there's room now, else into a satchel at the player's feet.
+        void ReturnLoose()
+        {
+            if (_looseBack.Count == 0 || _link == null || _player == null) return;
+            foreach (var s in _looseBack) Give(s.Item, s.Count, s.Wear);
+            _looseBack.Clear();
+            _hud.Toast("What you were holding is back with you");
+            if (Online) SendKeep(); else Save();
+        }
+
 
         void Save()
         {

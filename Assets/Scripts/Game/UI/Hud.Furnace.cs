@@ -62,9 +62,10 @@ namespace Stratum.Game
             string note;
             var input = _box[Smelting.In];
             if (input.Empty) note = "Put ore, sand, clay, cobblestone, raw meat or a log in the top slot.";
-            else if (!Smelting.Result(input.Item, out var o, out _, out int need)) note = $"{Items.Get(input.Item)?.Name} can't be smelted.";
+            else if (!Smelting.Result(input.Item, out var o, out int cnt, out int need)) note = $"{Items.Get(input.Item)?.Name} can't be smelted.";
             else if (input.Count < need) note = $"That takes {need} {Items.Get(input.Item)?.Name} at a time.";
             else if (!_box[Smelting.Out].Empty && _box[Smelting.Out].Item != o) note = "Take what's done first: there's no room for the next thing.";
+            else if (!_box[Smelting.Out].Empty && _box[Smelting.Out].Count + cnt > (Items.Get(o)?.MaxStack ?? 64)) note = "The result slot is full. Take some out and it carries on.";
             else if (fire <= 0 && _box[Smelting.Fuel].Empty) note = "It needs fuel: coal, a log, planks or sticks.";
             else if (fire <= 0 && Smelting.FuelTicks(_box[Smelting.Fuel].Item) == 0) note = $"{Items.Get(_box[Smelting.Fuel].Item)?.Name} doesn't burn.";
             else note = $"Making {Items.Get(o)?.Name}...";

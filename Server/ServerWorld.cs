@@ -238,7 +238,7 @@ namespace Stratum.Server
 
         public Stack[] Stacks()
         {
-            var a = new Stack[Inventory.Size];
+            var a = new Stack[Math.Clamp(slots.Count, Inventory.Size, Inventory.Size + 16)];
             for (int i = 0; i < a.Length && i < slots.Count; i++)
             {
                 var s = slots[i];

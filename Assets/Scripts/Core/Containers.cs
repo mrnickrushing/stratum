@@ -110,7 +110,7 @@ namespace Stratum.Core
                 for (int j = 0; j < slots; j++)
                 {
                     string item = r.ReadString(); int count = r.ReadUInt16(); int wear = r.ReadUInt16();
-                    if (item.Length > 0 && count > 0 && Items.Get(item) != null) a[j] = new Stack(item, count) { Wear = wear };
+                    if (item.Length > 0 && count > 0 && (Items.Get(item) != null || Smelting.Hidden(item))) a[j] = new Stack(item, count) { Wear = wear };
                 }
                 _boxes[k] = a;
             }

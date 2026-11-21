@@ -283,6 +283,19 @@ namespace Stratum.Server
                 boxes.Set(1, 2, 3, Smelting.In, new Stack("sand", 1)); boxes.Set(1, 2, 3, Smelting.Fuel, new Stack("stick", 4)); fs.Wake(1, 2, 3);
                 for (int i = 0; i < 300; i++) fs.Tick(0.1f);
                 Check(boxes.At(1, 2, 3)[Smelting.Out].Item == "glass" && fs.Active == 0 && boxes.At(1, 2, 3)[Smelting.Fuel].Count == 2, "a furnace left alone finishes, uses only the fuel it needs, and rests");
+                // Saved part-way through and loaded again: the fire and the progress are still there, and it finishes.
+                var b2 = new Containers(); var f2 = new Furnaces(b2);
+                b2.Set(4, 5, 6, Smelting.In, new Stack("iron_ore", 3)); b2.Set(4, 5, 6, Smelting.Fuel, new Stack("coal", 1)); f2.Wake(4, 5, 6);
+                for (int i = 0; i < 20; i++) f2.Tick(0.1f);
+                var was = b2.At(4, 5, 6); int burnWas = was[Smelting.Burn].Count, cookWas = was[Smelting.Cook].Count;
+                Directory.CreateDirectory(dir); string file = Path.Combine(dir, "furnace-test.bin"); b2.Save(file);
+                var b3 = new Containers(); b3.Load(file); var f3 = new Furnaces(b3); f3.WakeSaved();
+                var now = b3.At(4, 5, 6);
+                Check(burnWas > 600 && cookWas == 20 && now[Smelting.Burn].Count == burnWas && now[Smelting.Burn].Wear == Smelting.CookTicks * 8 && now[Smelting.Cook].Count == cookWas && f3.Active == 1,
+                      $"a burning furnace is still burning after a save and reload ({now[Smelting.Burn].Count} of {burnWas} burn, {now[Smelting.Cook].Count} of {cookWas} done)");
+                for (int i = 0; i < 3000; i++) f3.Tick(0.1f);
+                Check(b3.At(4, 5, 6)[Smelting.Out].Count == 3 && b3.At(4, 5, 6)[Smelting.Fuel].Empty, "and finishes on the coal it had already lit");
+                File.Delete(file);
             }
 
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
@@ -394,7 +407,8 @@ namespace Stratum.Server
                 using (var a = new Bot(srv.Port))
                 {
                     a.Login("Ada", "ada-password");
-                    Check(a.Welcome() && !a.Creative && a.Seed == 20261119, "a client that can't choose goes to the first world");
+                    bool got = a.Welcome();
+                    Check(got && !a.Creative && a.Seed == 20261119, $"a client that can't choose goes to the first world (welcome {got}, creative {a.Creative}, seed {a.Seed}, said: {(got ? "" : a.Refused(200))})");
                 }
                 using (var a = new Bot(srv.Port))
                 {
@@ -443,7 +457,7 @@ namespace Stratum.Server
         {
             var dir = Path.Combine(Path.GetTempPath(), "stratum-selftest-" + Guid.NewGuid().ToString("N").Substring(0, 8));
             var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, Name = "Test Server", MaxPlayers = 3 };
-            Log.Quiet = true;
+            Log.Quiet = Environment.GetEnvironmentVariable("STRATUM_TEST_LOG") != "1";
             try
             {
                 var srv = new GameServer(cfg); srv.Start();
@@ -501,6 +515,7 @@ namespace Stratum.Server
                     a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)));
                     b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(Stack.None));      // Bea can't empty it from outside
                     a.Send(new Packet(Net.Msg.CloseBox));
+                    Thread.Sleep(200);          // two connections: let Ada's close land before Bea asks
                     b.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     var bbox = b.Wait(Net.Msg.Box); Stack[] inBox = null;
                     if (bbox != null) { bbox.I32(); bbox.I32(); bbox.I32(); inBox = bbox.Stacks(); }
@@ -569,7 +584,9 @@ namespace Stratum.Server
                     a.Move(ax, ay, az);
                     Check(b.Wait(Net.Msg.Moved, r => r.I32() == a.Id && Math.Abs(r.F32() - ax) < 0.01f) != null, "Bea sees Ada move");
 
-                    var inv = new Stack[Inventory.Size]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
+                    // Her pack, and after it two things she was holding in the cursor and the crafting grid with no free slot.
+                    var inv = new Stack[Inventory.Size + 2]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
+                    inv[Inventory.Size] = new Stack("iron_pickaxe", 1) { Wear = 30 }; inv[Inventory.Size + 1] = new Stack("coal", 4);
                     a.Send(new Packet(Net.Msg.Keep).F32(17).F32(12).F32(3).U8(3).Stacks(inv).Bool(true).I32(px).I32(py).I32(pz).I32(7).I32(3));
 
                     using (var c = new Bot(port)) { c.Create("ada", "another-pass"); Check(c.Refused()?.Contains("already an account") == true, "nobody can make a second account called ada"); }
@@ -593,8 +610,10 @@ namespace Stratum.Server
                     bool w = a.Welcome();
                     Check(w && a.Token == "", "after a restart Ada gets in with her remember-me token (no invite needed to log in)");
                     Check(w && a.HasPos && Math.Abs(a.X - ax) < 0.01f && Math.Abs(a.Z - az) < 0.01f, "and is where she stood");
-                    Check(w && a.Slots.Length == Inventory.Size && a.Slots[0].Item == "cobble" && a.Slots[0].Count == 5 && a.Slots[3].Count == 12,
+                    Check(w && a.Slots.Length == Inventory.Size + 2 && a.Slots[0].Item == "cobble" && a.Slots[0].Count == 5 && a.Slots[3].Count == 12,
                           "and her backpack came back");
+                    Check(w && a.Slots.Length == Inventory.Size + 2 && a.Slots[Inventory.Size].Item == "iron_pickaxe" && a.Slots[Inventory.Size].Wear == 30 && a.Slots[Inventory.Size + 1].Count == 4,
+                          "with the things she was holding when her pack was full");
                     Check(w && Math.Abs(a.Food - 12) < 0.01f && a.HasBed && a.BX == px, "and so do her hunger and her bed");
                     Check(a.XpLevel == 7, "and her experience level");
                     a.Want(new[] { (px >> 4, pz >> 4) });

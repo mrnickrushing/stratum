@@ -163,7 +163,8 @@ namespace Stratum.Server
             {
                 try
                 {
-                    while (_opened.TryDequeue(out var c)) _pending[c.Id] = new Pending { Conn = c };
+                    // (A connection whose first message got here before it did is already on the list: see Handle.)
+                    while (_opened.TryDequeue(out var c)) if (!c.Routed && !_pending.ContainsKey(c.Id)) _pending[c.Id] = new Pending { Conn = c };
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) _pending.Remove(cl.c.Id);
                     while (_later.TryDequeue(out var a)) a();
@@ -199,7 +200,14 @@ namespace Stratum.Server
 
         void Handle(Connection c, byte[] frame)
         {
-            if (!_pending.TryGetValue(c.Id, out var p)) return;      // already in a world
+            if (!_pending.TryGetValue(c.Id, out var p))
+            {
+                if (c.Routed) return;                                // already in a world
+                // A game that says hello the moment it connects can be heard before the connection itself has
+                // come through the "opened" queue. It is still a new caller: take it on here, or the hello is lost
+                // and the player waits for an answer that never comes.
+                p = _pending[c.Id] = new Pending { Conn = c };
+            }
             Reader r;
             try { r = new Reader(frame); } catch { return; }
             try
@@ -239,6 +247,7 @@ namespace Stratum.Server
             });
         }
 
+        long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
@@ -254,9 +263,12 @@ namespace Stratum.Server
             // Coming back replaces the old session wherever it is; a full server only turns away someone new.
             int others = Worlds.Sum(w => w.OnlineExcept(res.Key));
             if (others >= _cfg.MaxPlayers) { Refuse(p.Conn, "The server is full."); return; }
-            foreach (var w in Worlds) if (w != host) w.Drop(res.Key);
+            // Each login gets a number. A world asked to end this account's older sessions ends only those with a
+            // lower number, so a slow "leave" from one login can't close the session a later login just opened there.
+            long order = ++_order;
+            foreach (var w in Worlds) if (w != host) w.Drop(res.Key, order);
             _pending.Remove(p.Conn.Id);
-            host.Adopt(p.Conn, res, mode, version, outfit);
+            host.Adopt(p.Conn, res, mode, version, outfit, order);
         }
     }
 }
