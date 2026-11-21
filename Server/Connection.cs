@@ -40,7 +40,8 @@ namespace Stratum.Server
         public bool Open => Volatile.Read(ref _closed) == 0;
 
         // Hands the connection to whoever handles it next (the front door, then a world).
-        public void Route(Action<Connection, byte[]> onFrame, Action<Connection, string> onClosed) { _onClosed = onClosed; _onFrame = onFrame; }
+        public volatile bool Routed;          // handed on from the front door to a world
+        public void Route(Action<Connection, byte[]> onFrame, Action<Connection, string> onClosed) { Routed = true; _onClosed = onClosed; _onFrame = onFrame; }
 
         public void Send(byte[] frame)
         {

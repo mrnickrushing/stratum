@@ -20,6 +20,7 @@ namespace Stratum.Server
         {
             public Connection Conn;
             public string Name, Key;
+            public long Order;                           // which login this session came from (GameServer numbers them)
             public byte Outfit;                          // what other players see them wearing (the game's Extras page)
             public PlayerRecord Rec;
             public bool Joined;
@@ -45,7 +46,7 @@ namespace Stratum.Server
         public readonly ServerWorld World;
         readonly ConcurrentQueue<(Connection c, byte[] f)> _inbox = new ConcurrentQueue<(Connection, byte[])>();
         readonly ConcurrentQueue<(Connection c, string why)> _closed = new ConcurrentQueue<(Connection, string)>();
-        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string, int)>();
+        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit, long order)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string, int, long)>();
         readonly GameServer _hub;
         public readonly WorldDef Def;
         readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
@@ -126,16 +127,16 @@ namespace Stratum.Server
         }
 
         // A logged-in player chose this world.
-        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit = 0)
+        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit = 0, long order = 0)
         {
             c.Route((cn, f) => _inbox.Enqueue((cn, f)), (cn, why) => _closed.Enqueue((cn, why)));
-            _arrivals.Enqueue((c, res, mode, version, outfit));
+            _arrivals.Enqueue((c, res, mode, version, outfit, order));
         }
 
         // The same account is coming in to another world: end its session here.
-        public void Drop(string key) => _later.Enqueue(() =>
+        public void Drop(string key, long before = long.MaxValue) => _later.Enqueue(() =>
         {
-            foreach (var o in _players.Values.ToList()) if (o.Joined && o.Key == key) o.Conn.Close("went to another world");
+            foreach (var o in _players.Values.ToList()) if (o.Joined && o.Key == key && o.Order < before) o.Conn.Close("went to another world");
         });
 
         // Saves everything and stops; returns when done.
@@ -161,7 +162,7 @@ namespace Stratum.Server
                 last = now;
                 try
                 {
-                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c, Outfit = (byte)Math.Clamp(a.outfit, 0, 255) }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
+                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c, Outfit = (byte)Math.Clamp(a.outfit, 0, 255), Order = a.order }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) Leave(cl.c, cl.why);
                     while (_later.TryDequeue(out var a)) a();
@@ -454,7 +455,7 @@ namespace Stratum.Server
             p.Rec.saturation = Math.Clamp(r.F32(), 0, 20);
             p.Rec.selected = r.U8();
             var st = r.Stacks();
-            if (st.Length == Inventory.Size) p.Rec.SetStacks(st);
+            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + 16) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
         }

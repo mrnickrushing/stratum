@@ -179,6 +179,9 @@ namespace Stratum.Game
             _player.Inv.Selected = Mathf.Clamp(selected, 0, 8);
             for (int i = 0; i < slots.Length && i < Inventory.Size; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _player.Inv.Slots[i] = slots[i];
+            _looseBack.Clear();
+            for (int i = Inventory.Size; i < slots.Length && i < Inventory.Size + MaxLoose; i++)
+                if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _looseBack.Add(slots[i]);
             if (!hasPos && creative) StarterCreative(_player.Inv);
             _player.Died = OnDied;
             _player.InputEnabled = false;
