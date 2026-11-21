@@ -53,7 +53,7 @@ namespace Stratum.Core
         public Column Sample(int x, int z)
         {
             if (Kind == WorldKind.Sky) return SkySample(x, z);
-            if (Kind == WorldKind.Flat) return new Column { Height = FlatTop, Temp = 0.15f, Humid = 0.1f };
+            if (Level) return new Column { Height = FlatTop, Temp = 0.15f, Humid = 0.1f };
             float fx = x + 0.5f, fz = z + 0.5f;
             bool tower = Kind == WorldKind.Towering, only = IsOnly(Kind);
             bool crags = Kind == WorldKind.Peaks || Kind == WorldKind.OnlyPeaks;
@@ -204,13 +204,14 @@ namespace Stratum.Core
                 }
 
             ch.MaxY = Math.Max(maxH, Chunk.SeaLevel);
-            if (Kind != WorldKind.Flat) Caves(ch, cols);
+            if (!Level) Caves(ch, cols);
             if (Kind == WorldKind.Towering) Overhangs(ch, cols);
             Ores(ch);
             Trees(ch, cols);
             Flora(ch, cols);
             int vbx = bx, vbz = bz;
-            Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
+            if (Builds.Is(Kind)) Builds.Stamp(ch, Kind);
+            else Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
             ch.RecalcMaxY();
             ch.Ready = true;
         }
@@ -419,6 +420,7 @@ namespace Stratum.Core
                     int wx = cx * Cell + (int)(h % Cell), wz = cz * Cell + (int)((h >> 4) % Cell);
                     int lx = wx - bx + M, lz = wz - bz + M;
                     if ((uint)lx >= W || (uint)lz >= W) continue;
+                    if (Builds.Is(Kind) && Builds.Near(Kind, wx, wz, 5)) continue;    // no trees cut in half at a build's edge
                     ref var col = ref cols[lx + lz * W];
                     var biome = BiomeOf(col);
                     float chance = biome switch
@@ -617,6 +619,7 @@ namespace Stratum.Core
         public (int x, int y, int z) FindSpawn()
         {
             if (Kind == WorldKind.Sky) return SkySpawn();
+            if (Builds.Is(Kind)) return Builds.Spawn(Kind);
             for (int ring = 0; ring < 4096; ring += 16)
                 for (int a = 0; a < 16; a++)
                 {

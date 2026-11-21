@@ -287,6 +287,7 @@ namespace Stratum.Server
         public const int KnowsTransfers = 4;    // 0.7.2: says what it saw in a slot before changing it (needed for furnaces)
         long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
+        public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
         void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit)
@@ -296,7 +297,7 @@ namespace Stratum.Server
             var host = Worlds.FirstOrDefault(w => w.Def.Id == world) ?? Worlds[0];
             // An older game would draw a themed world's land right but get its look and creatures wrong.
             var hk = host.World.Gen.Kind;
-            if (hk != WorldKind.Normal && (features & (hk > WorldKind.Flat ? KnowsTypes : KnowsKinds)) == 0)
+            if (hk != WorldKind.Normal && (features & (Builds.Is(hk) ? KnowsBuilds : hk > WorldKind.Flat ? KnowsTypes : KnowsKinds)) == 0)
             { Refuse(p.Conn, $"{host.Def.Name} needs the newest Stratum. Get it at stratum.rushingtechnologies.com"); return; }
             // Coming back replaces the old session wherever it is; a full server only turns away someone new.
             int others = Worlds.Sum(w => w.OnlineExcept(res.Key));

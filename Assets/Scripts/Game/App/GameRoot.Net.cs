@@ -129,10 +129,10 @@ namespace Stratum.Game
                 byte[] sealedLogin;
                 try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
                 catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
-                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit).Blob(sealedLogin);
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(sealedLogin);
             }
             else   // a server from before 0.8 has no key to seal to
-                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit);
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit);
             net.Send(hello);
 
             Reader welcome = null; t = 0;
