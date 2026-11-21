@@ -30,7 +30,7 @@ namespace Stratum.Core
                     bool wall = wx == X0 || wx == X1 - 1;
                     for (int y = 0; y <= Roof + 1; y++)
                     {
-                        byte id;
+                        ushort id;
                         uint h = Noise.Hash(wx, y, wz, seed);
                         if (y <= 1 || y == 2 && (h & 1) == 0 || y >= Roof || y == Roof - 1 && (h & 1) == 0 || wall) id = Blocks.Bedrock;
                         else
@@ -40,7 +40,7 @@ namespace Stratum.Core
                             float m = detail.Fbm3(wx * 0.05f + 3.3f, y * 0.06f, wz * 0.05f + 1.7f, 2) * 0.25f;
                             float t = (y - 70) / 58f;
                             float density = n + m + t * t * 0.95f - 0.3f + (y < LavaTop + 4 ? 0.08f : 0);
-                            id = density > 0 ? Blocks.Cinderstone : y <= LavaTop ? Blocks.Lava : (byte)0;
+                            id = density > 0 ? Blocks.Cinderstone : y <= LavaTop ? Blocks.Lava : (ushort)0;
                         }
                         b[x | (z << 4) | (y << 8)] = id;
                     }
@@ -123,7 +123,7 @@ namespace Stratum.Core
                 }
         }
 
-        static void Put(Chunk ch, int bx, int bz, int x, int y, int z, byte id)
+        static void Put(Chunk ch, int bx, int bz, int x, int y, int z, ushort id)
         {
             int lx = x - bx, lz = z - bz;
             if ((uint)lx >= 16 || (uint)lz >= 16 || (uint)y >= Chunk.Height) return;
@@ -170,7 +170,7 @@ namespace Stratum.Core
 
         // Right-clicking a fire striker beside an obsidian frame: fill the frame's inside with portal. The
         // inside must be air, at least 2 wide and 3 tall, at most 21 each way, with obsidian all round.
-        public static bool Light(Func<int, int, int, byte> get, Action<int, int, int, byte> set, int x, int y, int z)
+        public static bool Light(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set, int x, int y, int z)
         {
             for (int axis = 0; axis < 2; axis++)
             {
@@ -192,7 +192,7 @@ namespace Stratum.Core
                     {
                         var n = axis == 0 ? (cx + dx, cy + dy, cz) : (cx, cy + dy, cz + dx);
                         if (seen.Contains(n)) continue;
-                        byte id = get(n.Item1, n.Item2, n.Item3);
+                        ushort id = get(n.Item1, n.Item2, n.Item3);
                         if (id == Blocks.Obsidian) continue;
                         if (id != 0) { ok = false; break; }
                         seen.Add(n); q.Enqueue(n);
@@ -201,7 +201,7 @@ namespace Stratum.Core
                 if (!ok) continue;
                 int w = maxA - minA + 1, h = maxY - minY + 1;
                 if (w < 2 || h < 3 || cells.Count != w * h) continue;
-                byte portal = (byte)(Blocks.Portal + axis);
+                ushort portal = (ushort)(Blocks.Portal + axis);
                 foreach (var (cx, cy, cz) in cells) set(cx, cy, cz, portal);
                 return true;
             }
@@ -209,7 +209,7 @@ namespace Stratum.Core
         }
 
         // A frame broken: the portal in it goes out.
-        public static void Collapse(Func<int, int, int, byte> get, Action<int, int, int, byte> set, int x, int y, int z)
+        public static void Collapse(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set, int x, int y, int z)
         {
             var q = new Queue<(int, int, int)>();
             var seen = new HashSet<(int, int, int)>();
@@ -224,10 +224,10 @@ namespace Stratum.Core
             }
         }
 
-        public static bool IsPortal(byte id) => id != 0 && Blocks.Get(id).BaseId == Blocks.Portal;
+        public static bool IsPortal(ushort id) => id != 0 && Blocks.Get(id).BaseId == Blocks.Portal;
 
         // Arriving: a portal already near the spot, or a new one built there. Returns where to stand.
-        public static (float x, float y, float z) Arrive(Func<int, int, int, byte> get, Action<int, int, int, byte> set, int tx, int tz, bool toEmber, int surfaceY)
+        public static (float x, float y, float z) Arrive(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set, int tx, int tz, bool toEmber, int surfaceY)
         {
             // An existing portal close by?
             int R = toEmber ? 20 : 40;
@@ -243,7 +243,7 @@ namespace Stratum.Core
                     }
             if (best is (int px, int py, int pz))
             {
-                byte id = get(px, py, pz);
+                ushort id = get(px, py, pz);
                 int axis = id - Blocks.Portal;
                 // Stand just in front of it.
                 foreach (int side in new[] { -1, 1 })

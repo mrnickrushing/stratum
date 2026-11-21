@@ -195,7 +195,7 @@ namespace Stratum.Game
 
             _world = VoxelWorld.Create(seed, null, _blockMat, _waterMat, Mathf.Min(Settings.ViewDistance, _maxView), kind);
             _world.RequestChunks = SendWant;
-            _world.Edited += (x, y, z, old, id) => _net?.Send(new Packet(Net.Msg.SetBlock).I32(x).I32(y).I32(z).U8(id).U8(old));
+            _world.Edited += (x, y, z, old, id) => _net?.Send(new Packet(Net.Msg.SetBlock).I32(x).I32(y).I32(z).U16(id).U16(old));
             _sky.ViewDistanceMeters = _world.ViewDistance * 16;
             _sky.Frozen = false; _sky.Islands = kind == WorldKind.Sky;
             _sky.Time01 = (float)time; _sky.Day = Math.Max(1, day);
@@ -362,7 +362,7 @@ namespace Stratum.Game
                 }
                 case Net.Msg.Block:
                 {
-                    int x = r.I32(), y = r.I32(), z = r.I32(); byte id = r.U8(); int by = r.I32();
+                    int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(); int by = r.I32();
                     if (by == _myId) break;                    // our own edit coming back: already here
                     _world.ApplyRemote(x, y, z, id);
                     // The chest or furnace on screen has just been broken or replaced: what the screen shows is no
@@ -599,7 +599,7 @@ namespace Stratum.Game
                     for (int y = Chunk.Height - 1; y > 1; y--) if (_world.Get(mx, y, mz) == Blocks.Sunstone) { top = y; break; }
                     if (top < 0) yield return null;
                 }
-                byte id = top >= 0 ? Blocks.Sunstone : (byte)0;
+                ushort id = top >= 0 ? Blocks.Sunstone : (ushort)0;
                 SmokeNote($"pillar seen: {(top >= 0 ? $"sunstone up to y {top}" : "no")}");
                 for (float w = 0; w < 30 && _avatars.Count == 0; w += Time.unscaledDeltaTime) yield return null;
                 SmokeNote($"sees {_avatars.Count} other player(s): {string.Join(", ", _avatars.Names)}");

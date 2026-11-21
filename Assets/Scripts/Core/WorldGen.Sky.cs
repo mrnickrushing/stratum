@@ -229,7 +229,7 @@ namespace Stratum.Core
                     if (h > maxH) maxH = Math.Max(h, col.Water);
                     int wx = bx + x, wz = bz + z;
                     uint hh = Noise.Hash(wx, 0, wz, Seed);
-                    byte top, fill; int fillDepth = 3 + (int)(hh % 2);
+                    ushort top, fill; int fillDepth = 3 + (int)(hh % 2);
                     switch (biome)
                     {
                         case Biome.Desert: top = Blocks.Sand; fill = Blocks.Sand; fillDepth = 4; break;
@@ -247,7 +247,7 @@ namespace Stratum.Core
                     int ci = x | (z << 4);
                     for (int y = bot; y <= h && y < Chunk.Height; y++)
                     {
-                        byte id;
+                        ushort id;
                         if (y == h) id = top;
                         else if (y > h - fillDepth) id = fill;
                         else if (biome == Biome.Desert && y > h - fillDepth - 4) id = Blocks.Sandstone;
@@ -276,7 +276,7 @@ namespace Stratum.Core
                             int ox = x - bx, oz = z - bz;
                             if ((uint)ox >= 16 || (uint)oz >= 16 || (uint)y >= Chunk.Height) continue;
                             int i = ox | (oz << 4) | (y << 8);
-                            if (b[i] == Blocks.Stone || b[i] == Blocks.Slate) b[i] = y >= (int)ly + 1 ? (byte)0 : Blocks.Lava;
+                            if (b[i] == Blocks.Stone || b[i] == Blocks.Slate) b[i] = y >= (int)ly + 1 ? (ushort)0 : Blocks.Lava;
                         }
             }
 

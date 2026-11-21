@@ -413,14 +413,14 @@ namespace Stratum.Server
 
         void SetBlock(Player p, Reader r)
         {
-            int x = r.I32(), y = r.I32(), z = r.I32(); byte id = r.U8(), old = r.U8();
+            int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(), old = (ushort)r.U16();
             if (++p.Edits > 40) return;
             if (!World.IsLoaded(x, z) || (uint)y >= Chunk.Height) return;
-            byte cur = World.Get(x, y, z);
+            ushort cur = World.Get(x, y, z);
             // Edits must be in reach, of a real block, by a known rule, and agree on what was there.
             float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
             string why = dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2) ? $"out of reach ({Math.Sqrt(dx * dx + dy * dy + dz * dz):0.0} m)"
-                       : Blocks.Defs[id] == null ? $"no block {id}"
+                       : id >= Blocks.Max || Blocks.Defs[id] == null ? $"no block {id}"
                        : cur != old ? $"it was {Blocks.Get(cur).Name}, not {Blocks.Get(old).Name}"
                        : !_cfg.Creative && Blocks.Get(cur).Hardness < 0 && !(Blocks.Get(cur).Fluid != 0 && Blocks.Get(cur).Level == 0 && id == 0) ? "unbreakable"
                        : id != 0 && cur != 0 && !Blocks.Get(cur).Replaceable && !Blocks.Changes(cur, id) ? "something is in the way"
@@ -722,7 +722,7 @@ namespace Stratum.Server
             }
         }
 
-        static Packet BlockPacket(int x, int y, int z, byte id, int by) => new Packet(Net.Msg.Block).I32(x).I32(y).I32(z).U8(id).I32(by);
+        static Packet BlockPacket(int x, int y, int z, ushort id, int by) => new Packet(Net.Msg.Block).I32(x).I32(y).I32(z).U16(id).I32(by);
         Packet JoinedPacket(Player p) => new Packet(Net.Msg.Joined).I32(p.Conn.Id).Str(p.Name).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).U8(p.Outfit);
         Packet ClockPacket() => new Packet(Net.Msg.Clock).F64(World.Meta.time).I32(World.Meta.day).U8((byte)_weather.State);
         static Packet SaidPacket(string from, string text) => new Packet(Net.Msg.Said).Str(from).Str(text);

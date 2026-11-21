@@ -5,7 +5,7 @@ namespace Stratum.Game
 {
     // Paints every block face in code (no downloaded art): a 64-pixel colour layer and a normal layer per Tex,
     // tileable, with mipmaps. Grass, oak leaves and plants are painted pale so the biome tint colours them.
-    public static class BlockTextures
+    public static partial class BlockTextures
     {
         public static Texture2DArray Albedo, Normal;
         public static Color[] Average = new Color[(int)Tex.Count];
@@ -41,6 +41,7 @@ namespace Stratum.Game
         // Returns the bump strength for the normal map.
         static float Draw(Tex t, Paint p)
         {
+            if (t >= Tex.WoolOrange) return Building(t, p);
             switch (t)
             {
                 case Tex.Stone: Rock(p, Hex(0x85868a), Hex(0x6c6d72), 0.18f, true); return 2.5f;
@@ -563,9 +564,9 @@ namespace Stratum.Game
         }
 
         // Vertical oak boards in a frame; the upper half has a four-pane window (see-through).
-        static void Door(Paint p, bool upper)
+        static void Door(Paint p, bool upper) => Door(p, upper, Hex(0xa27a48), Hex(0x5e4126));
+        static void Door(Paint p, bool upper, Color oak, Color dark)
         {
-            Color oak = Hex(0xa27a48), dark = Hex(0x5e4126);
             for (int y = 0; y < 64; y++)
                 for (int x = 0; x < 64; x++)
                 {

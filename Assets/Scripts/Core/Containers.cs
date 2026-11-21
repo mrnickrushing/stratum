@@ -120,7 +120,7 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
         // Puts things into satchels at and around a place: a satchel already there is topped up, and when one is
         // full (MaxSlots) the rest goes into another beside it. `place` sets the satchel block. Returns whatever
         // found no room anywhere near, which the caller must hand back: nothing is thrown away here.
-        public List<Stack> Stash(Func<int, int, int, byte> get, Action<int, int, int> place, int x, int y, int z, IEnumerable<Stack> stacks)
+        public List<Stack> Stash(Func<int, int, int, ushort> get, Action<int, int, int> place, int x, int y, int z, IEnumerable<Stack> stacks)
         {
             var rest = Compact(stacks);
             var tried = new HashSet<long>();
@@ -264,14 +264,14 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
         static bool Empty(Stack[] a) { foreach (var s in a) if (!s.Empty) return false; return true; }
 
         // A free cell near a point for a satchel: air (or a plant) with something solid under it, nearest first.
-        public static (int x, int y, int z) SpotFor(Func<int, int, int, byte> get, int x, int y, int z)
+        public static (int x, int y, int z) SpotFor(Func<int, int, int, ushort> get, int x, int y, int z)
         {
             return SpotFor(get, x, y, z, null, out var at) ? at : (x, y, z);
         }
 
         // The same, also counting a satchel already lying there as a place (to add to), leaving out cells `skip`
         // names, and saying honestly when there is nowhere at all.
-        public static bool SpotFor(Func<int, int, int, byte> get, int x, int y, int z, Func<int, int, int, bool> skip, out (int x, int y, int z) at)
+        public static bool SpotFor(Func<int, int, int, ushort> get, int x, int y, int z, Func<int, int, int, bool> skip, out (int x, int y, int z) at)
         {
             at = (x, y, z);
             y = Math.Clamp(y, 1, Chunk.Height - 2);

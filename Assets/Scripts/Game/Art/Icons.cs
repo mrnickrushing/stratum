@@ -21,16 +21,16 @@ namespace Stratum.Game
         };
         public static readonly Color32 DefaultGrass = new Color32(102, 168, 61, 255);
 
-        static readonly Dictionary<byte, Mesh> _cache = new Dictionary<byte, Mesh>();
+        static readonly Dictionary<ushort, Mesh> _cache = new Dictionary<ushort, Mesh>();
 
         // A block as a mesh centred on the origin: a whole cube, or its boxes (a bed shows both halves, shrunk to fit).
-        public static Mesh Cube(byte id)
+        public static Mesh Cube(ushort id)
         {
             if (_cache.TryGetValue(id, out var m)) return m;
             var v = new List<Vector3>(); var n = new List<Vector3>(); var col = new List<Color32>();
             var uv0 = new List<Vector3>(); var uv1 = new List<Vector4>(); var tri = new List<int>();
-            var parts = new List<(byte id, Vector3 offset)> { (id, Vector3.zero) };
-            if (Blocks.Get(id).BaseId == Blocks.Bed) parts = new List<(byte, Vector3)> { ((byte)(Blocks.Bed + 0), new Vector3(0, 0, -0.5f)), ((byte)(Blocks.Bed + 1), new Vector3(0, 0, 0.5f)) };
+            var parts = new List<(ushort id, Vector3 offset)> { (id, Vector3.zero) };
+            if (Blocks.Get(id).BaseId == Blocks.Bed) parts = new List<(ushort, Vector3)> { ((ushort)(Blocks.Bed + 0), new Vector3(0, 0, -0.5f)), ((ushort)(Blocks.Bed + 1), new Vector3(0, 0, 0.5f)) };
             foreach (var (pid, off) in parts)
             {
                 var d = Blocks.Get(pid);
@@ -82,7 +82,7 @@ namespace Stratum.Game
             return m;
         }
 
-        public static bool IsFlat(byte id)
+        public static bool IsFlat(ushort id)
         {
             var d = Blocks.Get(id);
             return d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.FlatIcon;

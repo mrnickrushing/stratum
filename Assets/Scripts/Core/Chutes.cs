@@ -15,7 +15,7 @@ namespace Stratum.Core
         const float Every = 0.4f;                    // seconds between moves
 
         readonly Containers _boxes;
-        readonly Func<int, int, int, byte> _get;
+        readonly Func<int, int, int, ushort> _get;
         readonly Func<int, int, bool> _loaded;
         readonly HashSet<long> _all = new HashSet<long>();
         readonly List<long> _order = new List<long>();
@@ -25,7 +25,7 @@ namespace Stratum.Core
         public Action<int, int, int> Fed;                     // a furnace was given something: wake it
         public int Count => _all.Count;
 
-        public Chutes(Containers boxes, Func<int, int, int, byte> get, Func<int, int, bool> loaded) { _boxes = boxes; _get = get; _loaded = loaded; }
+        public Chutes(Containers boxes, Func<int, int, int, ushort> get, Func<int, int, bool> loaded) { _boxes = boxes; _get = get; _loaded = loaded; }
 
         // A chute was put down here.
         public void Add(int x, int y, int z)
@@ -50,7 +50,7 @@ namespace Stratum.Core
         }
 
         // Which slots of a container a chute may put this item into from above (lo..hi), or false.
-        static bool Into(byte block, string item, out int lo, out int hi)
+        static bool Into(ushort block, string item, out int lo, out int hi)
         {
             lo = hi = -1;
             var d = Blocks.Get(block);
@@ -67,7 +67,7 @@ namespace Stratum.Core
         }
 
         // Which slots of a container a chute underneath may take from.
-        static bool OutOf(byte block, out int lo, out int hi)
+        static bool OutOf(ushort block, out int lo, out int hi)
         {
             lo = hi = -1;
             var d = Blocks.Get(block);
@@ -109,7 +109,7 @@ namespace Stratum.Core
                 if (_get(x, y, z) != Blocks.Chute || !_boxes.TryGet(k, out var a)) { _all.Remove(k); continue; }
 
                 // Down: the first thing it holds, into what's underneath.
-                byte below = _get(x, y - 1, z);
+                ushort below = _get(x, y - 1, z);
                 for (int i = 0; i < Slots; i++)
                 {
                     var s = a[i];
@@ -124,7 +124,7 @@ namespace Stratum.Core
                 }
 
                 // In: one thing from what's on top.
-                byte above = _get(x, y + 1, z);
+                ushort above = _get(x, y + 1, z);
                 if (OutOf(above, out int slo, out int shi) && _boxes.Has(x, y + 1, z))
                 {
                     var sb = _boxes.At(x, y + 1, z);

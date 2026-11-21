@@ -1,0 +1,17 @@
+{
+  "accounts": [
+    {
+      "name": "Tester",
+      "salt": "R94MMMUfoMK54BGFBTgBtg==",
+      "hash": "SWbcnbbygXIIaa0HbVd5xfNfskcTlTJbeAZoOMgoWeg=",
+      "created": 639308882831167654,
+      "lastLogin": 639308882831167654,
+      "tokens": [
+        "86990b19b62a6b2268de81e72c16f8b4ccbe792a5b9b6362132ba5f0d34eac8e"
+      ],
+      "fails": 0,
+      "lockedUntil": 0
+    }
+  ],
+  "appliedReset": ""
+}

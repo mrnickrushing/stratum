@@ -39,9 +39,9 @@ namespace Stratum.Game
         public Action<List<(int x, int z)>> RequestChunks;
         public bool Remote => RequestChunks != null;
         // Edits the player made here (not those the server sent), for the client to pass on.
-        public event Action<int, int, int, byte, byte> Edited;
+        public event Action<int, int, int, ushort, ushort> Edited;
         readonly List<(int x, int z)> _want = new List<(int, int)>();
-        readonly List<(int x, int y, int z, byte id)> _early = new List<(int, int, int, byte)>();
+        readonly List<(int x, int y, int z, ushort id)> _early = new List<(int, int, int, ushort)>();
         Water _waterSim;
         public Growth Growth;
         public Signal Signal;
@@ -235,7 +235,7 @@ namespace Stratum.Game
         }
 
         // A block the server says changed. Edits to a chunk still on its way wait until it has arrived.
-        public void ApplyRemote(int x, int y, int z, byte id)
+        public void ApplyRemote(int x, int y, int z, ushort id)
         {
             var s = SlotAt(x, z);
             if (s == null) return;                                        // not loaded: we'll get it whole later
@@ -426,7 +426,7 @@ namespace Stratum.Game
         // ------------------------------------------------------------------ blocks
 
         // The highest thing in a column that isn't air (for maps); false if that column isn't here yet.
-        public bool Top(int x, int z, out int y, out byte id)
+        public bool Top(int x, int z, out int y, out ushort id)
         {
             y = 0; id = 0;
             var s = SlotAt(x, z);
@@ -434,7 +434,7 @@ namespace Stratum.Game
             var b = s.Chunk.Blocks; int lx = x & 15, lz = z & 15;
             for (int yy = Mathf.Min(Chunk.Height - 1, s.Chunk.MaxY); yy >= 0; yy--)
             {
-                byte v = b[Chunk.Index(lx, yy, lz)];
+                ushort v = b[Chunk.Index(lx, yy, lz)];
                 if (v == 0 || Blocks.Get(v).Shape == Shape.Cross || Blocks.Get(v).Shape == Shape.Torch) continue;
                 y = yy; id = v; return true;
             }
@@ -447,7 +447,7 @@ namespace Stratum.Game
 
         public bool IsMeshed(int x, int z) { var s = SlotAt(x, z); return s != null && s.HasMesh; }
 
-        public byte Get(int x, int y, int z)
+        public ushort Get(int x, int y, int z)
         {
             if ((uint)y >= Chunk.Height) return 0;
             var s = SlotAt(x, z);
@@ -479,15 +479,15 @@ namespace Stratum.Game
             return Blocks.Get(s.Chunk.Blocks[(x & 15) | ((z & 15) << 4) | (y << 8)]).Solid;
         }
 
-        public event Action<int, int, int, byte, byte> Changed;
+        public event Action<int, int, int, ushort, ushort> Changed;
 
-        public bool Set(int x, int y, int z, byte id)
+        public bool Set(int x, int y, int z, ushort id)
         {
             if ((uint)y >= Chunk.Height) return false;
             var s = SlotAt(x, z);
             if (s == null || !s.Chunk.Ready) return false;
             int lx = x & 15, lz = z & 15;
-            byte old = s.Chunk.Get(lx, y, lz);
+            ushort old = s.Chunk.Get(lx, y, lz);
             if (old == id) return false;
             s.Chunk.Set(lx, y, lz, id);
             if (id == 0 && y == s.Chunk.MaxY) s.Chunk.RecalcMaxY();
@@ -510,7 +510,7 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ water filling holes
 
-        void SetWater(int x, int y, int z, byte id)
+        void SetWater(int x, int y, int z, ushort id)
         {
             var s = SlotAt(x, z);
             if (s == null || !s.Chunk.Ready) return;

@@ -132,14 +132,14 @@ namespace Stratum.Server
             Send(p);
         }
 
-        public byte BlockAt(int x, int y, int z)
+        public ushort BlockAt(int x, int y, int z)
         {
-            if (!Chunks.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var data)) return 255;
-            var b = new byte[Chunk.Volume]; Net.Decompress(data, b);
+            if (!Chunks.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var data)) return 65535;
+            var b = new ushort[Chunk.Volume]; Net.Decompress(data, b);
             return b[Chunk.Index(x & 15, y, z & 15)];
         }
 
-        public int Top(int x, int z) { for (int y = Chunk.Height - 1; y > 0; y--) { byte b = BlockAt(x, y, z); if (b != 0 && b != 255) return y; } return 0; }
+        public int Top(int x, int z) { for (int y = Chunk.Height - 1; y > 0; y--) { ushort b = BlockAt(x, y, z); if (b != 0 && b != 65535) return y; } return 0; }
 
         public void Dispose() { try { _tcp.Close(); } catch { } }
     }
@@ -150,7 +150,7 @@ namespace Stratum.Server
         // Themed worlds: what their land is like, and how the server hands them out.
         static void KindChecks(string dir)
         {
-            byte Top(Chunk c, int x, int z, out int y) { for (y = Chunk.Height - 1; y > 0; y--) { byte b = c.Get(x, y, z); if (b != 0) return b; } return 0; }
+            ushort Top(Chunk c, int x, int z, out int y) { for (y = Chunk.Height - 1; y > 0; y--) { ushort b = c.Get(x, y, z); if (b != 0) return b; } return 0; }
             Chunk Make(WorldGen g, int cx, int cz) { var c = new Chunk(cx, cz); g.Generate(c); return c; }
 
             var sky = new WorldGen(4242, WorldKind.Sky);
@@ -166,7 +166,7 @@ namespace Stratum.Server
             int water = 0, leaks = 0, lava = 0, lavaLeaks = 0, islands = 0, voidCols = 0, ores = 0;
             var chunks = new Dictionary<(int, int), Chunk>();
             for (int cz = -6; cz <= 6; cz++) for (int cx = -6; cx <= 6; cx++) chunks[(cx, cz)] = Make(sky, cx, cz);
-            byte At(int x, int y, int z) => (uint)y >= Chunk.Height ? (byte)0 : chunks.TryGetValue((x >> 4, z >> 4), out var c) ? c.Get(x & 15, y, z & 15) : (byte)255;
+            ushort At(int x, int y, int z) => (uint)y >= Chunk.Height ? (ushort)0 : chunks.TryGetValue((x >> 4, z >> 4), out var c) ? c.Get(x & 15, y, z & 15) : (ushort)65535;
             foreach (var kv in chunks)
             {
                 var c = kv.Value; int bx = c.X * 16, bz = c.Z * 16;
@@ -175,15 +175,15 @@ namespace Stratum.Server
                     if (Top(c, x, z, out _) == 0) voidCols++; else islands++;
                     for (int y = 1; y < Chunk.Height - 1; y++)
                     {
-                        byte b = c.Get(x, y, z);
+                        ushort b = c.Get(x, y, z);
                         if (b == Blocks.CoalOre || b == Blocks.IronOre || b == Blocks.GoldOre || b == Blocks.CopperOre) ores++;
                         if (b != Blocks.Water && b != Blocks.Lava) continue;
                         int wx = bx + x, wz = bz + z;
                         bool lv = b == Blocks.Lava; if (lv) lava++; else water++;
                         foreach (var (dx, dy, dz) in new[] { (1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1), (0, -1, 0) })
                         {
-                            byte n = At(wx + dx, y + dy, wz + dz);
-                            if (n == 255 || n == b || n == Blocks.Ice || Blocks.Get(n).Solid) continue;
+                            ushort n = At(wx + dx, y + dy, wz + dz);
+                            if (n == 65535 || n == b || n == Blocks.Ice || Blocks.Get(n).Solid) continue;
                             if (lv && n == 0 && dy == 0 && At(wx + dx, y - 1, wz + dz) != 0) continue;   // the air pocket above the lava
                             if (lv) lavaLeaks++; else leaks++;
                         }
@@ -207,7 +207,7 @@ namespace Stratum.Server
                 var c = Make(frozen, cx * 3, cz * 3);
                 for (int z = 0; z < 16; z++) for (int x = 0; x < 16; x++)
                 {
-                    byte t = c.Get(x, Chunk.SeaLevel, z), top = Top(c, x, z, out _);
+                    ushort t = c.Get(x, Chunk.SeaLevel, z), top = Top(c, x, z, out _);
                     if (t == Blocks.Ice) seaIce++; else if (t == Blocks.Water && c.Get(x, Chunk.SeaLevel + 1, z) == 0) seaWater++;
                     if (top == Blocks.SnowyGrass || top == Blocks.Snow || top == Blocks.PineNeedles) snow++; else if (top == Blocks.Grass) grass++;
                 }
@@ -238,7 +238,7 @@ namespace Stratum.Server
                     bool gap = false;
                     for (int y = ty - 1; y > 88; y--)
                     {
-                        byte b = c.Get(x, y, z), up = c.Get(x, y + 1, z);
+                        ushort b = c.Get(x, y, z), up = c.Get(x, y + 1, z);
                         if (b == 0 && Blocks.Get(up).Solid && !Blocks.Get(up).Sway) gap = true;                                  // rock with air beneath it
                         if ((b == Blocks.Sand || b == Blocks.Gravel) && c.Get(x, y - 1, z) == 0) floaters++;
                         if (up == 0 && c.Get(x, y + 2, z) == 0 && c.Get(x, y + 3, z) == 0 && y < ty - 3) { if (b == Blocks.Grass || b == Blocks.SnowyGrass || b == Blocks.Sand) turfed++; else if (b == Blocks.Dirt) bare++; }
@@ -273,7 +273,7 @@ namespace Stratum.Server
             var frost = Make(new WorldGen(31 + (int)WorldKind.OnlyFrost, WorldKind.OnlyFrost), 0, 0); var oak = new WorldGen(5, WorldKind.OnlyOakwood); int logs = 0;
             for (int cz = 0; cz < 4; cz++) for (int cx = 0; cx < 4; cx++) { var c = Make(oak, cx, cz); for (int i = 0; i < c.Blocks.Length; i++) if (c.Blocks[i] == Blocks.OakLog) logs++; }
             Check(logs > 150, $"All Oakwood is wooded ({logs} oak logs in 16 chunks)");
-            Console.WriteLine($"INFO block numbers used: {Blocks.Count} of 255, textures: {(int)Tex.Count}");
+            Console.WriteLine($"INFO block numbers used: {Blocks.Count} of {Blocks.Max}, textures: {(int)Tex.Count}");
             Check(WorldGen.ParseKind("towering") == WorldKind.Towering && WorldGen.ParseKind("vast") == WorldKind.Vast && WorldGen.ParseKind("islands") == WorldKind.Islands, "the other kinds still parse");
 
             // Furnaces: fuel, time and room for the result.
@@ -336,10 +336,26 @@ namespace Stratum.Server
                 Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
                 Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
 
+                // Block numbers are two bytes now; a chunk file from before (one byte a block) still loads as it was.
+                {
+                    var old = new byte[Chunk.Volume];
+                    old[Chunk.Index(3, 70, 5)] = (byte)Blocks.Stone; old[Chunk.Index(4, 70, 5)] = (byte)Blocks.Chest; old[Chunk.Index(0, 1, 0)] = 254;
+                    var ms1 = new MemoryStream();
+                    using (var z = new System.IO.Compression.DeflateStream(ms1, System.IO.Compression.CompressionLevel.Fastest, true)) z.Write(old, 0, old.Length);
+                    var c1 = new Chunk(0, 0); c1.Read(new MemoryStream(ms1.ToArray()));
+                    Check(c1.Get(3, 70, 5) == Blocks.Stone && c1.Get(4, 70, 5) == Blocks.Chest && c1.Get(0, 1, 0) == 254 && c1.Get(9, 9, 9) == 0 && c1.MaxY == 70, "a chunk saved before 0.11 (one byte a block) reads back block for block");
+                    c1.Set(7, 80, 7, 3000);                                  // a block number that needs two bytes
+                    var ms2 = new MemoryStream(); c1.Write(ms2);
+                    var c2 = new Chunk(0, 0); c2.Read(new MemoryStream(ms2.ToArray()));
+                    Check(c2.Get(7, 80, 7) == 3000 && c2.Get(3, 70, 5) == Blocks.Stone && c2.Blocks.AsSpan().SequenceEqual(c1.Blocks), "and saved again it keeps block numbers past 255");
+                    var c3 = new Chunk(0, 0); Net.Decompress(Net.Compress(c1.Blocks), c3.Blocks);
+                    Check(c3.Blocks.AsSpan().SequenceEqual(c1.Blocks), "the same goes for a chunk sent over the network");
+                }
+
                 // A chute: chest, chute, furnace, chute, chest in a column smelts a chestful by itself.
                 {
-                    var col = new Dictionary<(int, int, int), byte> { [(0, 14, 0)] = Blocks.Chest, [(0, 13, 0)] = Blocks.Chute, [(0, 12, 0)] = Blocks.Furnace, [(0, 11, 0)] = Blocks.Chute, [(0, 10, 0)] = Blocks.Chest };
-                    byte Col(int x, int y, int z) => col.TryGetValue((x, y, z), out var id) ? id : (byte)0;
+                    var col = new Dictionary<(int, int, int), ushort> { [(0, 14, 0)] = Blocks.Chest, [(0, 13, 0)] = Blocks.Chute, [(0, 12, 0)] = Blocks.Furnace, [(0, 11, 0)] = Blocks.Chute, [(0, 10, 0)] = Blocks.Chest };
+                    ushort Col(int x, int y, int z) => col.TryGetValue((x, y, z), out var id) ? id : (ushort)0;
                     var cb2 = new Containers(); var fur = new Furnaces(cb2);
                     var ch = new Chutes(cb2, Col, (x, z) => true) { Fed = fur.Wake };
                     ch.Add(0, 13, 0); ch.Add(0, 11, 0);
@@ -364,7 +380,7 @@ namespace Stratum.Server
                 // tool in hand, what the crafting grid makes, what a furnace does with fuel).
                 {
                     var inv = new Inventory(); string where = "";
-                    bool Mine(byte block, int times)
+                    bool Mine(ushort block, int times)
                     {
                         var def = Blocks.Get(block);
                         for (int i = 0; i < times; i++)
@@ -427,11 +443,11 @@ namespace Stratum.Server
 
                 // Light for monsters is the light players see: a torch behind a wall doesn't count on the dark side.
                 {
-                    var room = new Dictionary<(int, int, int), byte>();
+                    var room = new Dictionary<(int, int, int), ushort>();
                     for (int yy = 9; yy <= 14; yy++) for (int zz = -8; zz <= 8; zz++) for (int xx = -8; xx <= 8; xx++)
                         if (yy == 9 || yy == 14 || xx == 0 || Math.Abs(xx) == 8 || Math.Abs(zz) == 8) room[(xx, yy, zz)] = Blocks.Stone;      // a sealed hall with a wall down the middle
                     room[(-2, 10, 0)] = Blocks.Torch;
-                    var sim = new MobSim((xx, yy, zz) => room.TryGetValue((xx, yy, zz), out var id) ? id : (byte)0, 1);
+                    var sim = new MobSim((xx, yy, zz) => room.TryGetValue((xx, yy, zz), out var id) ? id : (ushort)0, 1);
                     int near = sim.BlockLight(-4, 10, 0), far = sim.BlockLight(2, 10, 0);
                     Check(near > 8 && far == 0, $"a torch lights its own side of a wall and not the other (lit side {near}, dark side {far})");
                     room.Remove((0, 10, 0)); room.Remove((0, 11, 0));                                 // a doorway
@@ -439,6 +455,19 @@ namespace Stratum.Server
                     Check(through > 3 && through < near, $"and through a doorway the light carries on ({through})");
                 }
 
+                {
+                    string missing = "";
+                    foreach (var rc in Items.Recipes)
+                    {
+                        if (Items.Get(rc.Out) == null) missing += " " + rc.Out;
+                        foreach (var (item, _) in rc.In) if (item[0] != '@' && Items.Get(item) == null) missing += " " + item;
+                    }
+                    Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
+                    int unmade = 0; string which = "";
+                    foreach (var id in Blocks.Palette)
+                        if (id >= Blocks.ByKey["orange_wool"] && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                    Check(unmade == 0, "every block of the 0.11 building set can be crafted" + which);
+                }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
                 {
                     int shaped = 0, wrong = 0; string firstWrong = "";
@@ -482,8 +511,8 @@ namespace Stratum.Server
 
                 // Satchels: a full one is never emptied to make room. The newcomers go beside it, or back to the player.
                 {
-                    var land = new Dictionary<(int, int, int), byte>();
-                    byte Land(int x, int y, int z) => land.TryGetValue((x, y, z), out var id) ? id : (y == 11 && z == 0 && (x == 0 || x == 1) ? (byte)0 : Blocks.Stone);   // two free cells in solid rock
+                    var land = new Dictionary<(int, int, int), ushort>();
+                    ushort Land(int x, int y, int z) => land.TryGetValue((x, y, z), out var id) ? id : (y == 11 && z == 0 && (x == 0 || x == 1) ? (ushort)0 : Blocks.Stone);   // two free cells in solid rock
                     var sb = new Containers();
                     var full = new Stack[Containers.MaxSlots]; for (int i = 0; i < full.Length; i++) full[i] = new Stack("cobble", 64);
                     sb.Put(0, 11, 0, full); land[(0, 11, 0)] = Blocks.Satchel;
@@ -597,7 +626,7 @@ namespace Stratum.Server
                     a.Move(a.SX + 0.5f, a.SY, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
                     a.Move(a.SX + 40.5f, -30, a.SZ + 0.5f); System.Threading.Thread.Sleep(200);
                     a.Send(new Packet(Net.Msg.Drop).F32(a.SX + 0.5f).F32(a.SY + 0.5f).F32(a.SZ + 0.5f).Stacks(new[] { new Stack("torch", 4) }));
-                    var fell = a.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); return r.U8() == Blocks.Satchel && Math.Abs(qx - a.SX) <= 2 && Math.Abs(qz - a.SZ) <= 2 && Math.Abs(qy - a.SY) <= 3; });
+                    var fell = a.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); return r.U16() == Blocks.Satchel && Math.Abs(qx - a.SX) <= 2 && Math.Abs(qz - a.SZ) <= 2 && Math.Abs(qy - a.SY) <= 3; });
                     Check(fell != null, "after a fall into the sky the satchel is left on the island she fell from");
                 }
                 using (var old = new Bot(srv.Port) { Features = 0 })
@@ -709,13 +738,13 @@ namespace Stratum.Server
             var gen = new WorldGen(31337);
             var ch = new Chunk(Ember.Mid / 16, 0); gen.Generate(ch);
             int lava = 0, rock = 0, roof = 0;
-            for (int i = 0; i < ch.Blocks.Length; i++) { byte id = ch.Blocks[i]; if (id == Blocks.Lava) lava++; else if (id == Blocks.Cinderstone) rock++; if (id == Blocks.Bedrock && i >> 8 >= Ember.Roof) roof++; }
+            for (int i = 0; i < ch.Blocks.Length; i++) { ushort id = ch.Blocks[i]; if (id == Blocks.Lava) lava++; else if (id == Blocks.Cinderstone) rock++; if (id == Blocks.Bedrock && i >> 8 >= Ember.Roof) roof++; }
             Check(ch.Ready && rock > 1000 && roof >= 256, "the Ember Deep is cinderstone under a bedrock roof");
             Check(Ember.ToOverworld(Ember.ToEmber(800, -400).x, Ember.ToEmber(800, -400).z) == (800f, -400f), "a step in the Deep is eight on the surface, both ways");
 
-            var w = new Dictionary<(int, int, int), byte>();
-            byte Get(int x, int y, int z) => w.TryGetValue((x, y, z), out var b) ? b : (byte)0;
-            void Set(int x, int y, int z, byte b) { if (b == 0) w.Remove((x, y, z)); else w[(x, y, z)] = b; }
+            var w = new Dictionary<(int, int, int), ushort>();
+            ushort Get(int x, int y, int z) => w.TryGetValue((x, y, z), out var b) ? b : (ushort)0;
+            void Set(int x, int y, int z, ushort b) { if (b == 0) w.Remove((x, y, z)); else w[(x, y, z)] = b; }
             for (int x = 0; x < 4; x++) { Set(x, 0, 0, Blocks.Obsidian); Set(x, 4, 0, Blocks.Obsidian); }
             for (int y = 1; y < 4; y++) { Set(0, y, 0, Blocks.Obsidian); Set(3, y, 0, Blocks.Obsidian); }
             Check(!Ember.Light(Get, Set, 1, 1, 1), "a striker beside the frame (not in it) lights nothing");
@@ -772,22 +801,22 @@ namespace Stratum.Server
 
                     px = a.SX + 2; pz = a.SZ; py = a.Top(px, pz) + 1;
                     Check(a.BlockAt(px, py, pz) == 0, $"there is air above the ground at {px},{py},{pz}");
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py).I32(pz).U8(Blocks.Stone).U8(0));
-                    var seen = b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py && r.I32() == pz && r.U8() == Blocks.Stone);
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py).I32(pz).U16(Blocks.Stone).U16(0));
+                    var seen = b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py && r.I32() == pz && r.U16() == Blocks.Stone);
                     Check(seen != null, "Bea sees the stone Ada placed");
 
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(Blocks.Stone).U8(Blocks.Dirt));
-                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == 0) != null,
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Stone).U16(Blocks.Dirt));
+                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == 0) != null,
                           "an edit that disagrees about what was there is put right");
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(a.SX + 30).I32(py).I32(pz).U8(Blocks.Stone).U8(0));
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(a.SX + 30).I32(py).I32(pz).U16(Blocks.Stone).U16(0));
                     Check(a.Wait(Net.Msg.Block, r => r.I32() == a.SX + 30 && r.I32() == py) != null, "an edit out of reach is refused");
 
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
                     // A chest: Ada fills a slot, Bea sees it, breaking it hands the things to Ada.
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(Blocks.Chest).U8(0));
-                    Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Chest) != null, "Ada places a chest");
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Chest).U16(0));
+                    Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Chest) != null, "Ada places a chest");
                     a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     var box = a.Wait(Net.Msg.Box);
                     Check(box != null && box.I32() == px && box.I32() == py + 1 && box.I32() == pz && box.Stacks().Length == Containers.ChestSlots, "she opens it: 27 empty slots");
@@ -803,8 +832,8 @@ namespace Stratum.Server
                     if (bbox != null) { bbox.I32(); bbox.I32(); bbox.I32(); inBox = bbox.Stacks(); }
                     Check(inBox != null && inBox[2].Item == "cobble" && inBox[2].Count == 9, "once Ada closes it Bea opens it and finds the cobble");
                     // Ada can't break the chest out from under Bea while she has it open.
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
-                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Chest, 2000) != null
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(0).U16(Blocks.Chest));
+                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Chest, 2000) != null
                           && a.Wait(Net.Msg.Give, null, 400) == null, "a chest someone has open can't be broken, and gives nothing");
                     // Bea takes the 9 she can see, but (say a furnace had been at work) there are really 12: three stay.
                     b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 12)));
@@ -816,37 +845,37 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.CloseBox));
                     Check(b.Wait(Net.Msg.TakeBack, null, 300) == null && b.Wait(Net.Msg.Give, null, 300) == null, "and nothing is owed either way when what was there covers it");
                     Thread.Sleep(200);
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(0).U16(Blocks.Chest));
                     var give = a.Wait(Net.Msg.Give);
                     Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
                     Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
                     // Everyday things that change a block without breaking it: a door, a lever, tilled soil, a second slab.
-                    bool Accepted(int bx, int by, int bz, byte id, byte old)
+                    bool Accepted(int bx, int by, int bz, ushort id, ushort old)
                     {
-                        a.Send(new Packet(Net.Msg.SetBlock).I32(bx).I32(by).I32(bz).U8(id).U8(old));
-                        return b.Wait(Net.Msg.Block, r => r.I32() == bx && r.I32() == by && r.I32() == bz && r.U8() == id, 2000) != null;
+                        a.Send(new Packet(Net.Msg.SetBlock).I32(bx).I32(by).I32(bz).U16(id).U16(old));
+                        return b.Wait(Net.Msg.Block, r => r.I32() == bx && r.I32() == by && r.I32() == bz && r.U16() == id, 2000) != null;
                     }
                     int dy = py + 1;
-                    Check(Accepted(px, dy, pz, Blocks.OakDoor, 0) && Accepted(px, dy + 1, pz, (byte)(Blocks.OakDoor + 1), 0), "Ada stands a door up (both halves)");
-                    byte lowOpen = Blocks.Flip(Blocks.OakDoor, 2), highOpen = Blocks.Flip((byte)(Blocks.OakDoor + 1), 2);
-                    Check(Accepted(px, dy, pz, lowOpen, Blocks.OakDoor) && Accepted(px, dy + 1, pz, highOpen, (byte)(Blocks.OakDoor + 1)), "and opens it: both halves swing, and Bea sees it");
-                    Check(Accepted(px, dy, pz, Blocks.OakDoor, lowOpen) && Accepted(px, dy + 1, pz, (byte)(Blocks.OakDoor + 1), highOpen), "and shuts it again");
-                    Accepted(px, dy + 1, pz, 0, (byte)(Blocks.OakDoor + 1)); Accepted(px, dy, pz, 0, Blocks.OakDoor);
+                    Check(Accepted(px, dy, pz, Blocks.OakDoor, 0) && Accepted(px, dy + 1, pz, (ushort)(Blocks.OakDoor + 1), 0), "Ada stands a door up (both halves)");
+                    ushort lowOpen = Blocks.Flip(Blocks.OakDoor, 2), highOpen = Blocks.Flip((ushort)(Blocks.OakDoor + 1), 2);
+                    Check(Accepted(px, dy, pz, lowOpen, Blocks.OakDoor) && Accepted(px, dy + 1, pz, highOpen, (ushort)(Blocks.OakDoor + 1)), "and opens it: both halves swing, and Bea sees it");
+                    Check(Accepted(px, dy, pz, Blocks.OakDoor, lowOpen) && Accepted(px, dy + 1, pz, (ushort)(Blocks.OakDoor + 1), highOpen), "and shuts it again");
+                    Accepted(px, dy + 1, pz, 0, (ushort)(Blocks.OakDoor + 1)); Accepted(px, dy, pz, 0, Blocks.OakDoor);
                     Check(Accepted(px, dy, pz, Blocks.Lever, 0) && Accepted(px, dy, pz, Blocks.Flip(Blocks.Lever, 1), Blocks.Lever), "a lever can be thrown");
                     Accepted(px, dy, pz, 0, Blocks.Flip(Blocks.Lever, 1));
-                    byte slab = Blocks.Slabs.First();
+                    ushort slab = Blocks.Slabs.First();
                     Check(Accepted(px, dy, pz, slab, 0) && Accepted(px, dy, pz, Blocks.Get(slab).Pair, slab), "a second slab on the first makes the whole block");
                     Accepted(px, dy, pz, 0, Blocks.Get(slab).Pair);
                     Check(Accepted(px, dy, pz, Blocks.Grass, 0) && Accepted(px, dy, pz, Blocks.Farmland, Blocks.Grass), "grass can be tilled");
                     Accepted(px, dy, pz, 0, Blocks.Farmland);
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py).I32(pz).U8(Blocks.Chest).U8(Blocks.Stone));
-                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py && r.I32() == pz && r.U8() == Blocks.Stone, 2000) != null, "but one block still can't be swapped for another kind");
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py).I32(pz).U16(Blocks.Chest).U16(Blocks.Stone));
+                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py && r.I32() == pz && r.U16() == Blocks.Stone, 2000) != null, "but one block still can't be swapped for another kind");
                     a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
-                    Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
+                    Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U16() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
 
                     // A furnace: ore in, coal under it, and it starts to work while she watches.
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(Blocks.Furnace).U8(0));
-                    b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Furnace);
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Furnace).U16(0));
+                    b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Furnace);
                     a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     Check(a.Wait(Net.Msg.Box) != null, "Ada opens a furnace");
                     a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(new Stack("iron_ore", 2)).Slot(Stack.None));
@@ -877,7 +906,7 @@ namespace Stratum.Server
                     var fb = a.Wait(Net.Msg.Box); Stack[] fin = null; if (fb != null) { fb.I32(); fb.I32(); fb.I32(); fin = fb.Stacks(); }
                     Check(fin != null && fin[Smelting.In].Item == "iron_ore", "and its attempt to empty the furnace did nothing");
                     a.Send(new Packet(Net.Msg.CloseBox));
-                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Furnace));
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(0).U16(Blocks.Furnace));
                     var back1 = a.Wait(Net.Msg.Give); string gotItem = back1?.Str();
                     var back2 = a.Wait(Net.Msg.Give, null, 600);
                     Check(gotItem == "iron_ore" && back2 == null, "breaking it gives back the ore, and nothing of the fire");
@@ -887,7 +916,7 @@ namespace Stratum.Server
                     b.Move(b.X + 3, b.Y, b.Z); System.Threading.Thread.Sleep(150);
                     b.Send(new Packet(Net.Msg.Drop).F32(b.X + 3).F32(b.Y).F32(b.Z).Stacks(pack));
                     int tx = 0, ty = 0, tz = 0;
-                    b.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); if (r.U8() != Blocks.Satchel) return false; tx = qx; ty = qy; tz = qz; return true; });
+                    b.Wait(Net.Msg.Block, r => { int qx = r.I32(), qy = r.I32(), qz = r.I32(); if (r.U16() != Blocks.Satchel) return false; tx = qx; ty = qy; tz = qz; return true; });
                     b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
                     var sbox = b.Wait(Net.Msg.Box); Stack[] held = null;
                     if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }

@@ -155,14 +155,14 @@ namespace Stratum.Core
                 }
         }
 
-        static void Put(Chunk ch, int bx, int bz, int x, int y, int z, byte id)
+        static void Put(Chunk ch, int bx, int bz, int x, int y, int z, ushort id)
         {
             int lx = x - bx, lz = z - bz;
             if ((uint)lx >= 16 || (uint)lz >= 16 || (uint)y >= Chunk.Height) return;
             ch.Blocks[lx | (lz << 4) | (y << 8)] = id;
         }
 
-        static byte Get(Chunk ch, int bx, int bz, int x, int y, int z)
+        static ushort Get(Chunk ch, int bx, int bz, int x, int y, int z)
         {
             int lx = x - bx, lz = z - bz;
             if ((uint)lx >= 16 || (uint)lz >= 16 || (uint)y >= Chunk.Height) return 0;
@@ -195,7 +195,7 @@ namespace Stratum.Core
                         int x = r.x0 + r.dx * i + (r.dz != 0 ? s : 0), z = r.z0 + r.dz * i + (r.dx != 0 ? s : 0);
                         if (!Inside(bx, bz, x, z)) continue;
                         int y = heightAt(x, z);
-                        byte top = Get(ch, bx, bz, x, y, z);
+                        ushort top = Get(ch, bx, bz, x, y, z);
                         if (top == Blocks.Grass || top == Blocks.Dirt || top == Blocks.Sand || top == Blocks.SnowyGrass)
                         {
                             Put(ch, bx, bz, x, y, z, Blocks.Gravel);
@@ -243,14 +243,14 @@ namespace Stratum.Core
             }
         }
 
-        static void P(Chunk ch, int bx, int bz, Part p, int u, int y, int v, byte id) { var (x, z) = At(p, u, v); Put(ch, bx, bz, x, y, z, id); }
+        static void P(Chunk ch, int bx, int bz, Part p, int u, int y, int v, ushort id) { var (x, z) = At(p, u, v); Put(ch, bx, bz, x, y, z, id); }
 
         static void House(Chunk ch, int bx, int bz, Part p)
         {
             bool big = p.Kind == 1;
             int w = big ? 7 : 5, d = big ? 6 : 5, f = p.Floor;
             int door = w / 2;
-            byte wall = Blocks.Get(Blocks.OakPlanks) != null ? Blocks.OakPlanks : Blocks.Cobble;
+            ushort wall = Blocks.Get(Blocks.OakPlanks) != null ? Blocks.OakPlanks : Blocks.Cobble;
             for (int u = 0; u < w; u++)
                 for (int v = 0; v < d; v++)
                 {
@@ -258,7 +258,7 @@ namespace Stratum.Core
                     P(ch, bx, bz, p, u, f - 1, v, edgeU || edgeV ? Blocks.Cobble : Blocks.OakPlanks);
                     for (int y = f; y < f + 3; y++)
                     {
-                        byte id = 0;
+                        ushort id = 0;
                         if (edgeU && edgeV) id = Blocks.OakLog;
                         else if (edgeU || edgeV)
                         {
@@ -271,11 +271,11 @@ namespace Stratum.Core
                 }
             // The door, in the middle of the front.
             int df = (p.Face + 2) % 4;
-            P(ch, bx, bz, p, door, f, 0, (byte)(Blocks.OakDoor + df * 4));
-            P(ch, bx, bz, p, door, f + 1, 0, (byte)(Blocks.OakDoor + df * 4 + 1));
+            P(ch, bx, bz, p, door, f, 0, (ushort)(Blocks.OakDoor + df * 4));
+            P(ch, bx, bz, p, door, f + 1, 0, (ushort)(Blocks.OakDoor + df * 4 + 1));
             P(ch, bx, bz, p, door, f + 2, 0, wall);
             // Roof: a ceiling of planks, a slab overhang, and a ridge of slabs.
-            byte slab = Blocks.Slabs.Count > 0 ? Blocks.Slabs[0] : Blocks.OakPlanks;
+            ushort slab = Blocks.Slabs.Count > 0 ? Blocks.Slabs[0] : Blocks.OakPlanks;
             for (int u = -1; u <= w; u++)
                 for (int v = -1; v <= d; v++)
                 {
@@ -288,11 +288,11 @@ namespace Stratum.Core
             int bf = (p.Face + 2) % 4;      // the bed's head toward the back wall
             var (hx, hz) = At(p, 1, d - 2); var (fx, fz) = At(p, 1, d - 3);
             int bedFacing = Dir(hx - fx, hz - fz);
-            Put(ch, bx, bz, fx, f, fz, (byte)(Blocks.Bed + bedFacing * 2));
-            Put(ch, bx, bz, hx, f, hz, (byte)(Blocks.Bed + bedFacing * 2 + 1));
+            Put(ch, bx, bz, fx, f, fz, (ushort)(Blocks.Bed + bedFacing * 2));
+            Put(ch, bx, bz, hx, f, hz, (ushort)(Blocks.Bed + bedFacing * 2 + 1));
             P(ch, bx, bz, p, w - 2, f, d - 2, Blocks.Workbench);
             P(ch, bx, bz, p, w - 2, f + 1, d - 2, Blocks.Torch);
-            if (big) P(ch, bx, bz, p, w - 2, f, 1, (byte)(Blocks.Chest + bf));
+            if (big) P(ch, bx, bz, p, w - 2, f, 1, (ushort)(Blocks.Chest + bf));
             _ = bf;
         }
 
@@ -308,7 +308,7 @@ namespace Stratum.Core
                     if (u == 3) { P(ch, bx, bz, p, u, f - 1, v, Blocks.Water); P(ch, bx, bz, p, u, f - 2, v, Blocks.Dirt); continue; }
                     P(ch, bx, bz, p, u, f - 1, v, Blocks.FarmlandWet);
                     int stage = (int)((h >> ((u * 9 + v) % 24)) % 4);
-                    P(ch, bx, bz, p, u, f, v, (byte)(Blocks.Wheat + stage));
+                    P(ch, bx, bz, p, u, f, v, (ushort)(Blocks.Wheat + stage));
                 }
         }
 

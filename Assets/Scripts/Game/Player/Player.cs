@@ -197,7 +197,7 @@ namespace Stratum.Game
                 if (_stepDist > (Sprinting ? 2.6f : 2.1f))
                 {
                     _stepDist = 0;
-                    byte under = World.Get(fx, Mathf.FloorToInt(Feet.y - 0.2f), fz);
+                    ushort under = World.Get(fx, Mathf.FloorToInt(Feet.y - 0.2f), fz);
                     if (under != 0) Sfx.I?.Block("step", under, Sneaking ? 0.25f : 0.5f);
                 }
                 if (Settings.ViewBob) _bob += horiz * dt * 1.9f;
@@ -291,7 +291,7 @@ namespace Stratum.Game
                     return;
                 }
             }
-            byte id = World.Get(_railCell.x, _railCell.y, _railCell.z);
+            ushort id = World.Get(_railCell.x, _railCell.y, _railCell.z);
             if (!Rails.Is(id)) { _onRail = false; return; }
             var (ea, eb, up) = Rails.Ends(id);
             int to = _railFrom == ea ? eb : ea;
@@ -318,7 +318,7 @@ namespace Stratum.Game
                 var (a2, b2, up2) = Rails.Ends(id);
                 int exit = _railFrom == a2 ? b2 : a2;
                 var next = new Vector3Int(_railCell.x + Rails.DX[exit], _railCell.y + (up2 == exit ? 1 : 0), _railCell.z + Rails.DZ[exit]);
-                byte nid = World.Get(next.x, next.y, next.z);
+                ushort nid = World.Get(next.x, next.y, next.z);
                 if (!Rails.Is(nid) && Rails.Is(World.Get(next.x, next.y - 1, next.z))) { next.y--; nid = World.Get(next.x, next.y, next.z); }
                 int entry = (exit + 2) & 3;
                 if (!Rails.Is(nid) || !Rails.Joins(nid, entry))
@@ -370,7 +370,7 @@ namespace Stratum.Game
         void Land()
         {
             float fall = _fallStart - Feet.y;
-            byte under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
+            ushort under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
@@ -487,9 +487,9 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ collision
 
-        byte CollideGet(int x, int y, int z)
+        ushort CollideGet(int x, int y, int z)
         {
-            if (y < 0) return World.Gen.Kind == WorldKind.Sky ? (byte)0 : Blocks.Bedrock;    // under the sky islands there's nothing
+            if (y < 0) return World.Gen.Kind == WorldKind.Sky ? (ushort)0 : Blocks.Bedrock;    // under the sky islands there's nothing
             if (y >= Chunk.Height) return 0;
             // A chunk that isn't here yet counts as solid, so nothing falls out of the world.
             return World.IsReady(x, z) ? World.Get(x, y, z) : Blocks.Bedrock;

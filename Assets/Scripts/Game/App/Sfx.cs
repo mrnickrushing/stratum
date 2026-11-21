@@ -126,7 +126,7 @@ namespace Stratum.Game
             a.PlayOneShot(c, vol * Master);
         }
 
-        public void Block(string kind, byte block, float vol = 1)
+        public void Block(string kind, ushort block, float vol = 1)
         {
             var s = Blocks.Get(block).Sound;
             Play(kind + "_" + s, vol);

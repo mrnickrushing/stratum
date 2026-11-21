@@ -9,7 +9,7 @@ namespace Stratum.Core
     public enum Connect : byte { None, Fence, Wall, Pane, Wire }
 
     // Texture layers used by block faces. BlockTextures (Game) paints one layer per entry, in this order.
-    public enum Tex : byte
+    public enum Tex : ushort
     {
         Stone, Slate, Basalt, Bedrock, Dirt, GrassTop, GrassSide, Sand, Gravel, SandstoneSide, SandstoneTop,
         Snow, SnowSide, Ice, Water, Clay,
@@ -28,18 +28,20 @@ namespace Stratum.Core
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         ChuteTop, ChuteSide,
         Plaster, TimberFrame, RoofTiles, PolishedStone, DarkPlanks, WhitePlanks, Bookshelf, BarrelTop, BarrelSide, Hearth, Lantern, PottedPlant, Lattice,
+        // 0.11: colours, doors and furniture
+        WoolOrange, WoolLime, WoolCyan, WoolLightBlue, WoolPurple, WoolMagenta, WoolPink, WoolLightGrey, PlasterTint0, PlasterTint1, PlasterTint2, PlasterTint3, PlasterTint4, PlasterTint5, PlasterTint6, PlasterTint7, PlasterTint8, PlasterTint9, PlasterTint10, PlasterTint11, PlasterTint12, PlasterTint13, PlasterTint14, PlasterTint15, Tiles0, Tiles1, Tiles2, Tiles3, Tiles4, Tiles5, Tiles6, Tiles7, Tiles8, Tiles9, Tiles10, Tiles11, Tiles12, Tiles13, Tiles14, Tiles15, PaintedPlanks0, PaintedPlanks1, PaintedPlanks2, PaintedPlanks3, PaintedPlanks4, PaintedPlanks5, DoorBirchLower, DoorBirchUpper, DoorPineLower, DoorPineUpper, DoorDarkLower, DoorDarkUpper, CabinetFront, StoveFront, FridgeFront, TvFront, PianoFront, Picture0, Picture1, Picture2, ClockFace, MirrorGlass, Porcelain, Candle, LampShade, CrateSide, StoveTop, PottedYellow, PottedBlue,
         Count
     }
 
     public sealed class BlockDef
     {
-        public byte Id;
+        public ushort Id;
         public string Name;
         public Shape Shape = Shape.Cube;
         public bool Solid = true;        // collides
         public bool Opaque = true;       // hides neighbouring faces, blocks light fully
-        public byte Opacity = 15;        // light lost passing through (non-opaque blocks)
-        public byte Emit;                // block light it gives off (0-15)
+        public ushort Opacity = 15;        // light lost passing through (non-opaque blocks)
+        public ushort Emit;                // block light it gives off (0-15)
         public bool Sway;                // leaves and plants move in the wind
         public bool Cutout;              // texture has holes
         public float Hardness = 1;       // seconds to break by hand with the right tool type
@@ -48,8 +50,8 @@ namespace Stratum.Core
         public Sound Sound = Sound.Stone;
         public Tex Top, Bottom, Side, Front;
         public bool HasFront;            // furnace-style block: Front on the facing side
-        public byte Facing;              // 0..3 for facing variants (+Z, +X, -Z, -X)
-        public byte BaseId;              // facing variants point at the first one
+        public ushort Facing;              // 0..3 for facing variants (+Z, +X, -Z, -X)
+        public ushort BaseId;              // facing variants point at the first one
         public bool Replaceable;         // placing a block here just overwrites it (plants, water)
         public bool Creative = true;     // listed in the creative palette
         public string DropItem;          // item id dropped; null = itself; "" = nothing
@@ -63,13 +65,15 @@ namespace Stratum.Core
         public bool Tall;                // collides up to 1.5 blocks high (fences, walls, closed gates)
         public bool Climb;               // ladders
         public bool FlatIcon;            // shown in the hand and the pack as a flat picture
-        public byte Fluid;               // 1 water, 2 lava
-        public byte Level;               // fluids: 0 a source, then 1, 2... further from it
-        public byte Pair;                // slabs: the whole block two of them make; doors: unused
+        public ushort Fluid;               // 1 water, 2 lava
+        public ushort Level;               // fluids: 0 a source, then 1, 2... further from it
+        public ushort Pair;                // slabs: the whole block two of them make; doors: unused
         public bool Opens;               // doors, trapdoors, gates: right-click opens and closes
+        public bool Door;                // a door: two blocks tall, 16 numbers (facing * 4 + open * 2 + upper)
+        public bool OnWall;              // hangs on the side of a block (4 numbers, by which wall), like a ladder
         public string Bonus2;            // a second thing it sometimes drops
         public float Bonus2Chance;
-        public byte Grows;               // 1 wheat, 2 sapling, 3 sugar cane: grows by itself over time
+        public ushort Grows;               // 1 wheat, 2 sapling, 3 sugar cane: grows by itself over time
 
         public Tex Face(int face)        // 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z
         {
@@ -95,14 +99,15 @@ namespace Stratum.Core
         public Box Turn(int times) { var b = this; for (int i = 0; i < (times & 3); i++) b = b.Turn(); return b; }
     }
 
-    public static class Blocks
+    public static partial class Blocks
     {
-        public const byte Air = 0;
-        public static readonly BlockDef[] Defs = new BlockDef[256];
-        public static readonly Dictionary<string, byte> ByKey = new Dictionary<string, byte>();
-        public static readonly List<byte> Palette = new List<byte>();   // creative order
+        public const ushort Air = 0;
+        public const int Max = 4096;                 // block numbers go up to here (two bytes on disk and on the wire)
+        public static readonly BlockDef[] Defs = new BlockDef[Max];
+        public static readonly Dictionary<string, ushort> ByKey = new Dictionary<string, ushort>();
+        public static readonly List<ushort> Palette = new List<ushort>();   // creative order
 
-        public static byte Bedrock, Stone, Slate, Basalt, Dirt, Grass, Sand, Gravel, Sandstone, Snow, SnowyGrass, Ice,
+        public static ushort Bedrock, Stone, Slate, Basalt, Dirt, Grass, Sand, Gravel, Sandstone, Snow, SnowyGrass, Ice,
             Water, Clay, OakLog, OakLeaves, BirchLog, BirchLeaves, PineLog, PineNeedles, Cactus, OakPlanks, BirchPlanks,
             PinePlanks, Cobble, MossyCobble, StoneBricks, Glass, CoalOre, CopperOre, IronOre, GoldOre, SunstoneOre,
             Sunstone, Torch, TallGrass, RedFlower, YellowFlower, BlueFlower, DeadBush, Fern, Workbench, Furnace,
@@ -112,13 +117,13 @@ namespace Stratum.Core
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
-        public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
+        public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;
-        public static readonly List<byte> Slabs = new List<byte>(), Stairs = new List<byte>();
-        public static readonly byte[] Wool = new byte[8];
+        public static readonly List<ushort> Slabs = new List<ushort>(), Stairs = new List<ushort>();
+        public static readonly ushort[] Wool = new ushort[8];
         public static readonly string[] WoolColours = { "white", "grey", "black", "brown", "red", "yellow", "green", "blue" };
 
-        static byte _next = 1;
+        static ushort _next = 1;
 
         static BlockDef Add(string key, string name, Tex all) => Add(key, name, all, all, all);
 
@@ -133,7 +138,7 @@ namespace Stratum.Core
             return d;
         }
 
-        public static readonly string[] Keys = new string[256];
+        public static readonly string[] Keys = new string[Max];
 
         static BlockDef Plant(string key, string name, Tex t, Sound s = Sound.Grass)
         {
@@ -213,8 +218,8 @@ namespace Stratum.Core
 
             b = Add("workbench", "Workbench", Tex.BenchTop, Tex.BenchSide, Tex.OakPlanks); b.Hardness = 2; b.Tool = Tool.Axe; b.Sound = Sound.Wood; Workbench = b.Id;
             // Furnace: four ids, one per facing; the first is the item.
-            byte first = 0;
-            for (byte f = 0; f < 4; f++)
+            ushort first = 0;
+            for (ushort f = 0; f < 4; f++)
             {
                 b = Add(f == 0 ? "furnace" : "furnace_" + f, "Furnace", Tex.FurnaceTop, Tex.FurnaceSide, Tex.FurnaceTop);
                 b.Front = Tex.FurnaceFront; b.HasFront = true; b.Facing = f; b.Hardness = 3; b.Tool = Tool.Pickaxe; b.TierNeeded = 1;
@@ -239,7 +244,7 @@ namespace Stratum.Core
             Bed = Facings("bed", "Bed", 8, (d, i) =>
             {
                 int f = i / 2; d.Variant = i % 2;
-                d.Facing = (byte)f;
+                d.Facing = (ushort)f;
                 d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 1; d.Hardness = 0.4f; d.Sound = Sound.Cloth; d.DropItem = "bed";
                 d.Top = d.Variant == 1 ? Tex.BedHead : Tex.BedFoot; d.Bottom = Tex.OakPlanks; d.Side = Tex.BedSide; d.Front = Tex.BedEnd;
                 d.HasFront = d.Variant == 1;
@@ -273,7 +278,7 @@ namespace Stratum.Core
                     b.Hardness = whole.Hardness; b.Tool = whole.Tool; b.TierNeeded = whole.TierNeeded; b.Sound = whole.Sound;
                     b.Boxes = new[] { top == 0 ? Box.Px(0, 0, 0, 16, 8, 16) : Box.Px(0, 8, 0, 16, 16, 16) };
                     if (top == 0) { Slabs.Add(b.Id); b.BaseId = b.Id; }
-                    else { b.BaseId = (byte)(b.Id - 1); b.DropItem = key + "_slab"; b.Creative = false; Palette.Remove(b.Id); }
+                    else { b.BaseId = (ushort)(b.Id - 1); b.DropItem = key + "_slab"; b.Creative = false; Palette.Remove(b.Id); }
                 }
             }
             // Stairs: a bottom half and a raised back half; they climb toward where the player was looking.
@@ -294,7 +299,7 @@ namespace Stratum.Core
             OakDoor = Facings("oak_door", "Oak Door", 16, (d, i) =>
             {
                 bool open = (i / 2) % 2 == 1, upper = i % 2 == 1;
-                d.Variant = i % 4; d.Opens = true;
+                d.Variant = i % 4; d.Opens = true; d.Door = true;
                 d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Hardness = 3; d.Tool = Tool.Axe; d.Sound = Sound.Wood;
                 d.Side = upper ? Tex.DoorUpper : Tex.DoorLower; d.Top = d.Bottom = Tex.OakPlanks; d.FlatIcon = true;
                 d.Boxes = new[] { open ? Box.Px(0, 0, 0, 3, 16, 16) : Box.Px(0, 0, 0, 16, 16, 3) };
@@ -352,12 +357,12 @@ namespace Stratum.Core
             for (int l = 1; l <= WaterReach; l++)
             {
                 b = Add("water_" + l, "Water", Tex.Water); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 2; b.Hardness = -1;
-                b.Replaceable = true; b.Creative = false; b.Fluid = 1; b.Level = (byte)l; b.BaseId = Water; Palette.Remove(b.Id); WaterAt[l] = b.Id;
+                b.Replaceable = true; b.Creative = false; b.Fluid = 1; b.Level = (ushort)l; b.BaseId = Water; Palette.Remove(b.Id); WaterAt[l] = b.Id;
             }
             for (int l = 1; l <= LavaReach; l++)
             {
                 b = Add("lava_" + l, "Lava", Tex.Lava); b.Shape = Shape.Liquid; b.Solid = false; b.Opaque = false; b.Opacity = 1; b.Emit = 15; b.Hardness = -1;
-                b.Replaceable = true; b.Creative = false; b.Fluid = 2; b.Level = (byte)l; b.BaseId = Lava; Palette.Remove(b.Id); LavaAt[l] = b.Id;
+                b.Replaceable = true; b.Creative = false; b.Fluid = 2; b.Level = (ushort)l; b.BaseId = Lava; Palette.Remove(b.Id); LavaAt[l] = b.Id;
             }
 
             // ---------------------------------------------------------------- 0.2: farming
@@ -441,13 +446,13 @@ namespace Stratum.Core
             foreach (var lit in new[] { true, false })
             {
                 var t = lit ? Add("spark_torch", "Spark Torch", Tex.SparkTorchOn) : Twin("spark_torch_off", "Spark Torch", Tex.SparkTorchOff, Get(SparkTorch));
-                t.Shape = Shape.Torch; t.Solid = false; t.Opaque = false; t.Opacity = 0; t.Emit = (byte)(lit ? 7 : 0); t.Hardness = 0; t.Cutout = true; t.Sound = Sound.Wood;
+                t.Shape = Shape.Torch; t.Solid = false; t.Opaque = false; t.Opacity = 0; t.Emit = (ushort)(lit ? 7 : 0); t.Hardness = 0; t.Cutout = true; t.Sound = Sound.Wood;
                 if (lit) SparkTorch = t.Id;
             }
             foreach (var lit in new[] { false, true })
             {
                 var l = lit ? Twin("spark_lamp_on", "Spark Lamp", Tex.LampOn, Get(SparkLamp)) : Add("spark_lamp", "Spark Lamp", Tex.LampOff);
-                l.Hardness = 0.3f; l.Sound = Sound.Glass; l.Emit = (byte)(lit ? 15 : 0);
+                l.Hardness = 0.3f; l.Sound = Sound.Glass; l.Emit = (ushort)(lit ? 15 : 0);
                 if (!lit) SparkLamp = l.Id;
             }
             Repeater = Facings("repeater", "Repeater", 8, (d, i) =>
@@ -516,12 +521,14 @@ namespace Stratum.Core
             b = Add("stone_pillar", "Stone Pillar", Tex.PolishedStone); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 1.5f; b.Sound = Sound.Stone; b.Tool = Tool.Pickaxe;
             b.Boxes = new[] { Box.Px(2, 0, 2, 14, 2, 14), Box.Px(4, 2, 4, 12, 14, 12), Box.Px(2, 14, 2, 14, 16, 14) };
 
+            Building();
+
             Palette.Remove(Water);
         }
 
-        public static bool IsWater(byte id) => Defs[id] != null && Defs[id].Fluid == 1;
-        public static bool IsLava(byte id) => Defs[id] != null && Defs[id].Fluid == 2;
-        public static bool IsFluid(byte id) => Defs[id] != null && Defs[id].Fluid != 0;
+        public static bool IsWater(ushort id) => Defs[id] != null && Defs[id].Fluid == 1;
+        public static bool IsLava(ushort id) => Defs[id] != null && Defs[id].Fluid == 2;
+        public static bool IsFluid(ushort id) => Defs[id] != null && Defs[id].Fluid != 0;
 
         // ------------------------------------------------------------------ connecting shapes
 
@@ -560,7 +567,7 @@ namespace Stratum.Core
         static readonly int[] DX = { 0, 1, 0, -1 }, DZ = { 1, 0, -1, 0 };
 
         // Does a fence, wall or pane reach toward this neighbour?
-        public static bool Joins(BlockDef self, byte other)
+        public static bool Joins(BlockDef self, ushort other)
         {
             if (other == 0) return false;
             var o = Get(other);
@@ -571,7 +578,7 @@ namespace Stratum.Core
         }
 
         // The shape of the block at a position: its own boxes, or for joining blocks the ones that fit its neighbours.
-        public static Box[] ShapeAt(Func<int, int, int, byte> get, int x, int y, int z, BlockDef d)
+        public static Box[] ShapeAt(Func<int, int, int, ushort> get, int x, int y, int z, BlockDef d)
         {
             if (d.Connect == Connect.None) return d.Boxes;
             if (d.Connect == Connect.Wire) return new[] { new Box(0, 0, 0, 1, 1 / 16f, 1) };
@@ -582,16 +589,16 @@ namespace Stratum.Core
 
         // A family of blocks sharing one item: `count` ids; the first is the item and the rest drop it. Their boxes
         // are given for facing 0 (front toward +Z) and turned for each facing.
-        static byte Facings(string key, string name, int count, Action<BlockDef, int> make, Func<int, int> facingOf = null)
+        static ushort Facings(string key, string name, int count, Action<BlockDef, int> make, Func<int, int> facingOf = null)
         {
-            byte first = 0;
+            ushort first = 0;
             for (int i = 0; i < count; i++)
             {
                 var d = Add(i == 0 ? key : key + "_" + i, name, Tex.OakPlanks);
                 if (i == 0) first = d.Id; else { d.Creative = false; Palette.Remove(d.Id); d.DropItem ??= key; }
                 d.BaseId = first;
                 int f = facingOf != null ? facingOf(i) : i;
-                d.Facing = (byte)(f & 3);
+                d.Facing = (ushort)(f & 3);
                 make(d, i);
                 if (i != 0 && d.DropItem == null) d.DropItem = key;
                 if (d.Boxes != null) for (int k = 0; k < d.Boxes.Length; k++) d.Boxes[k] = d.Boxes[k].Turn(d.Facing);
@@ -599,34 +606,34 @@ namespace Stratum.Core
             return first;
         }
 
-        public static BlockDef Get(byte id) => Defs[id] ?? Defs[0];
+        public static BlockDef Get(ushort id) => id < Max ? Defs[id] ?? Defs[0] : Defs[0];
 
         // The same block with a bit of its variant flipped (open/shut, on/off), counted from the family's first id.
         // Changing one block into another without breaking it: the same thing in another state (a door opened, a
         // lever thrown, a button pressed, a rail turned), soil tilled, or a second slab laid on the first.
-        public static bool Changes(byte from, byte to)
+        public static bool Changes(ushort from, ushort to)
         {
             if (from == 0 || to == 0 || from == to) return false;
             var a = Get(from); var b = Get(to);
             if (a.BaseId == b.BaseId) return true;
             if (to == Farmland && (from == Grass || from == Dirt || from == SnowyGrass)) return true;
             if (Get(Farmland).BaseId == a.BaseId && to == Dirt) return true;                       // farmland trodden back to dirt
-            foreach (byte s in Slabs) if ((from == s || from == s + 1) && to == Get(s).Pair) return true;
+            foreach (ushort s in Slabs) if ((from == s || from == s + 1) && to == Get(s).Pair) return true;
             return false;
         }
 
-        public static byte Flip(byte id, int bit) { int b = Get(id).BaseId; return (byte)(b + ((id - b) ^ bit)); }
-        public static byte Id(string key) => ByKey.TryGetValue(key, out var v) ? v : (byte)0;
+        public static ushort Flip(ushort id, int bit) { int b = Get(id).BaseId; return (ushort)(b + ((id - b) ^ bit)); }
+        public static ushort Id(string key) => ByKey.TryGetValue(key, out var v) ? v : (ushort)0;
         public static int Count => _next;
 
         // The facing variant of a block placed looking along (dx, dz): its front faces the player.
-        public static byte Facing(byte id, float lookX, float lookZ)
+        public static ushort Facing(ushort id, float lookX, float lookZ)
         {
             var d = Get(id);
             if (!d.HasFront) return id;
             int f;
             if (System.Math.Abs(lookX) > System.Math.Abs(lookZ)) f = lookX > 0 ? 3 : 1; else f = lookZ > 0 ? 2 : 0;
-            return (byte)(d.BaseId + f);
+            return (ushort)(d.BaseId + f);
         }
     }
 }
