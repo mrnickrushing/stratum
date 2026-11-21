@@ -279,8 +279,11 @@ namespace Stratum.Game
                     var spot = BesideBed(_bed);
                     if (spot != null) { atBed = true; return spot.Value; }
                 }
-                _hud.Toast("Your bed was missing or blocked");
-                if (!BedAt(_bed)) _hasBed = false;
+                // Only a bed that can be seen to be gone is forgotten: far from home its piece of the world may
+                // simply not be loaded yet.
+                bool known = _world.IsReady(_bed.x, _bed.z);
+                _hud.Toast(known ? "Your bed was missing or blocked" : "Your home was too far away to reach just now");
+                if (known && !BedAt(_bed)) _hasBed = false;
             }
             return worldSpawn;
         }

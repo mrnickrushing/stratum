@@ -70,35 +70,34 @@ namespace Stratum.Game
             if (_gridHint.text != hint) _gridHint.text = hint;
         }
 
-        // The recipe the squares spell out: every filled square counts as one of its thing, and the recipe must
-        // use them all. Named things are matched before "any planks" or "any log".
-        [System.NonSerialized] readonly List<string> _gridItems = new List<string>();
-        [System.NonSerialized] readonly List<bool> _gridUsed = new List<bool>();
+        // The recipe the squares spell out (Core.Crafting: patterns for tools and building pieces, any squares for
+        // the rest).
+        Recipe MatchGrid() => Crafting.Match(_grid, _gridN);
 
-        Recipe MatchGrid()
+        // The recipe list's "show me": the pack's things laid out in the grid the way the recipe wants them, ready
+        // to take. Whatever was in the grid goes back to the pack first.
+        public void FillGrid(Recipe r)
         {
-            _gridItems.Clear();
-            for (int i = 0; i < 9; i++) if (InGrid(i) && !_grid[i].Empty) { if (_grid[i].Wear > 0) return null; _gridItems.Add(_grid[i].Item); }
-            if (_gridItems.Count == 0) return null;
-            foreach (var r in Items.Recipes)
+            if (_gridArea == null) return;
+            if (Crafting.Size(r) > _gridN) { Toast("That needs a workbench's bigger grid"); return; }
+            if (!P.Inv.CanCraft(r)) { Toast("You don't have everything for that"); return; }
+            ReturnGrid();
+            var cells = Crafting.Layout(r);
+            for (int i = 0; i < 9; i++)
             {
-                if (r.Station != null && !(r.Station == "workbench" && _gridN == 3)) continue;
-                int total = 0; foreach (var (_, n) in r.In) total += n;
-                if (total != _gridItems.Count) continue;
-                _gridUsed.Clear(); for (int i = 0; i < _gridItems.Count; i++) _gridUsed.Add(false);
-                bool ok = true;
-                for (int pass = 0; pass < 2 && ok; pass++)
-                    foreach (var (item, n) in r.In)
-                    {
-                        if (item.StartsWith("@") != (pass == 1)) continue;
-                        int left = n;
-                        for (int i = 0; i < _gridItems.Count && left > 0; i++)
-                            if (!_gridUsed[i] && Items.Matches(item, _gridItems[i])) { _gridUsed[i] = true; left--; }
-                        if (left > 0) { ok = false; break; }
-                    }
-                if (ok) return r;
+                if (cells[i] == null) continue;
+                for (int k = 0; k < Inventory.Main; k++)
+                {
+                    ref var s = ref P.Inv.Slots[k];
+                    if (s.Empty || s.Wear > 0 || !Items.Matches(cells[i], s.Item)) continue;
+                    _grid[i] = new Stack(s.Item, 1);
+                    s.Count--; if (s.Count <= 0) s = Stack.None;
+                    break;
+                }
             }
-            return null;
+            _gridDirty = true;
+            Sfx.I?.Play("click", 0.3f);
+            RebuildCraftingSoon();
         }
 
         void UseGrid()

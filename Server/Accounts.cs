@@ -51,8 +51,18 @@ namespace Stratum.Server
         public Accounts(string dir)
         {
             _file = Path.Combine(dir, "accounts.json");
-            try { _store = File.Exists(_file) ? JsonSerializer.Deserialize<Store>(File.ReadAllText(_file)) : null; }
-            catch (Exception e) { Log.Warn("accounts.json unreadable, keeping it aside: " + e.Message); try { File.Copy(_file, _file + ".bad", true); } catch { } }
+            if (File.Exists(_file) || File.Exists(_file + ".bak"))
+            {
+                _store = SafeFile.Load(_file, f => JsonSerializer.Deserialize<Store>(File.ReadAllText(f)), out string from);
+                if (_store != null && from != _file) Log.Warn("accounts.json was unreadable; using accounts.json.bak");
+                if (_store == null)
+                {
+                    Store found = null;
+                    string stamp = Backups.Recover(_file, cand => { found = JsonSerializer.Deserialize<Store>(File.ReadAllText(cand)) ?? throw new InvalidDataException("empty"); });
+                    _store = found;
+                    Log.Warn(found != null ? $"accounts.json was unreadable; using the copy from backup {stamp}" : "accounts.json and its backups are unreadable: starting with no accounts (the damaged file is kept as accounts.json.bad)");
+                }
+            }
             _store ??= new Store();
         }
 
@@ -176,7 +186,7 @@ namespace Stratum.Server
             try
             {
                 File.WriteAllText(_file + ".tmp", JsonSerializer.Serialize(_store, new JsonSerializerOptions { WriteIndented = true }));
-                File.Move(_file + ".tmp", _file, true);
+                SafeFile.Swap(_file + ".tmp", _file, keep: true);
             }
             catch (Exception e) { Log.Warn("could not save accounts: " + e.Message); }
         }

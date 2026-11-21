@@ -16,7 +16,7 @@ namespace Stratum.Server
         readonly NetworkStream _s;
         readonly BlockingCollection<Reader> _in = new BlockingCollection<Reader>();
         readonly List<Reader> _seen = new List<Reader>();
-        public int Id, Seed; public bool HasPos; public string Name, Token; public float X, Y, Z; public int SX, SY, SZ; public Stack[] Slots;
+        public int Id, Seed; public bool HasPos; public string Name, Token, TokenOnWire; public float X, Y, Z; public int SX, SY, SZ; public Stack[] Slots;
         public readonly Dictionary<long, byte[]> Chunks = new Dictionary<long, byte[]>();
 
         public Bot(int port)
@@ -43,11 +43,21 @@ namespace Stratum.Server
 
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
+        public bool Sealed;                                      // log in the 0.8 way
+        public byte[] KeyMod, KeyExp, Nonce, LoginKey, SentSealed;
         public int Outfit;
         public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes | GameServer.KnowsTransfers;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
+            if (Sealed)
+            {
+                // A 0.8 game: asks for the server's key first, then sends the password and invite sealed to it.
+                if (KeyMod == null) Worlds();
+                SentSealed = Secure.Seal(KeyMod, KeyExp, Nonce, secret, invite, out LoginKey);
+                Send(new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str("").Str("").Str("selftest").Str(world ?? "").I32(Features).U8((byte)Outfit).Blob(SentSealed));
+                return;
+            }
             var pk = new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest");
             if (world != null) { pk.Str(world); if (Features != 0) { pk.I32(Features); if (Outfit != 0) pk.U8((byte)Outfit); } }   // clients before 0.3.0 don't say which world
             Send(pk);
@@ -67,6 +77,7 @@ namespace Stratum.Server
             for (int i = 0; i < n; i++) { string id = r.Str(), name = r.Str(); r.Str(); bool c = r.Bool(); int d = r.U8(); l.Add((id, name, c, d, r.I32())); }
             Kinds = new List<WorldKind>();
             if (r.More) { int k = r.U8(); for (int i = 0; i < k; i++) Kinds.Add((WorldKind)r.U8()); }
+            if (r.More) { KeyMod = r.Blob(); KeyExp = r.Blob(); Nonce = r.Blob(); }
             return l;
         }
 
@@ -103,7 +114,8 @@ namespace Stratum.Server
             SX = r.I32(); SY = r.I32(); SZ = r.I32();
             HasPos = r.Bool(); X = r.F32(); Y = r.F32(); Z = r.F32(); r.F32(); r.F32(); r.F32(); r.U8();
             Slots = r.Stacks();
-            Name = r.Str(); Token = r.Str();
+            Name = r.Str(); Token = r.Str(); TokenOnWire = Token;
+            if (Secure.IsSealed(Token)) Token = Secure.OpenText(LoginKey, Token) ?? "";
             Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); Difficulty = r.U8(); XpLevel = r.I32(); r.I32();
             Kind = r.More ? (WorldKind)r.U8() : WorldKind.Normal;
             Keeps = r.More && r.Bool();
@@ -323,6 +335,48 @@ namespace Stratum.Server
                 Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
                 Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
 
+                // Light for monsters is the light players see: a torch behind a wall doesn't count on the dark side.
+                {
+                    var room = new Dictionary<(int, int, int), byte>();
+                    for (int yy = 9; yy <= 14; yy++) for (int zz = -8; zz <= 8; zz++) for (int xx = -8; xx <= 8; xx++)
+                        if (yy == 9 || yy == 14 || xx == 0 || Math.Abs(xx) == 8 || Math.Abs(zz) == 8) room[(xx, yy, zz)] = Blocks.Stone;      // a sealed hall with a wall down the middle
+                    room[(-2, 10, 0)] = Blocks.Torch;
+                    var sim = new MobSim((xx, yy, zz) => room.TryGetValue((xx, yy, zz), out var id) ? id : (byte)0, 1);
+                    int near = sim.BlockLight(-4, 10, 0), far = sim.BlockLight(2, 10, 0);
+                    Check(near > 8 && far == 0, $"a torch lights its own side of a wall and not the other (lit side {near}, dark side {far})");
+                    room.Remove((0, 10, 0)); room.Remove((0, 11, 0));                                 // a doorway
+                    int through = sim.BlockLight(2, 10, 0);
+                    Check(through > 3 && through < near, $"and through a doorway the light carries on ({through})");
+                }
+
+                // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
+                {
+                    int shaped = 0, wrong = 0; string firstWrong = "";
+                    foreach (var rc in Items.Recipes)
+                    {
+                        if (rc.Station == "furnace") continue;
+                        if (rc.Shape != null) shaped++;
+                        var cells = Crafting.Layout(rc); var grid = new Stack[9];
+                        for (int i = 0; i < 9; i++) if (cells[i] != null) grid[i] = new Stack(cells[i] == "@planks" ? "oak_planks" : cells[i] == "@log" ? "oak_log" : cells[i], 1);
+                        var made = Crafting.Match(grid, rc.Station == "workbench" ? 3 : Crafting.Size(rc));
+                        if (made == null || made.Out != rc.Out) { wrong++; if (firstWrong == "") firstWrong = $"{rc.Out} gave {made?.Out ?? "nothing"}"; }
+                    }
+                    Check(wrong == 0 && shaped > 60, $"every recipe laid out in the grid makes its own thing ({shaped} with a pattern, {wrong} wrong{(firstWrong != "" ? ": " + firstWrong : "")})");
+                    Stack[] G(params (int cell, string item)[] put) { var g = new Stack[9]; foreach (var (cell, item) in put) g[cell] = new Stack(item, 1); return g; }
+                    string M(Stack[] g, int n = 3) => Crafting.Match(g, n)?.Out ?? "nothing";
+                    Check(M(G((0, "oak_planks"), (1, "oak_planks"), (2, "oak_planks"), (4, "stick"), (7, "stick"))) == "wood_pickaxe"
+                          && M(G((0, "oak_planks"), (1, "oak_planks"), (3, "oak_planks"), (4, "stick"), (7, "stick"))) == "wood_axe"
+                          && M(G((1, "oak_planks"), (2, "oak_planks"), (5, "oak_planks"), (4, "stick"), (7, "stick"))) == "wood_axe", "a pickaxe and an axe are told apart by their shape (the axe either way round)");
+                    Check(M(G((0, "oak_planks"), (3, "oak_planks"), (4, "oak_planks"), (6, "oak_planks"), (7, "oak_planks"), (8, "oak_planks"))) == "oak_stairs"
+                          && M(G((0, "oak_planks"), (1, "oak_planks"), (3, "oak_planks"), (4, "oak_planks"), (6, "oak_planks"), (7, "oak_planks"))) == "oak_door"
+                          && M(G((0, "oak_planks"), (1, "oak_planks"), (2, "oak_planks"), (3, "oak_planks"), (4, "oak_planks"), (5, "oak_planks"))) == "trapdoor", "six planks make stairs, a door or a trapdoor by how they are laid");
+                    Check(M(G((3, "cobble"), (4, "cobble"), (5, "cobble"), (6, "cobble"), (7, "cobble"), (8, "cobble"))) == "cobble_wall"
+                          && M(G((0, "cobble"), (3, "cobble"), (4, "cobble"), (6, "cobble"), (7, "cobble"), (8, "cobble"))) == "cobble_stairs", "six cobblestone make a wall or stairs");
+                    Check(M(G((4, "oak_planks"), (7, "oak_planks")), 2) == "nothing" && M(G((1, "oak_planks"), (4, "oak_planks")), 2) == "stick" && M(G((0, "stick"), (1, "coal")), 2) == "nothing" && M(G((1, "coal"), (4, "stick")), 2) == "torch",
+                          "patterns can sit anywhere in the grid, but not outside the part in use");
+                    Check(M(G((0, "white_wool"), (4, "red_flower")), 2) == "red_wool" && M(G((3, "red_flower"), (1, "white_wool")), 2) == "red_wool", "things without a pattern are made from any squares");
+                }
+
                 // The player's side of it: what they must hand back or be given so nothing is made or lost.
                 var owed = new List<(string item, int n, int wear)>();
                 var left = Containers.Reconcile(Stack.None, new Stack("iron_ore", 2), Stack.None, owed);
@@ -402,6 +456,33 @@ namespace Stratum.Server
                 var c3 = Load(w3, 0, 0);
                 Check(c3 != null && w3.Get(3, ty + 1, 3) == 0 && File.Exists(cfile + ".bad") && new FileInfo(cfile + ".bad").Length == 3, "with no backup the land is made fresh, and the damaged file is still kept");
                 w3.Stop();
+                // Damaged files: the copy kept beside each one is used, and nothing good is written over.
+                {
+                    string bdir = Path.Combine(dir, "bak-test"); Directory.CreateDirectory(bdir);
+                    var wa = new ServerWorld(bdir, 4321); wa.Meta.day = 7; wa.SaveMeta(); wa.Meta.day = 8; wa.SaveMeta(); wa.Stop();       // two saves: world.json and world.json.bak
+                    string wj = Path.Combine(bdir, "world.json");
+                    File.WriteAllText(wj, "{ this is not json");
+                    var wb = new ServerWorld(bdir, 99);
+                    Check(wb.Meta.seed == 4321 && File.Exists(wj + ".bad"), $"a damaged world.json is read from its backup, keeping the seed ({wb.Meta.seed})");
+                    wb.Stop();
+                    File.WriteAllText(wj, "garbage"); File.WriteAllText(wj + ".bak", "more garbage");
+                    bool refused = false; try { new ServerWorld(bdir, 99).Stop(); } catch (InvalidDataException) { refused = true; }
+                    Check(refused && File.ReadAllText(wj) == "garbage", "with no readable copy the world is not started over on a new seed");
+                    var rec = new PlayerRecord { name = "Zed", hasPos = true, x = 5 }; rec.Save(bdir, "zed"); rec.x = 9; rec.Save(bdir, "zed");
+                    File.WriteAllText(PlayerRecord.FileFor(bdir, "zed"), "{{{{");
+                    var back = PlayerRecord.Load(bdir, "zed");
+                    Check(back != null && back.hasPos && back.x == 5 && File.Exists(PlayerRecord.FileFor(bdir, "zed") + ".bad"), "a damaged player file is read from its backup, not treated as a new player");
+                    var cb = new Containers(); cb.Set(1, 2, 3, 0, new Stack("cobble", 11)); string cfile2 = Path.Combine(bdir, "containers.bin");
+                    cb.Save(cfile2); cb.Set(1, 2, 3, 1, new Stack("torch", 3)); cb.Save(cfile2);
+                    var good = File.ReadAllBytes(cfile2); var cut = new byte[good.Length - 9]; Array.Copy(good, cut, cut.Length); File.WriteAllBytes(cfile2, cut);     // cut short part-way through
+                    var cc = new Containers(); cc.Load(cfile2);
+                    Check(cc.At(1, 2, 3)[0].Count == 11 && cc.At(1, 2, 3)[1].Empty && cc.LoadedFrom.EndsWith(".bak"), "a damaged containers file is read from its backup, whole");
+                    File.WriteAllBytes(cfile2 + ".bak", cut);
+                    var cd = new Containers(); bool threw = false; try { cd.Load(cfile2); } catch (InvalidDataException) { threw = true; }
+                    int leftIn = 0; foreach (var kv in cd.All) leftIn++;
+                    Check(threw && leftIn == 0 && File.Exists(cfile2 + ".bad"), "with both copies damaged nothing half-read is left behind, and the file is kept aside");
+                    try { Directory.Delete(bdir, true); } catch { }
+                }
                 Thread.Sleep(100);
                 try { Directory.Delete(wdir, true); } catch { }
                 if (Directory.Exists(dir) && Directory.GetFileSystemEntries(dir).Length == 0) Directory.Delete(dir);
@@ -411,7 +492,7 @@ namespace Stratum.Server
 
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
             int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
-            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4,
+            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 99, MaxView = 4, LegacyLogin = true,
                 Worlds = WorldDef.Parse("main|Home;sky|Sky Islands|survival|easy||Floating islands|sky;flat|Flatlands|creative|||Flat|flat;tall|Towering Wilds|survival|easy||Cliffs|towering|keep", Seed) };
             var srv = new GameServer(cfg); srv.Start();
             try
@@ -482,7 +563,7 @@ namespace Stratum.Server
         static void WorldChecks(string dir)
         {
             int Seed(string t) => int.TryParse(t, out int n) ? n : t.GetHashCode();
-            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, MaxView = 4,
+            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, MaxView = 4, LegacyLogin = true,
                 Worlds = WorldDef.Parse("main|Survival|survival|normal||Where it began; calm|Peaceful|survival|peaceful|7|No monsters ; build|Creative|creative||| Build anything", Seed) };
             var srv = new GameServer(cfg); srv.Start();
             try
@@ -567,7 +648,7 @@ namespace Stratum.Server
         public static int Run()
         {
             var dir = Path.Combine(Path.GetTempPath(), "stratum-selftest-" + Guid.NewGuid().ToString("N").Substring(0, 8));
-            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, Name = "Test Server", MaxPlayers = 3 };
+            var cfg = new ServerConfig { Port = 0, Dir = dir, Seed = 20261119, Name = "Test Server", MaxPlayers = 3, LegacyLogin = true };
             Log.Quiet = Environment.GetEnvironmentVariable("STRATUM_TEST_LOG") != "1";
             try
             {
@@ -649,6 +730,27 @@ namespace Stratum.Server
                     var give = a.Wait(Net.Msg.Give);
                     Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
                     Check(a.Wait(Net.Msg.Mobs, null, 3000) != null, "the server tells players about the creatures near them");
+                    // Everyday things that change a block without breaking it: a door, a lever, tilled soil, a second slab.
+                    bool Accepted(int bx, int by, int bz, byte id, byte old)
+                    {
+                        a.Send(new Packet(Net.Msg.SetBlock).I32(bx).I32(by).I32(bz).U8(id).U8(old));
+                        return b.Wait(Net.Msg.Block, r => r.I32() == bx && r.I32() == by && r.I32() == bz && r.U8() == id, 2000) != null;
+                    }
+                    int dy = py + 1;
+                    Check(Accepted(px, dy, pz, Blocks.OakDoor, 0) && Accepted(px, dy + 1, pz, (byte)(Blocks.OakDoor + 1), 0), "Ada stands a door up (both halves)");
+                    byte lowOpen = Blocks.Flip(Blocks.OakDoor, 2), highOpen = Blocks.Flip((byte)(Blocks.OakDoor + 1), 2);
+                    Check(Accepted(px, dy, pz, lowOpen, Blocks.OakDoor) && Accepted(px, dy + 1, pz, highOpen, (byte)(Blocks.OakDoor + 1)), "and opens it: both halves swing, and Bea sees it");
+                    Check(Accepted(px, dy, pz, Blocks.OakDoor, lowOpen) && Accepted(px, dy + 1, pz, (byte)(Blocks.OakDoor + 1), highOpen), "and shuts it again");
+                    Accepted(px, dy + 1, pz, 0, (byte)(Blocks.OakDoor + 1)); Accepted(px, dy, pz, 0, Blocks.OakDoor);
+                    Check(Accepted(px, dy, pz, Blocks.Lever, 0) && Accepted(px, dy, pz, Blocks.Flip(Blocks.Lever, 1), Blocks.Lever), "a lever can be thrown");
+                    Accepted(px, dy, pz, 0, Blocks.Flip(Blocks.Lever, 1));
+                    byte slab = Blocks.Slabs.First();
+                    Check(Accepted(px, dy, pz, slab, 0) && Accepted(px, dy, pz, Blocks.Get(slab).Pair, slab), "a second slab on the first makes the whole block");
+                    Accepted(px, dy, pz, 0, Blocks.Get(slab).Pair);
+                    Check(Accepted(px, dy, pz, Blocks.Grass, 0) && Accepted(px, dy, pz, Blocks.Farmland, Blocks.Grass), "grass can be tilled");
+                    Accepted(px, dy, pz, 0, Blocks.Farmland);
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py).I32(pz).U8(Blocks.Chest).U8(Blocks.Stone));
+                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py && r.I32() == pz && r.U8() == Blocks.Stone, 2000) != null, "but one block still can't be swapped for another kind");
                     a.Send(new Packet(Net.Msg.Drop).F32(a.X).F32(a.Y).F32(a.Z).Stacks(new[] { new Stack("torch", 4) }));
                     Check(b.Wait(Net.Msg.Block, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Blocks.Satchel; }) != null, "what Ada drops lands in a satchel everyone sees");
 
@@ -753,12 +855,45 @@ namespace Stratum.Server
                     using (var c = new Bot(port)) { c.Login("Nobody", "whatever1"); Check(c.Refused()?.Contains("no account") == true, "logging in to an account that doesn't exist is refused"); }
                     using (var c = new Bot(port)) { c.Create("Cyd", "123"); Check(c.Refused()?.Contains("Passwords are") == true, "a too-short password is refused"); }
                     using (var c = new Bot(port)) { c.Hello(Accounts.Mode.Token, "Ada", new string('0', 64)); Check(c.Refused() != null, "a made-up token is refused"); }
+                    // The 0.8 login: password and invite sealed to the server's key, the token hidden on the way back.
+                    byte[] recorded = null, recMod = null, recExp = null;
+                    using (var c = new Bot(port) { Sealed = true })
+                    {
+                        c.Create("Cleo", "cleo-password", world: "");
+                        bool okc = c.Welcome();
+                        Check(okc && c.Name == "Cleo" && c.Token.Length == 64 && Secure.IsSealed(c.TokenOnWire) && !c.TokenOnWire.Contains(c.Token), "a sealed login gets in, and its remember-me token travels hidden");
+                        Check(c.SentSealed != null && System.Text.Encoding.UTF8.GetString(c.SentSealed).IndexOf("cleo-password", StringComparison.Ordinal) < 0, "the password isn't in what was sent");
+                        recorded = c.SentSealed; recMod = c.KeyMod; recExp = c.KeyExp;
+                        Check(Secure.Fingerprint(c.KeyMod) == srv.KeyFingerprint, "the key the game was given is the server's own");
+                    }
+                    Thread.Sleep(300);
+                    using (var c = new Bot(port))
+                    {
+                        // Someone who recorded that login plays it back on a new connection.
+                        c.Worlds();
+                        c.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8((byte)Accounts.Mode.Login).Str("Cleo").Str("").Str("").Str("selftest").Str("").I32(c.Features).U8(0).Blob(recorded));
+                        Check(c.Refused()?.Contains("couldn't be read safely") == true, "a recorded login played back is refused");
+                    }
+                    using (var c = new Bot(port) { Sealed = true }) { c.Login("Cleo", "wrong-password", world: ""); Check(c.Refused() == "Wrong password.", "a sealed login with the wrong password is refused like any other"); }
+                    using (var c = new Bot(port) { Sealed = true }) { c.Login("Cleo", "cleo-password", world: ""); Check(c.Welcome() && c.Name == "Cleo", "and with the right one gets in"); }
                     using (var d = new Bot(port)) { d.Hello(Accounts.Mode.Login, "Old", "whatever1", "", Net.Protocol - 1); Check(d.Refused()?.Contains("newer") == true, "an older game is told to update"); }
                     Thread.Sleep(300);
                 }
                 Thread.Sleep(500);
                 srv.Stop();
                 Check(!File.ReadAllText(Path.Combine(dir, "accounts.json")).Contains(pwA), "accounts.json never holds a password");
+
+                // A server as it runs by default: a game that sends its password in the clear is told to update.
+                cfg.LegacyLogin = false;
+                var strict = new GameServer(cfg); strict.Start();
+                try
+                {
+                    using (var c = new Bot(strict.Port)) { c.Login("Ada", pwA, world: ""); Check(c.Refused()?.Contains("logins are encrypted now") == true, "by default a login sent in the clear is refused, with where to get the update"); }
+                    using (var c = new Bot(strict.Port) { Sealed = true }) { c.Login("Ada", pwA, world: ""); Check(c.Welcome() && c.Name == "Ada", "and a sealed one gets in"); }
+                    Thread.Sleep(300);
+                }
+                finally { strict.Stop(); }
+                cfg.LegacyLogin = true;
 
                 // Back again, now with an invite code: the world and Ada are as she left them.
                 cfg.Password = "open sesame";

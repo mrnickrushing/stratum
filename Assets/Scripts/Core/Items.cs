@@ -55,6 +55,7 @@ namespace Stratum.Core
         public string Out; public int Count;
         public (string item, int count)[] In;
         public string Station;       // null = by hand, "workbench", "furnace"
+        public string[] Shape;       // the pattern in the crafting grid (Crafting.Patterns); null: any squares
     }
 
     public static class Items
@@ -251,6 +252,7 @@ namespace Stratum.Core
             R("iron_ingot", 1, "furnace", ("iron_ore", 1), ("coal", 1));
             R("gold_ingot", 1, "furnace", ("gold_ore", 1), ("coal", 1));
             R("coal", 1, "furnace", ("@log", 1));
+            Crafting.Assign(Recipes);
         }
 
         public static ItemDef Get(string id)

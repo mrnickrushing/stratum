@@ -415,7 +415,7 @@ namespace Stratum.Server
                        : Blocks.Defs[id] == null ? $"no block {id}"
                        : cur != old ? $"it was {Blocks.Get(cur).Name}, not {Blocks.Get(old).Name}"
                        : !_cfg.Creative && Blocks.Get(cur).Hardness < 0 && !(Blocks.Get(cur).Fluid != 0 && Blocks.Get(cur).Level == 0 && id == 0) ? "unbreakable"
-                       : id != 0 && cur != 0 && !Blocks.Get(cur).Replaceable ? "something is in the way"
+                       : id != 0 && cur != 0 && !Blocks.Get(cur).Replaceable && !Blocks.Changes(cur, id) ? "something is in the way"
                        : Blocks.Get(cur).Container && !Blocks.Get(id).Container && InUse(p, x, y, z, out string user) ? $"{user} has it open"
                        : null;
             if (why != null)

@@ -136,6 +136,25 @@ the result, plus two hidden slots (`_burn`, `_cook`) for the fire and the progre
 `Furnaces` in single player and on the server whether or not anyone is near. Coal smelts 8 things, a log or planks
 1.5, a stick 0.5; a piece takes 8 seconds. Furnace recipes can no longer be made from the list.
 
+**0.8 (audit fixes):**
+- *Logins are sealed* (`Core/Secure.cs`): the server keeps an RSA key in `<data>/server.key`; a game pings on its login
+  connection, gets the public key and a one-time number in the Pong, and sends password/token and invite encrypted
+  (RSA-OAEP wrapping a fresh AES key, AES-CBC + HMAC for the secrets). The remember-me token comes back hidden with the
+  same key. Plain-text logins are refused unless `STRATUM_LEGACY_LOGIN=1`. The game checks the key's fingerprint:
+  for our own server against `key` in `site/public/server.json` (the server logs its fingerprint at start; put it
+  there and redeploy the site if the key ever changes), for any other server against the one seen on the first visit.
+  Only the login is encrypted, not the rest of the session.
+- *Crafting patterns* (`Core/Crafting.cs`): tools and building pieces have shapes (may sit anywhere, may be mirrored);
+  the rest are any-squares. A self-test lays out every recipe and checks it makes its own thing. Clicking a recipe's
+  picture lays it out in the grid.
+- *State changes online*: `Blocks.Changes` lets the server accept a door opening, a lever, tilling and slab merging.
+- *Backups are used*: `SafeFile.Load` falls back to `.bak` and keeps a damaged file as `.bad` (world list, server
+  world/player/accounts files, containers); the server also looks in `<data>/backups`. A world whose manifest can't
+  be found anywhere is not started over.
+- *Monster light* spreads through open space like the light that is drawn (`MobSim.BlockLight`).
+- *CI*: `.github/workflows/server.yml` builds the server and runs the self-test on every push and pull request.
+- *Linux installer*: checks the download against `/download/sums` and keeps the old copy until the new one is in place.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,

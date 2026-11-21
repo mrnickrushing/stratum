@@ -52,14 +52,28 @@ namespace Stratum.Server
             Directory.CreateDirectory(Path.Combine(dir, "chunks"));
             Directory.CreateDirectory(Path.Combine(dir, "players"));
             var path = Path.Combine(dir, "world.json");
-            if (File.Exists(path)) Meta = JsonSerializer.Deserialize<Info>(File.ReadAllText(path));
+            bool had = File.Exists(path) || File.Exists(path + ".bak");
+            if (had)
+            {
+                // The manifest, its ".bak", then the server's own backups. A world whose seed can't be found is not
+                // started over: that would lay new land over everything built there.
+                Meta = SafeFile.Load(path, p => JsonSerializer.Deserialize<Info>(File.ReadAllText(p)), out string from);
+                if (Meta == null)
+                {
+                    Info found = null;
+                    string stamp = Backups.Recover(path, cand => { found = JsonSerializer.Deserialize<Info>(File.ReadAllText(cand)) ?? throw new InvalidDataException("empty"); });
+                    Meta = found ?? throw new InvalidDataException($"{path} and its backups are unreadable. The damaged file is kept as world.json.bad; put a good world.json back to start this world.");
+                    Log.Warn($"{path} was unreadable; using the copy from backup {stamp}");
+                }
+                else if (from != path) Log.Warn($"{path} was unreadable; using world.json.bak");
+            }
             else
             {
                 Meta = new Info { seed = seed ?? new Random().Next(1, int.MaxValue), kind = (int)kind, created = DateTime.UtcNow.Ticks };
                 Log.Info($"new {WorldGen.KindName(kind)} world, seed {Meta.seed}");
             }
             Gen = new WorldGen(Meta.seed, (uint)Meta.kind < (uint)WorldKind.Count ? (WorldKind)Meta.kind : WorldKind.Normal);
-            if (!File.Exists(path))
+            if (!had)
             {
                 var s = Gen.FindSpawn();
                 Meta.sx = s.x; Meta.sy = s.y; Meta.sz = s.z;
@@ -213,7 +227,7 @@ namespace Stratum.Server
         {
             var path = Path.Combine(Dir, "world.json");
             File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(Meta, new JsonSerializerOptions { WriteIndented = true }));
-            File.Move(path + ".tmp", path, true);
+            SafeFile.Swap(path + ".tmp", path, keep: true);
         }
 
         public void Stop() => _work.CompleteAdding();
@@ -249,8 +263,14 @@ namespace Stratum.Server
         public static PlayerRecord Load(string dir, string key)
         {
             var p = FileFor(dir, key);
-            try { return File.Exists(p) ? JsonSerializer.Deserialize<PlayerRecord>(File.ReadAllText(p)) : null; }
-            catch (Exception e) { Log.Warn($"player file {key} unreadable: {e.Message}"); return null; }
+            if (!File.Exists(p) && !File.Exists(p + ".bak")) return null;
+            var rec = SafeFile.Load(p, f => JsonSerializer.Deserialize<PlayerRecord>(File.ReadAllText(f)), out string from);
+            if (rec != null) { if (from != p) Log.Warn($"player file {key} was unreadable; using its backup"); return rec; }
+            PlayerRecord found = null;
+            string stamp = Backups.Recover(p, cand => { found = JsonSerializer.Deserialize<PlayerRecord>(File.ReadAllText(cand)) ?? throw new InvalidDataException("empty"); });
+            if (found != null) { Log.Warn($"player file {key} was unreadable; using the copy from backup {stamp}"); return found; }
+            Log.Warn($"player file {key} and its backups are unreadable: they start fresh, and the damaged file is kept as {key}.json.bad");
+            return null;
         }
 
         public void Save(string dir, string key)
@@ -259,7 +279,7 @@ namespace Stratum.Server
             {
                 var p = FileFor(dir, key);
                 File.WriteAllText(p + ".tmp", JsonSerializer.Serialize(this));
-                File.Move(p + ".tmp", p, true);
+                SafeFile.Swap(p + ".tmp", p, keep: true);
             }
             catch (Exception e) { Log.Warn($"could not save player {name}: {e.Message}"); }
         }
