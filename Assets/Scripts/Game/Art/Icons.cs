@@ -44,7 +44,7 @@ namespace Stratum.Game
                         if (t == Tex.GrassSide) flags |= Flag.TintMask;
                         if (d.Cutout) flags |= Flag.Clip;
                         if (t == Tex.Sunstone || t == Tex.Lava) flags |= Flag.Glow;
-                        if (t == Tex.SunstoneOre || t == Tex.FurnaceFront) flags |= Flag.GlowMask;
+                        if (t == Tex.SunstoneOre || t == Tex.FurnaceFront || t == Tex.Hearth || t == Tex.Lantern) flags |= Flag.GlowMask;
                         int b = v.Count;
                         for (int k = 0; k < 4; k++)
                         {

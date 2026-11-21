@@ -191,6 +191,7 @@ namespace Stratum.Game
 
         void Teardown()
         {
+            AbortPortal();
             TeardownNet();
             TeardownSurvival();
             if (_hud != null) Destroy(_hud.gameObject);
@@ -243,7 +244,7 @@ namespace Stratum.Game
                 if (!string.IsNullOrEmpty(s.item) && s.count > 0 && Items.Get(s.item) != null) _player.Inv.Slots[i] = new Core.Stack(s.item, s.count) { Wear = s.wear };
             }
             _looseBack.Clear();
-            for (int i = Inventory.Size; i < meta.slots.Count && i < Inventory.Size + MaxLoose; i++)
+            for (int i = Inventory.Size; i < meta.slots.Count; i++)
             {
                 var s = meta.slots[i];
                 if (!string.IsNullOrEmpty(s.item) && s.count > 0 && Items.Get(s.item) != null) _looseBack.Add(new Core.Stack(s.item, s.count) { Wear = s.wear });
@@ -525,26 +526,31 @@ namespace Stratum.Game
 
         // The pack as a save should record it: with whatever the cursor or a station holds tucked into free slots,
         // so a crash with the backpack open doesn't lose it.
-        Core.Stack[] SaveSlots()
+Core.Stack[] SaveSlots()
         {
             var a = (Core.Stack[])_player.Inv.Slots.Clone();
-            if (_hud == null) return a;
+            // Everything that is the player's but not in a slot right now: what the cursor, a station or the grid
+            // holds, what is waiting for room, and what a load set aside and hasn't handed back yet.
+            IEnumerable<Core.Stack> loose = System.Linq.Enumerable.Concat(_waiting, _looseBack);
+            if (_hud != null) loose = System.Linq.Enumerable.Concat(_hud.Loose(), loose);
             List<Core.Stack> over = null;
-            foreach (var s in System.Linq.Enumerable.Concat(_hud.Loose(), _waiting))
+            foreach (var s in loose)
             {
+                if (s.Empty) continue;
                 bool put = false;
                 for (int k = 0; k < Inventory.Main && !put; k++) if (a[k].Empty) { a[k] = s; put = true; }
                 if (!put) (over ??= new List<Core.Stack>()).Add(s);
             }
             if (over == null) return a;
-            // No free slot for these: they follow the pack's own slots in the save and come back on loading.
-            if (over.Count > MaxLoose) over.RemoveRange(MaxLoose, over.Count - MaxLoose);
+            // No free slot for these: they follow the pack's own slots in the save and come back on loading. All of
+            // them: a save on this computer has no limit, and a server takes as many as one message can carry.
             var all = new Core.Stack[a.Length + over.Count];
             Array.Copy(a, all, a.Length); over.CopyTo(all, a.Length);
             return all;
         }
 
-        public const int MaxLoose = 40;        // the cursor, two station slots, nine squares, and things waiting for room
+        // The most extra stacks a server keeps for a player beyond the pack (one message carries 255 stacks in all).
+        public const int MaxLoose = Core.Net.MaxExtraStacks;
         readonly List<Core.Stack> _looseBack = new List<Core.Stack>();
 
         // Things a save recorded beyond the pack (held by the cursor, a station or the grid when it was written):
@@ -565,7 +571,7 @@ namespace Stratum.Game
             if (_meta == null || _world == null || _player == null || _state == State.Loading && !_meta.hasPlayer) return;
             try
             {
-                var f = _player.Feet;
+                var f = InTransit ? _departed : _player.Feet;      // mid-portal: where they left from, not the holding place
                 _meta.px = f.x; _meta.py = f.y; _meta.pz = f.z;
                 _meta.yaw = _player.Yaw; _meta.pitch = _player.Pitch; _meta.health = _player.Health; _meta.flying = _player.Flying;
                 _meta.food = _player.Food; _meta.saturation = _player.Saturation;

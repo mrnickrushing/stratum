@@ -144,6 +144,19 @@ namespace Stratum.Game
                 case Tex.JadeOre: Ore(p, Hex(0x3cc47a), Hex(0x1e8a4e), false); return 4f;
                 case Tex.JadeBlock: Metal(p, Hex(0x4ad08a), Hex(0x1a7a46)); return 3f;
                 case Tex.EnchantSide: EnchantSide(p); return 3f;
+                case Tex.Plaster: PlasterTex(p, Hex(0xe9e4d6), Hex(0xd6cfbd)); return 0.8f;
+                case Tex.TimberFrame: PlasterTex(p, Hex(0xe9e4d6), Hex(0xd6cfbd)); Beams(p); return 2.5f;
+                case Tex.RoofTiles: RoofTiles(p); return 4f;
+                case Tex.PolishedStone: Rock(p, Hex(0x9a9ca2), Hex(0x86888e), 0.03f, false); Frame(p, Hex(0x6c6e74), 1); return 1f;
+                case Tex.DarkPlanks: Planks(p, Hex(0x4a3524), 4); return 2.5f;
+                case Tex.WhitePlanks: Planks(p, Hex(0xdcd6c6), 4); return 2f;
+                case Tex.Bookshelf: BookshelfTex(p); return 3f;
+                case Tex.BarrelSide: BarrelSide(p); return 3f;
+                case Tex.BarrelTop: BarrelTop(p); return 2.5f;
+                case Tex.Hearth: HearthTex(p); return 4f;
+                case Tex.Lantern: LanternTex(p); return 2f;
+                case Tex.PottedPlant: PottedPlant(p); return 1f;
+                case Tex.Lattice: LatticeTex(p); return 1f;
                 case Tex.ChuteSide: Metal(p, Hex(0x5a5d66), Hex(0x33353c)); Frame(p, Hex(0x24252a), 2); return 3f;
                 case Tex.ChuteTop:
                     // A dark iron rim round an open mouth.
@@ -1124,6 +1137,216 @@ namespace Stratum.Game
             for (int s = 0; s < 3; s++)
                 for (int y = 42; y < 52; y++)
                     for (int x = 18 + s * 10; x < 24 + s * 10; x++) { var c = Hex(0x26262a); c.a = 0; p.Set(x, y, c, 0.2f); }
+        }
+
+        // ------------------------------------------------------------------ for houses
+
+        // Lime plaster: almost flat, with soft trowel marks.
+        static void PlasterTex(Paint p, Color a, Color b)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float n = p.Fbm(x, y, 6, 3), s = p.Streak(x, y, 3, 9, 2);
+                    Color c = Color.Lerp(b, a, 0.35f + n * 0.5f + s * 0.15f); c.a = 1;
+                    p.Set(x, y, c, 0.45f + n * 0.12f);
+                }
+        }
+
+        // Dark oak beams over plaster: a frame round the edge and a brace from corner to corner.
+        static void Beams(Paint p)
+        {
+            Color wood = Hex(0x4a3524);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool frame = x < 7 || x > 56 || y < 7 || y > 56;
+                    bool brace = Mathf.Abs(x - y) < 4;
+                    if (!frame && !brace) continue;
+                    float grain = p.Streak(frame && (y < 7 || y > 56) ? x : y, frame && (y < 7 || y > 56) ? y : x, 2, 14, 3);
+                    Color c = Paint.Mul(wood, 0.8f + grain * 0.45f); c.a = 1;
+                    bool edge = x == 7 - 1 || x == 57 || y == 7 - 1 || y == 57 || Mathf.Abs(Mathf.Abs(x - y) - 3) < 1;
+                    if (edge && !(x < 6 || x > 57 || y < 6 || y > 57)) c = Paint.Mul(wood, 0.55f);
+                    p.Set(x, y, c, 0.95f);
+                }
+        }
+
+        // Rows of rounded clay tiles, each row overlapping the one below.
+        static void RoofTiles(Paint p)
+        {
+            Color clay = Hex(0xb5553a), dark = Hex(0x6e2f20);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    int row = y / 16, ly = y % 16;
+                    int ox = (x + (row % 2) * 8) & 63, col = ox / 16, lx = ox % 16;
+                    float shade = 0.82f + p.Hash(row * 7 + col, 3) * 0.3f;
+                    // The bottom edge of each tile is a shallow curve.
+                    float curve = 3f * (1 - Mathf.Pow((lx - 7.5f) / 7.5f, 2));
+                    bool lip = ly < 3 - curve * 0.6f + 1.5f;
+                    float h = Mathf.Clamp01(0.35f + ly / 22f + curve * 0.05f);
+                    Color c = Paint.Mul(Color.Lerp(clay, Hex(0xc8683f), p.Fbm(x, y, 8, 2) * 0.6f), shade * (0.8f + ly / 60f));
+                    if (lx == 0 || lip) { c = Paint.Mul(dark, 0.9f); h = 0.05f; }
+                    c.a = 1;
+                    p.Set(x, y, c, h);
+                }
+        }
+
+        // Shelves of book spines in a plank frame.
+        static void BookshelfTex(Paint p)
+        {
+            Planks(p, Hex(0xb08a56), 4);
+            Color[] spines = { Hex(0x8c2f2a), Hex(0x2f4f8c), Hex(0x3f7a3a), Hex(0x8a6a2a), Hex(0x5a3a7a), Hex(0x2a6a6e), Hex(0xa24a1e), Hex(0x3a3a44) };
+            for (int shelf = 0; shelf < 2; shelf++)
+            {
+                int y0 = 5 + shelf * 29, y1 = y0 + 24, x = 5;
+                for (int yy = y0; yy < y1; yy++) for (int xx = 5; xx < 59; xx++) p.Set(xx, yy, Hex(0x1e1610), 0.05f);     // the dark behind
+                int book = 0;
+                while (x < 58)
+                {
+                    int w = 3 + (int)(p.Hash(shelf * 40 + book, 2) * 4), tall = 15 + (int)(p.Hash(shelf * 40 + book, 5) * 8);
+                    if (x + w > 59) w = 59 - x;
+                    Color col = spines[(int)(p.Hash(shelf * 40 + book, 9) * spines.Length) % spines.Length];
+                    for (int yy = y0; yy < y0 + tall && yy < y1; yy++)
+                        for (int xx = x; xx < x + w; xx++)
+                        {
+                            Color c = Paint.Mul(col, xx == x ? 0.7f : xx == x + w - 1 ? 0.8f : 1f);
+                            int up = yy - y0;
+                            if (up == tall - 4 || up == 4) c = Color.Lerp(c, Hex(0xe8c860), 0.75f);       // gilt bands
+                            c.a = 1;
+                            p.Set(xx, yy, c, 0.75f);
+                        }
+                    x += w; book++;
+                }
+            }
+        }
+
+        // Upright staves held by two iron hoops.
+        static void BarrelSide(Paint p)
+        {
+            Color wood = Hex(0x9a6c3c), iron = Hex(0x4a4c52);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    int stave = x / 8, lx = x % 8;
+                    float grain = p.Streak(y + stave * 17, x, 2, 12, 3);
+                    Color c = Paint.Mul(wood, (0.82f + p.Hash(stave, 2) * 0.25f) * (0.85f + grain * 0.3f));
+                    float h = 0.5f + grain * 0.15f;
+                    if (lx == 0) { c = Paint.Mul(wood, 0.45f); h = 0.05f; }
+                    bool hoop = y >= 10 && y < 16 || y >= 48 && y < 54;
+                    if (hoop) { c = Paint.Mul(iron, 0.9f + p.Fbm(x, y, 8, 2) * 0.3f); h = 0.95f; if (y == 10 || y == 48) c = Paint.Mul(iron, 1.35f); if ((x & 15) == 4 && (y == 12 || y == 50)) c = Paint.Mul(iron, 1.6f); }
+                    c.a = 1;
+                    p.Set(x, y, c, h);
+                }
+        }
+
+        static void BarrelTop(Paint p)
+        {
+            Planks(p, Hex(0x9a6c3c), 4);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float d = Mathf.Sqrt((x - 31.5f) * (x - 31.5f) + (y - 31.5f) * (y - 31.5f));
+                    if (d > 30) p.Set(x, y, Paint.Mul(Hex(0x4a4c52), 0.9f + p.Fbm(x, y, 8, 2) * 0.3f), 0.95f);
+                    else if (d > 28) p.Set(x, y, Hex(0x2c2014), 0.1f);
+                }
+        }
+
+        // A stone fireplace: an arched opening with a fire in it (alpha marks the glow).
+        static void HearthTex(Paint p)
+        {
+            Cobble(p, false);
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.C[Paint.I(x, y)].a = 0;
+            for (int y = 4; y < 44; y++)
+                for (int x = 10; x < 54; x++)
+                {
+                    bool arch = y < 30 || (x - 32) * (x - 32) / 484f + (y - 30) * (y - 30) / 196f < 1;
+                    if (!arch) continue;
+                    bool rim = x < 13 || x > 50 || y < 7 || (y >= 30 && (x - 32) * (x - 32) / 361f + (y - 30) * (y - 30) / 121f > 1);
+                    if (rim) { p.Set(x, y, Hex(0x2a2a2e), 0.25f); p.C[Paint.I(x, y)].a = 0; continue; }
+                    // Logs at the bottom, flames licking up from them.
+                    float e = p.Fbm(x, y, 8, 3);
+                    float flame = Mathf.Clamp01(1.25f - (y - 8) / (16f + 12f * p.Fbm(x, 3, 6, 2)) - Mathf.Abs(x - 32) / 26f) * (0.6f + e * 0.8f);
+                    Color c = y < 11 ? Color.Lerp(Hex(0x3a2414), Hex(0xd0601a), e) : Color.Lerp(Hex(0x120a06), Color.Lerp(Hex(0xd8480c), Hex(0xffe070), flame), Mathf.Clamp01(flame * 1.4f));
+                    c.a = Mathf.Clamp01(flame * 1.5f + (y < 11 ? 0.4f : 0));
+                    p.Set(x, y, c, 0.2f);
+                    p.C[Paint.I(x, y)].a = c.a;
+                }
+        }
+
+        // An iron cage round a warm light.
+        static void LanternTex(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool bar = x < 6 || x > 57 || y < 8 || y > 55 || Mathf.Abs(x - 32) < 3;
+                    float d = Mathf.Sqrt((x - 32) * (x - 32) + (y - 30) * (y - 30));
+                    Color c; float h;
+                    if (bar) { c = Paint.Mul(Hex(0x3c3e44), 0.85f + p.Fbm(x, y, 8, 2) * 0.4f); c.a = 0; h = 0.95f; }
+                    else { float g = Mathf.Clamp01(1.15f - d / 30f); c = Color.Lerp(Hex(0xe0902a), Hex(0xfff2b0), g); c.a = Mathf.Clamp01(0.45f + g * 0.6f); h = 0.3f; }
+                    p.Set(x, y, c, h);
+                    p.C[Paint.I(x, y)].a = c.a;
+                }
+        }
+
+        // A terracotta pot with a leafy plant and a red flower (a flat cut-out, like the wild flowers).
+        static void PottedPlant(Paint p)
+        {
+            for (int i = 0; i < p.C.Length; i++) { p.C[i] = new Color(0.3f, 0.5f, 0.2f, 0); p.H[i] = 0; }
+            Color pot = Hex(0xb0603c), leaf = Hex(0x3f8a34);
+            for (int y = 0; y < 22; y++)                                     // the pot, wider at the rim
+            {
+                int half = y >= 18 ? 13 : 8 + y * 3 / 18;
+                for (int x = 32 - half; x < 32 + half; x++)
+                {
+                    float shade = 0.75f + 0.35f * (1 - Mathf.Abs(x - 30) / (float)half);
+                    Color c = Paint.Mul(pot, y >= 18 ? shade * 1.12f : shade); c.a = 1;
+                    if (y == 17) c = Paint.Mul(pot, 0.6f);
+                    p.Set(x, y, c, 0.6f);
+                }
+            }
+            for (int k = 0; k < 7; k++)                                      // leaves fanning out
+            {
+                float ang = Mathf.Lerp(-1.1f, 1.1f, k / 6f), len = 24 + p.Hash(k, 3) * 10;
+                for (float t = 0; t < len; t += 0.5f)
+                {
+                    float fx = 32 + Mathf.Sin(ang) * t * (0.6f + t / 60f), fy = 21 + Mathf.Cos(ang) * t;
+                    float wide = 3.2f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(t / len));
+                    for (int dx = -(int)wide; dx <= (int)wide; dx++)
+                    {
+                        int x = (int)fx + dx, y = (int)fy;
+                        if ((uint)x >= 64 || (uint)y >= 64) continue;
+                        Color c = Paint.Mul(leaf, 0.75f + p.Hash(k, 7) * 0.3f + (dx == 0 ? -0.12f : 0.1f)); c.a = 1;
+                        p.Set(x, y, c, 0.5f);
+                    }
+                }
+            }
+            for (int y = 50; y < 60; y++)                                    // a flower on top
+                for (int x = 27; x < 37; x++)
+                {
+                    float d = Mathf.Sqrt((x - 31.5f) * (x - 31.5f) + (y - 54.5f) * (y - 54.5f));
+                    if (d > 5) continue;
+                    Color c = d < 1.8f ? Hex(0xf2c830) : Paint.Mul(Hex(0xd23a3a), 0.85f + (5 - d) * 0.06f); c.a = 1;
+                    p.Set(x, y, c, 0.6f);
+                }
+        }
+
+        // Small diamond panes in lead strips (the glass itself is see-through).
+        static void LatticeTex(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool frame = x < 3 || y < 3 || x > 60 || y > 60;
+                    int a = (x + y) & 15, b = (x - y) & 15;
+                    bool lead = a == 0 || a == 1 || b == 0 || b == 1;
+                    Color c; float h;
+                    if (frame) { c = Paint.Mul(Hex(0x5a4630), 0.85f + p.Fbm(x, y, 8, 2) * 0.35f); c.a = 1; h = 1; }
+                    else if (lead) { c = Paint.Mul(Hex(0x4a4c52), 0.85f + p.Fbm(x, y, 8, 2) * 0.3f); c.a = 1; h = 0.8f; }
+                    else { c = new Color(0.8f, 0.9f, 1f, 0); h = 0; if (((x + y) >> 4) % 3 == 0 && a > 9 && a < 12 && b > 4 && b < 9) c = new Color(0.94f, 0.98f, 1f, 1); }
+                    p.Set(x, y, c, h);
+                }
         }
 
         static void Metal(Paint p, Color light, Color dark)

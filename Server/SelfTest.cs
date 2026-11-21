@@ -273,6 +273,7 @@ namespace Stratum.Server
             var frost = Make(new WorldGen(31 + (int)WorldKind.OnlyFrost, WorldKind.OnlyFrost), 0, 0); var oak = new WorldGen(5, WorldKind.OnlyOakwood); int logs = 0;
             for (int cz = 0; cz < 4; cz++) for (int cx = 0; cx < 4; cx++) { var c = Make(oak, cx, cz); for (int i = 0; i < c.Blocks.Length; i++) if (c.Blocks[i] == Blocks.OakLog) logs++; }
             Check(logs > 150, $"All Oakwood is wooded ({logs} oak logs in 16 chunks)");
+            Console.WriteLine($"INFO block numbers used: {Blocks.Count} of 255, textures: {(int)Tex.Count}");
             Check(WorldGen.ParseKind("towering") == WorldKind.Towering && WorldGen.ParseKind("vast") == WorldKind.Vast && WorldGen.ParseKind("islands") == WorldKind.Islands, "the other kinds still parse");
 
             // Furnaces: fuel, time and room for the result.

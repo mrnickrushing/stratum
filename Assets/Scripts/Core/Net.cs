@@ -33,6 +33,9 @@ namespace Stratum.Core
         public const byte Sneaking = 1, Flying = 2, Swinging = 4, InWater = 8, Dead = 16, Asleep = 32, InBoat = 64, InCart = 128;
 
         // Creature sounds in MobSound.
+        // Stacks a player may have beyond their pack's 40 slots (held by the cursor, waiting for room, set aside by a
+        // load): as many as fit in one list of stacks, whose count is one byte.
+        public const int MaxExtraStacks = 255 - 40;
         public static readonly string[] MobSounds = { "hurt", "die", "say", "shoot", "stick" };
 
         public static bool ValidName(string n)
