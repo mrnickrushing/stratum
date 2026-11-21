@@ -16,6 +16,17 @@ namespace Stratum.Game
         float _arriveWait;
         bool _asked;
 
+        // Leaving a world (or a server) in the middle of a portal trip: the trip is called off. The player counts as
+        // still standing where they left from, so that is what gets saved, and nothing of the trip is left to act on
+        // the next world.
+        void AbortPortal()
+        {
+            if (_arrive != null && _player != null) { _player.Feet = _departed; _player.Velocity = Vector3.zero; _player.ResetFall(); }
+            _arrive = null; _asked = false; _arriveWait = 0; _inPortal = 0; _leftPortal = true;
+            if (_hud != null) _hud.PortalGlow(0);
+        }
+        public bool InTransit => _arrive != null;
+
         void TickPortal(float dt)
         {
             if (_player == null || _world == null) return;

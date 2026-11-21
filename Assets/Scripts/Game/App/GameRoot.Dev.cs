@@ -53,6 +53,44 @@ namespace Stratum.Game
             return sb + "no second satchel";
         }
 
+        // Regression checks for interruptions that once lost things (run in Play mode inside a single-player world):
+        // leaving mid-portal, saving with far more waiting than the pack holds, and saving while a load's set-aside
+        // things haven't been handed back. Returns a line per check.
+        public static string DevRegress()
+        {
+            var g = I; var sb = new System.Text.StringBuilder(); int fails = 0;
+            void Check(bool ok, string what) { sb.Append(ok ? "PASS " : "FAIL ").Append(what).Append("; "); if (!ok) fails++; }
+            var home = g._player.Feet;
+            // 1. Mid-portal: the save says where we left from, and nothing of the trip survives leaving the world.
+            g._departed = home; g._arrive = new Vector3(200.5f, 140, 200.5f); g._arriveEmber = true; g._asked = false; g._arriveWait = 0;
+            g._player.Feet = g._arrive.Value;
+            g.Save();
+            Check(Mathf.Abs(g._meta.px - home.x) < 0.01f && Mathf.Abs(g._meta.py - home.y) < 0.01f && Mathf.Abs(g._meta.pz - home.z) < 0.01f, "a save mid-portal records where the player left from");
+            g.AbortPortal();
+            Check(g._arrive == null && (g._player.Feet - home).sqrMagnitude < 0.01f, "leaving mid-portal calls the trip off and puts the player back");
+            var before = g._player.Feet; g.TickPortal(0.1f);
+            Check((g._player.Feet - before).sqrMagnitude < 0.01f, "and the next portal update moves nobody");
+            // 2. Far more waiting than the pack holds: every stack is in the save.
+            var keepInv = (Core.Stack[])g._player.Inv.Slots.Clone();
+            for (int i = 0; i < Inventory.Main; i++) g._player.Inv.Slots[i] = new Core.Stack("cobble", 64);
+            g._waiting.Clear();
+            for (int i = 0; i < 45; i++) g._waiting.Add(new Core.Stack("iron_pickaxe", 1) { Wear = 10 + i });
+            var saved = g.SaveSlots(); int picks = 0; foreach (var s in saved) if (s.Item == "iron_pickaxe") picks++;
+            Check(saved.Length == Inventory.Size + 45 && picks == 45 && saved[saved.Length - 1].Wear == 54, $"45 worn pickaxes waiting with a full pack are all saved ({picks})");
+            g.Save();
+            int inFile = 0; foreach (var s in g._meta.slots) if (s.item == "iron_pickaxe") inFile++;
+            Check(inFile == 45, $"and all are in the world file ({inFile})");
+            g._waiting.Clear();
+            // 3. Things a load set aside and hasn't handed back are in every save until it has.
+            g._looseBack.Clear(); g._looseBack.Add(new Core.Stack("torch", 9));
+            saved = g.SaveSlots(); int torches = 0; foreach (var s in saved) if (s.Item == "torch") torches += s.Count;
+            Check(torches == 9, $"nine torches set aside by a load are in the save before they're handed back ({torches})");
+            g._looseBack.Clear();
+            System.Array.Copy(keepInv, g._player.Inv.Slots, keepInv.Length);
+            g.Save();
+            return (fails == 0 ? "ALL PASSED: " : fails + " FAILED: ") + sb;
+        }
+
         public static string DevState() => I._state + (I._player != null ? $" at {I._player.Feet} hp {I._player.Health} food {I._player.Food}" : "") + (I._link != null ? $" mobs {I._link.Mobs.Count}" : "");
 
         // A creature a few metres in front of the player, on the ground.

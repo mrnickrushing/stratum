@@ -483,7 +483,7 @@ namespace Stratum.Server
             p.Rec.saturation = Math.Clamp(r.F32(), 0, 20);
             p.Rec.selected = r.U8();
             var st = r.Stacks();
-            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + 40) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
+            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + Net.MaxExtraStacks) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
         }

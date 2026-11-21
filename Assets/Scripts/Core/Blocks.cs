@@ -27,6 +27,7 @@ namespace Stratum.Core
         EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail, SparkOre, WireOff, WireOn, Lever, SparkTorchOn, SparkTorchOff, LampOff, LampOn, RepeaterOff, RepeaterOn, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         ChuteTop, ChuteSide,
+        Plaster, TimberFrame, RoofTiles, PolishedStone, DarkPlanks, WhitePlanks, Bookshelf, BarrelTop, BarrelSide, Hearth, Lantern, PottedPlant, Lattice,
         Count
     }
 
@@ -108,7 +109,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            Chute, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
+            Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -486,6 +487,34 @@ namespace Stratum.Core
             b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 3; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Metal; b.Container = true;
             b.Boxes = new[] { Box.Px(0, 10, 0, 16, 16, 16), Box.Px(4, 4, 4, 12, 10, 12), Box.Px(6, 0, 6, 10, 4, 10) };
             Chute = b.Id;
+
+            // ---------------------------------------------------------------- 1.0: for houses (walls, roofs, floors, furniture)
+            BlockDef Deco(string key, string name, Tex t, float hard, Sound snd, Tool tool) { var d = Add(key, name, t); d.Hardness = hard; d.Sound = snd; d.Tool = tool; return d; }
+            Deco("plaster", "White Plaster", Tex.Plaster, 1.2f, Sound.Stone, Tool.Pickaxe);
+            Deco("timber_frame", "Timber Frame", Tex.TimberFrame, 1.5f, Sound.Wood, Tool.Axe);
+            Deco("roof_tiles", "Clay Roof Tiles", Tex.RoofTiles, 1.5f, Sound.Stone, Tool.Pickaxe);
+            Deco("polished_stone", "Polished Stone", Tex.PolishedStone, 1.5f, Sound.Stone, Tool.Pickaxe);
+            Deco("dark_planks", "Dark Planks", Tex.DarkPlanks, 2, Sound.Wood, Tool.Axe);
+            Deco("white_planks", "Whitewashed Planks", Tex.WhitePlanks, 2, Sound.Wood, Tool.Axe);
+            b = Add("bookshelf", "Bookshelf", Tex.OakPlanks, Tex.Bookshelf, Tex.OakPlanks); b.Hardness = 1.5f; b.Sound = Sound.Wood; b.Tool = Tool.Axe;
+            b = Add("barrel", "Barrel", Tex.BarrelTop, Tex.BarrelSide, Tex.BarrelTop); b.Hardness = 2; b.Sound = Sound.Wood; b.Tool = Tool.Axe; b.Container = true; Barrel = b.Id;
+            b = Add("hearth", "Hearth", Tex.FurnaceTop, Tex.Hearth, Tex.FurnaceTop); b.Hardness = 3; b.Sound = Sound.Stone; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Emit = 13; Hearth = b.Id;
+            b = Add("lantern", "Lantern", Tex.Lantern); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Emit = 15; b.Hardness = 0.5f; b.Sound = Sound.Metal;
+            b.Boxes = new[] { Box.Px(5, 0, 5, 11, 9, 11), Box.Px(6, 9, 6, 10, 11, 10) }; Lantern = b.Id;
+            b = Add("table", "Table", Tex.OakPlanks); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 2; b.Sound = Sound.Wood; b.Tool = Tool.Axe;
+            b.Boxes = new[] { Box.Px(0, 13, 0, 16, 16, 16), Box.Px(1, 0, 1, 3, 13, 3), Box.Px(13, 0, 1, 15, 13, 3), Box.Px(1, 0, 13, 3, 13, 15), Box.Px(13, 0, 13, 15, 13, 15) };
+            b = Add("stool", "Stool", Tex.OakPlanks); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 1.5f; b.Sound = Sound.Wood; b.Tool = Tool.Axe;
+            b.Boxes = new[] { Box.Px(3, 7, 3, 13, 9, 13), Box.Px(4, 0, 4, 6, 7, 6), Box.Px(10, 0, 4, 12, 7, 6), Box.Px(4, 0, 10, 6, 7, 12), Box.Px(10, 0, 10, 12, 7, 12) };
+            foreach (var (key, name, tex) in new[] { ("carpet_red", "Red Carpet", Tex.WoolRed), ("carpet_blue", "Blue Carpet", Tex.WoolBlue) })
+            {
+                b = Add(key, name, tex); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Hardness = 0.2f; b.Sound = Sound.Cloth;
+                b.Boxes = new[] { new Box(0, 0, 0, 1, 1 / 16f, 1) };
+            }
+            b = Add("flower_pot", "Potted Plant", Tex.PottedPlant); b.Shape = Shape.Cross; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Cutout = true; b.Hardness = 0.1f; b.Sound = Sound.Stone; b.FlatIcon = true;
+            b = Add("lattice_window", "Lattice Window", Tex.Lattice); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Cutout = true; b.Connect = Connect.Pane;
+            b.Hardness = 0.3f; b.Sound = Sound.Glass; b.Boxes = ConnectBoxes(Connect.Pane, 0);
+            b = Add("stone_pillar", "Stone Pillar", Tex.PolishedStone); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 1.5f; b.Sound = Sound.Stone; b.Tool = Tool.Pickaxe;
+            b.Boxes = new[] { Box.Px(2, 0, 2, 14, 2, 14), Box.Px(4, 2, 4, 12, 14, 12), Box.Px(2, 14, 2, 14, 16, 14) };
 
             Palette.Remove(Water);
         }

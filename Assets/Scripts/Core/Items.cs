@@ -222,6 +222,24 @@ namespace Stratum.Core
             R("enchanting_table", 1, "workbench", ("book", 1), ("sunstone_shard", 2), ("obsidian", 4));
             R("anvil", 1, "workbench", ("iron_block", 3), ("iron_ingot", 4));
             R("chute", 1, "workbench", ("iron_ingot", 5), ("chest", 1));
+            // For houses.
+            R("plaster", 4, "workbench", ("sand", 2), ("clay", 2));
+            R("timber_frame", 4, "workbench", ("plaster", 4), ("stick", 2));
+            R("roof_tiles", 4, "workbench", ("clay_bricks", 4));
+            R("polished_stone", 4, "workbench", ("stone_bricks", 4));
+            R("dark_planks", 4, "workbench", ("@planks", 4), ("coal", 1));
+            R("white_planks", 4, "workbench", ("@planks", 4), ("bone_meal", 1));
+            R("bookshelf", 1, "workbench", ("@planks", 6), ("book", 3));
+            R("barrel", 1, "workbench", ("@planks", 6), ("iron_ingot", 2));
+            R("hearth", 1, "workbench", ("cobble", 7), ("coal", 2));
+            R("lantern", 1, "workbench", ("iron_ingot", 4), ("torch", 1));
+            R("table", 1, "workbench", ("@planks", 3), ("stick", 2));
+            R("stool", 2, "workbench", ("@planks", 1), ("stick", 2));
+            R("carpet_red", 3, "workbench", ("red_wool", 2));
+            R("carpet_blue", 3, "workbench", ("blue_wool", 2));
+            R("flower_pot", 1, "workbench", ("clay_bricks", 3), ("red_flower", 1));
+            R("lattice_window", 8, "workbench", ("glass", 4), ("stick", 2));
+            R("stone_pillar", 2, "workbench", ("stone", 3));
             // Farming.
             R("bread", 1, "workbench", ("wheat", 3));
             R("hay_bale", 1, "workbench", ("wheat", 9));

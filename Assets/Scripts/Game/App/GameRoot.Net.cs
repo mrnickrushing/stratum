@@ -214,7 +214,7 @@ namespace Stratum.Game
             for (int i = 0; i < slots.Length && i < Inventory.Size; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _player.Inv.Slots[i] = slots[i];
             _looseBack.Clear();
-            for (int i = Inventory.Size; i < slots.Length && i < Inventory.Size + MaxLoose; i++)
+            for (int i = Inventory.Size; i < slots.Length; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _looseBack.Add(slots[i]);
             if (!hasPos && creative) StarterCreative(_player.Inv);
             _player.Died = OnDied;
@@ -504,6 +504,7 @@ namespace Stratum.Game
 
         void LeaveServer(string why)
         {
+            AbortPortal();                 // mid-portal: the server is told where we left from, not the holding place
             if (_net != null)
             {
                 if (_net.Open) { SendMove(true); SendKeep(); }

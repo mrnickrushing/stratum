@@ -171,6 +171,18 @@ the result, plus two hidden slots (`_burn`, `_cook`) for the fire and the progre
 - A chunk job that throws is retried instead of staying queued; a leaving player's chests and edits are written
   with their pack.
 
+**0.10:**
+- *Building blocks* (end of `Blocks`, painters under "for houses" in `Art/BlockTextures.cs`): white plaster, timber
+  frame, clay roof tiles, polished stone, dark and whitewashed planks, bookshelf, barrel (a container), hearth (gives
+  light), lantern, table, stool, red and blue carpet, potted plant, lattice window (joins like a pane), stone pillar.
+- **Block numbers are nearly used up: 252 of 255.** A block is one byte in chunks, saves and network messages. More
+  blocks (more colours, stairs and slabs of the new materials, doors of other woods) need that widened to two bytes
+  first: `Chunk.Blocks`, the chunk file format, `Net.Compress`, the mesher's lookups and every `byte id`.
+- *Interruptions* (regression checks in `GameRoot.DevRegress()`, run in Play mode in a single-player world):
+  leaving mid-portal calls the trip off (`AbortPortal`) and saves where the player left from; every stack that is the
+  player's but not in a slot (cursor, stations, grid, waiting for room, set aside by a load) is in every save, with no
+  limit on this computer and up to `Net.MaxExtraStacks` (215) on a server.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,
