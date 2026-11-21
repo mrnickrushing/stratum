@@ -20,6 +20,7 @@ namespace Stratum.Game
             public Mesh Mesh;
             public bool GenQueued, MeshQueued, Dirty = true, HasMesh, Arrived;
             public float AskedAt;                       // multiplayer: when it was last asked for
+            public int Fails;                           // jobs for it that broke (retried a few times)
             public byte[] Light;                        // from its last meshing (pooled)
             public void DropLight() { if (Light != null) System.Buffers.ArrayPool<byte>.Shared.Return(Light); Light = null; }
         }
@@ -121,7 +122,27 @@ namespace Stratum.Game
                         _done.Enqueue((m.S, md));
                     }
                 }
-                catch (Exception e) { Debug.LogException(e); }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                    // A job that broke goes back to the main thread to be tried again, or it would stay "queued"
+                    // for ever and that piece of the world would never appear.
+                    _broken.Enqueue(job);
+                }
+            }
+        }
+        readonly System.Collections.Concurrent.ConcurrentQueue<Job> _broken = new System.Collections.Concurrent.ConcurrentQueue<Job>();
+
+        void RetryBroken()
+        {
+            while (_broken.TryDequeue(out var job))
+            {
+                var s = job is GenJob g ? g.S : ((MeshJob)job).S;
+                if (!_slots.TryGetValue(Chunk.Key(s.Chunk.X, s.Chunk.Z), out var cur) || cur != s) continue;      // let go meanwhile
+                if (++s.Fails > 3) { Debug.LogWarning($"chunk {s.Chunk.X},{s.Chunk.Z} keeps failing; leaving it"); continue; }
+                if (job is MeshJob) { s.MeshQueued = false; s.Dirty = true; }
+                else if (Remote) { s.Arrived = false; s.AskedAt = 0; }             // ask the server for it again
+                else if (!s.Chunk.Ready) s.GenQueued = false;                      // make it again
             }
         }
 
@@ -353,6 +374,7 @@ namespace Stratum.Game
 
         void Upload()
         {
+            RetryBroken();
             float start = Time.realtimeSinceStartup;
             while (Time.realtimeSinceStartup - start < 0.006f && _done.TryDequeue(out var r))
             {

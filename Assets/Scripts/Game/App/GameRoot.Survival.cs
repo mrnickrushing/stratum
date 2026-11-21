@@ -29,6 +29,7 @@ namespace Stratum.Game
             _creatures = Creatures.Create(_world, _cam.transform);
             _signs = SignView.Create(_world);
             _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
+            _weatherFx.Thundered = () => _hud?.Caption("Thunder");
             _link.Mounted = (k, at, yaw) => _player.GetIn(k, at, yaw);
             _player.GotOut = (k, at, yaw) => _link.Park(k, at, yaw);
             _player.Powered = (x, y, z) => Signal.BoosterPowered(_world.Get, x, y, z);
@@ -178,6 +179,9 @@ namespace Stratum.Game
             if (Sfx.I == null) return;
             Voices.TryGetValue(kind, out var voice);
             float big = kind == MobKind.Colossus ? 1.6f : 1;
+            // Sound captions (Settings > Controls): what made the noise, and which side it came from.
+            string who = MobSim.Def(kind).Name;
+            if (_hud != null) _hud.Caption(what == "say" ? who + (voice == "moo" || voice == "oink" || voice == "baa" || voice == "cluck" ? " calls" : voice == "villager" ? " mutters" : " growls") : what == "hurt" ? who + " is hurt" : what == "die" ? who + " falls" : what == "shoot" ? who + " shoots" : null, at);
             switch (what)
             {
                 case "say": if (voice != null) Sfx.I.PlayAt(voice, at, 0.8f * big, 0.9f + UnityEngine.Random.value * 0.2f); break;

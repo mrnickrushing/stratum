@@ -36,6 +36,7 @@ namespace Stratum.Game
         Image _cursorIcon; Text _cursorCount;
         Image _tag; Text _tagText; string _tagFor = "";
         Image _blockTag; Text _blockTagText;
+        int _boxUsable;             // how many of the open container's slots can be used (a chute: five)
         int _overSlot = -1;         // the pack slot under the pointer (for number-key swaps)
         Text _tip;
         Stack _cursor;
@@ -228,6 +229,7 @@ namespace Stratum.Game
             _useBack.gameObject.SetActive(show && use > 0);
             _use.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, use), 1);
             MobInfo(show);
+            UpdateCaptions(show);
             _sleepFade = Mathf.MoveTowards(_sleepFade, _sleeping ? 1 : 0, dt * (_sleeping ? 0.6f : 2f));
             _sleep.color = new Color(0.01f, 0.01f, 0.04f, _sleepFade * 0.92f);
             _sleepText.text = _sleepFade > 0.3f ? _sleepLine : "";
@@ -283,6 +285,7 @@ namespace Stratum.Game
             string facing = Mathf.Repeat(P.Yaw + 45, 360) switch { < 90 => "north (+Z)", < 180 => "east (+X)", < 270 => "south (-Z)", _ => "west (-X)" };
             string target = Act.HasTarget ? $"{Blocks.Get(World.Get(Act.Target.x, Act.Target.y, Act.Target.z)).Name} at {Act.Target.x} {Act.Target.y} {Act.Target.z}" : "nothing";
             return $"Stratum {Application.version}   {Mathf.RoundToInt(1f / Mathf.Max(0.0001f, Time.smoothDeltaTime))} fps\n" +
+                   $"{Perf.Line()}   (F4 saves a report)\n" +
                    $"XYZ {f.x:0.0} {f.y:0.0} {f.z:0.0}   chunk {bx >> 4} {bz >> 4}\n" +
                    $"Facing {facing}\nBiome {WorldGen.BiomeNames[(int)biome]}\n" +
                    $"Looking at {target}\n" +
@@ -418,7 +421,7 @@ namespace Stratum.Game
                     int row = (i - 9) / 9, col = (i - 9) % 9;
                     v.GetComponent<RectTransform>().Place(0, 1, col * (S + G), -row * (S + G), S, S);
                     v.Click = b => SlotClick(idx, b);
-                    v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); };
+                    v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); DragOver(on, idx, () => P.Inv.Slots[idx], st => P.Inv.Slots[idx] = st); };
                     _invSlots.Add(v);
                 }
             var hotLabel = UIKit.Label(_invGrid, "Hotbar", 22, UIKit.Dim);
@@ -429,7 +432,7 @@ namespace Stratum.Game
                 var v = SlotView.Make(_invGrid, S);
                 v.GetComponent<RectTransform>().Place(0, 1, i * (S + G), -(creative ? 584 : 326), S, S);
                 v.Click = b => SlotClick(idx, b);
-                v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); };
+                v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); DragOver(on, idx, () => P.Inv.Slots[idx], st => P.Inv.Slots[idx] = st); };
                 _invSlots.Add(v);
             }
             // Armour: head, body, legs, feet.
@@ -464,7 +467,9 @@ namespace Stratum.Game
             if (chest)
             {
                 const float CS = 62, CG = 5;
-                int slots = Mathf.Max(Containers.ChestSlots, _box.Length);        // a satchel can hold a whole pack and more
+                bool chute = World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Chute;
+                int slots = chute ? Chutes.Slots : Mathf.Max(Containers.ChestSlots, _box.Length);        // a satchel can hold a whole pack and more
+                _boxUsable = slots;
                 _boxGrid.sizeDelta = new Vector2(600, (slots + 8) / 9 * (CS + CG) + 40);
                 for (int i = 0; i < slots; i++)
                 {
@@ -475,25 +480,11 @@ namespace Stratum.Game
                     v.Hover = on => Tip(on && _box != null ? _box[idx] : Stack.None);
                     _boxSlots.Add(v);
                 }
-                var hint = UIKit.Label(_boxGrid, "Shift-click moves a stack between the chest and your pack.", 19, UIKit.Dim);
+                var hint = UIKit.Label(_boxGrid, chute ? "A chute takes from the chest or furnace on top of it and drops into the one underneath." : "Shift-click moves a stack between the chest and your pack.", 19, UIKit.Dim);
                 hint.rectTransform.Place(0, 1, 0, -((slots + 8) / 9) * (CS + CG) - 10, 600, 30);
             }
-            if (creative)
-            {
-                var sc = UIKit.Scroll(_palette, out var content);
-                ((RectTransform)sc.transform).Fill();
-                var grid = content.gameObject.AddComponent<GridLayoutGroup>();
-                grid.cellSize = new Vector2(S, S); grid.spacing = new Vector2(G, G); grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 9;
-                foreach (var it in Items.Order)
-                {
-                    if (!it.Creative) continue;
-                    var v = SlotView.Make(content, S);
-                    var st = new Stack(it.Id, 1);
-                    v.Show(st);
-                    v.Click = b => { _cursor = _cursor.Empty ? new Stack(it.Id, b == PointerEventData.InputButton.Right ? 1 : it.MaxStack) : Stack.None; Sfx.I?.Play("click", 0.3f); };
-                    v.Hover = on => Tip(on ? st : Stack.None);
-                }
-            }
+            if (creative) FillPalette(S, G);
+            else if (_paletteSearch != null) _paletteSearch.gameObject.SetActive(false);
         }
 
         void Tip(Stack s)
@@ -572,12 +563,13 @@ namespace Stratum.Game
             ref var slot = ref P.Inv.Slots[i];
             var s = slot;
             int max = Items.Get(s.Item).MaxStack;
-            for (int k = 0; k < _box.Length && s.Count > 0; k++)
+            int usable = Mathf.Min(_box.Length, _boxUsable > 0 ? _boxUsable : _box.Length);
+            for (int k = 0; k < usable && s.Count > 0; k++)
             {
                 if (_box[k].Empty || _box[k].Item != s.Item || _box[k].Wear != 0 || s.Wear != 0 || _box[k].Count >= max) continue;
                 int n = Mathf.Min(max - _box[k].Count, s.Count); _box[k].Count += n; s.Count -= n; Link?.BoxSlot(_boxAt, k, _box[k]);
             }
-            for (int k = 0; k < _box.Length && s.Count > 0; k++)
+            for (int k = 0; k < usable && s.Count > 0; k++)
                 if (_box[k].Empty) { _box[k] = s; s.Count = 0; Link?.BoxSlot(_boxAt, k, _box[k]); }
             slot = s.Count > 0 ? s : Stack.None;
             Sfx.I?.Play("click", 0.3f);
@@ -586,6 +578,7 @@ namespace Stratum.Game
 
         void SlotClick(int i, PointerEventData.InputButton button)
         {
+            if (ClickIsDrag) return;
             var kb = Keyboard.current;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             ref var slot = ref P.Inv.Slots[i];
@@ -647,7 +640,7 @@ namespace Stratum.Game
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Chute ? "Chute" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
@@ -715,8 +708,9 @@ namespace Stratum.Game
             if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
             if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);
             // A number key with the pointer over a slot swaps that slot with the hotbar's 1 to 9.
+            UpdateDrag();
             var keys = Keyboard.current;
-            if (keys != null && _overSlot >= 0 && _overSlot < Inventory.Main && _cursor.Empty && !ChatOpen)
+            if (keys != null && _overSlot >= 0 && _overSlot < Inventory.Main && _cursor.Empty && !ChatOpen && !Typing)
                 for (int n = 0; n < 9; n++)
                     if (keys[Key.Digit1 + n].wasPressedThisFrame && n != _overSlot)
                     {

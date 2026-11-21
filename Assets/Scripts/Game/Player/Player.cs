@@ -90,14 +90,14 @@ namespace Stratum.Game
             bool jump = false, jumpPressed = false, down = false, sprintKey = false, sneakKey = false;
             if (InputEnabled && kb != null)
             {
-                if (kb.wKey.isPressed) move.y += 1;
-                if (kb.sKey.isPressed) move.y -= 1;
-                if (kb.dKey.isPressed) move.x += 1;
-                if (kb.aKey.isPressed) move.x -= 1;
-                jump = kb.spaceKey.isPressed;
-                jumpPressed = kb.spaceKey.wasPressedThisFrame;
-                sprintKey = kb.leftShiftKey.isPressed;
-                sneakKey = kb.leftCtrlKey.isPressed || kb.cKey.isPressed;
+                if (Keys.Down(Act.Forward)) move.y += 1;
+                if (Keys.Down(Act.Back)) move.y -= 1;
+                if (Keys.Down(Act.Right)) move.x += 1;
+                if (Keys.Down(Act.Left)) move.x -= 1;
+                jump = Keys.Down(Act.Jump);
+                jumpPressed = Keys.Pressed(Act.Jump);
+                sprintKey = Keys.Down(Act.Sprint);
+                sneakKey = Keys.Down(Act.Sneak);
                 down = sneakKey;
             }
             if (move.sqrMagnitude > 1) move.Normalize();
@@ -107,7 +107,7 @@ namespace Stratum.Game
                 Sneaking = Sprinting = false; Flying = false;
                 InWater = InLava = OnLadder = false;
                 HeadInWater = Blocks.IsWater(World.Get(Mathf.FloorToInt(EyePos.x), Mathf.FloorToInt(EyePos.y), Mathf.FloorToInt(EyePos.z)));
-                if (InputEnabled && kb != null && (kb.leftCtrlKey.wasPressedThisFrame || kb.cKey.wasPressedThisFrame)) GetOut();
+                if (InputEnabled && kb != null && Keys.Pressed(Act.Sneak)) GetOut();
                 else
                 {
                     if (Riding == MobKind.Boat) RideBoat(dt, move); else RideCart(dt, move);

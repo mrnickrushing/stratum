@@ -65,6 +65,7 @@ namespace Stratum.Game
             return b == Biome.Tundra || b == Biome.Taiga || b == Biome.Peaks || p.y > 150;
         }
 
+        public System.Action Thundered;          // for the sound captions
         bool Dry(Vector3 p) => _world.Gen.BiomeAt(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.z)) == Biome.Desert;
 
         void Update()
@@ -134,7 +135,7 @@ namespace Stratum.Game
                     _thunderIn = 0.4f + Random.value * 2.5f;
                 }
             }
-            if (_thunderIn > 0 && (_thunderIn -= dt) <= 0) Sfx.I?.Play("thunder", 0.55f + Random.value * 0.35f, 0.8f + Random.value * 0.4f);
+            if (_thunderIn > 0 && (_thunderIn -= dt) <= 0) { Sfx.I?.Play("thunder", 0.55f + Random.value * 0.35f, 0.8f + Random.value * 0.4f); Thundered?.Invoke(); }
         }
 
         void OnDestroy() { if (Sfx.I != null) Sfx.I.RainLevel = 0; }

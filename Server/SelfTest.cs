@@ -335,6 +335,95 @@ namespace Stratum.Server
                 Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
                 Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
 
+                // A chute: chest, chute, furnace, chute, chest in a column smelts a chestful by itself.
+                {
+                    var col = new Dictionary<(int, int, int), byte> { [(0, 14, 0)] = Blocks.Chest, [(0, 13, 0)] = Blocks.Chute, [(0, 12, 0)] = Blocks.Furnace, [(0, 11, 0)] = Blocks.Chute, [(0, 10, 0)] = Blocks.Chest };
+                    byte Col(int x, int y, int z) => col.TryGetValue((x, y, z), out var id) ? id : (byte)0;
+                    var cb2 = new Containers(); var fur = new Furnaces(cb2);
+                    var ch = new Chutes(cb2, Col, (x, z) => true) { Fed = fur.Wake };
+                    ch.Add(0, 13, 0); ch.Add(0, 11, 0);
+                    cb2.Set(0, 14, 0, 0, new Stack("iron_ore", 6)); cb2.Set(0, 14, 0, 1, new Stack("coal", 2)); cb2.Set(0, 14, 0, 2, new Stack("dirt", 4));
+                    for (int i = 0; i < 1200; i++) { fur.Tick(0.1f); ch.Tick(0.1f); }
+                    var top = cb2.At(0, 14, 0); var bottom = cb2.At(0, 10, 0); var f0 = cb2.At(0, 12, 0);
+                    int ingots = 0; foreach (var s2 in bottom) if (s2.Item == "iron_ingot") ingots += s2.Count;
+                    Check(ingots == 6 && f0[Smelting.In].Empty && f0[Smelting.Out].Empty, $"chest, chute, furnace, chute, chest: six ore go in at the top and six ingots arrive at the bottom ({ingots})");
+                    int dirt = 0; foreach (var s2 in cb2.At(0, 13, 0)) if (s2.Item == "dirt") dirt += s2.Count; foreach (var s2 in top) if (s2.Item == "dirt") dirt += s2.Count;
+                    Check(dirt == 4 && f0[Smelting.Fuel].Item == "coal", $"dirt can't go into a furnace, so it waits above and none is lost ({dirt} of 4); the coal went in as fuel");
+                    string file2 = Path.Combine(dir, "chute-test.bin"); Directory.CreateDirectory(dir); cb2.Save(file2);
+                    var cb3 = new Containers(); cb3.Load(file2); var ch3 = new Chutes(cb3, Col, (x, z) => true); ch3.LoadSaved();
+                    Check(ch3.Count == 2, "chutes are found again after a save and reload");
+                    col.Remove((0, 11, 0)); for (int i = 0; i < 10; i++) ch.Tick(0.4f);
+                    Check(ch.Count == 1, "a chute that was broken stops being worked");
+                    File.Delete(file2);
+                    var one = Items.Recipes.Find(r => r.Out == "chute");
+                    Check(one != null && one.Shape != null && Items.Get("chute") != null, "a chute is made from five iron ingots round a chest");
+                }
+
+                // The first night, from empty hands: every step uses the game's own rules (what a block gives to the
+                // tool in hand, what the crafting grid makes, what a furnace does with fuel).
+                {
+                    var inv = new Inventory(); string where = "";
+                    bool Mine(byte block, int times)
+                    {
+                        var def = Blocks.Get(block);
+                        for (int i = 0; i < times; i++)
+                        {
+                            if (!Mining.Drops(def, Items.Get(inv.Held.Item))) { where = $"can't mine {def.Name} with {inv.Held.Item ?? "bare hands"}"; return false; }
+                            var (item, n) = Mining.Drop(def);
+                            if (item != null && inv.Add(item, n) > 0) { where = "pack full"; return false; }
+                        }
+                        return true;
+                    }
+                    bool Craft1(string what, bool bench, int times = 1)
+                    {
+                        var rc = Items.Recipes.Find(r => r.Out == what && r.Station != "furnace");
+                        if (rc == null) { where = "no recipe for " + what; return false; }
+                        for (int t = 0; t < times; t++)
+                        {
+                            if (Crafting.Size(rc) > (bench ? 3 : 2)) { where = what + " needs a workbench"; return false; }
+                            var cells = Crafting.Layout(rc); var grid = new Stack[9];
+                            for (int i = 0; i < 9; i++)
+                            {
+                                if (cells[i] == null) continue;
+                                int k = Array.FindIndex(inv.Slots, s => !s.Empty && Items.Matches(cells[i], s.Item));
+                                if (k < 0) { where = $"{what}: no {cells[i]}"; return false; }
+                                grid[i] = new Stack(inv.Slots[k].Item, 1); inv.Slots[k].Count--; if (inv.Slots[k].Count <= 0) inv.Slots[k] = Stack.None;
+                            }
+                            var made = Crafting.Match(grid, bench ? 3 : 2);
+                            if (made == null || made.Out != what) { where = $"{what}: the grid made {made?.Out ?? "nothing"}"; return false; }
+                            if (inv.Add(made.Out, made.Count) > 0) { where = "pack full"; return false; }
+                        }
+                        return true;
+                    }
+                    bool Smelt(string input, int n, string fuel, int fuelN, string expect)
+                    {
+                        if (!inv.Take(input, n) || !inv.Take(fuel, fuelN)) { where = $"smelting {input}: not enough {input} or {fuel}"; return false; }
+                        var f = new Stack[27]; f[Smelting.In] = new Stack(input, n); f[Smelting.Fuel] = new Stack(fuel, fuelN);
+                        int guard = 0; while (Smelting.Busy(f) && guard++ < 200000) Smelting.Step(f);
+                        if (f[Smelting.Out].Item != expect || f[Smelting.Out].Count != n) { where = $"smelting {input} gave {f[Smelting.Out].Count} {f[Smelting.Out].Item}"; return false; }
+                        inv.Add(expect, n); if (!f[Smelting.Fuel].Empty) inv.Add(f[Smelting.Fuel].Item, f[Smelting.Fuel].Count);
+                        return true;
+                    }
+                    void Hold(string item) { int k = Array.FindIndex(inv.Slots, s => !s.Empty && s.Item == item); if (k >= 0) { (inv.Slots[0], inv.Slots[k]) = (inv.Slots[k], inv.Slots[0]); inv.Selected = 0; } }
+                    bool ok1 = Mine(Blocks.OakLog, 10)                                 // punch a tree
+                        && Craft1("oak_planks", false, 8) && Craft1("stick", false, 2) && Craft1("workbench", false)
+                        && Craft1("wood_pickaxe", true) && Craft1("wood_axe", true);
+                    Hold("wood_pickaxe");
+                    bool ok2 = ok1 && Mine(Blocks.Stone, 20)                           // cobblestone, with the pickaxe
+                        && Craft1("stone_pickaxe", true) && Craft1("furnace", true)
+                        && Smelt("oak_log", 1, "oak_planks", 1, "coal")                // charcoal from the last log
+                        && Craft1("torch", false);
+                    Hold("stone_pickaxe");
+                    // Stratum's ladder has a rung Minecraft's doesn't: stone mines copper, and copper mines iron.
+                    bool ok3 = ok2 && Mine(Blocks.CopperOre, 3) && Smelt("copper_ore", 3, "oak_planks", 3, "copper_ingot") && Craft1("stick", false) && Craft1("copper_pickaxe", true);
+                    Hold("copper_pickaxe");
+                    ok3 = ok3 && Mine(Blocks.IronOre, 3) && Smelt("iron_ore", 3, "oak_planks", 3, "iron_ingot") && Craft1("iron_pickaxe", true);
+                    Check(ok1, "first night: logs by hand make planks, sticks, a workbench, a wooden pickaxe and axe" + (ok1 ? "" : " (" + where + ")"));
+                    Check(ok2 && inv.Count("torch") == 4 && inv.Count("furnace") == 1, "then cobblestone, a stone pickaxe, a furnace, charcoal and torches" + (ok2 ? "" : " (" + where + ")"));
+                    Check(ok3 && inv.Count("iron_pickaxe") == 1, "and on to metal: copper ore by stone, iron ore by copper, each smelted with planks for fuel, makes an iron pickaxe" + (ok3 ? "" : " (" + where + ")"));
+                    Check(!Mining.Drops(Blocks.Get(Blocks.Stone), null) && !Mining.Drops(Blocks.Get(Blocks.IronOre), Items.Get("wood_pickaxe")), "stone needs a pickaxe and iron ore a better one than wood");
+                }
+
                 // Light for monsters is the light players see: a torch behind a wall doesn't count on the dark side.
                 {
                     var room = new Dictionary<(int, int, int), byte>();

@@ -164,7 +164,7 @@ namespace Stratum.Game
 
         void PumpMic()
         {
-            bool wantPush = _mode == 1 && Keyboard.current != null && Keyboard.current.vKey.isPressed && (CanTalk?.Invoke() ?? true);
+            bool wantPush = _mode == 1 && Keys.Down(Act.Talk) && (CanTalk?.Invoke() ?? true);
             if (_mode == 1 && wantPush && _micProblem != null) _problemShown = 3;
 
             if (TestTone) { MakeTone(); }

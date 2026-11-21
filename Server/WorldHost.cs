@@ -55,6 +55,7 @@ namespace Stratum.Server
         readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
         readonly Containers _boxes = new Containers();
         Furnaces _furnaces;
+        Chutes _chutes;
         readonly List<(string item, int n, int wear)> _owed = new List<(string, int, int)>();
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
@@ -91,6 +92,8 @@ namespace Stratum.Server
                     if (o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
                         o.Conn.Send(f ??= new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes());
             };
+            _chutes = new Chutes(_boxes, World.Get, World.IsLoaded) { Changed = _furnaces.Changed, Fed = _furnaces.Wake };
+            _chutes.LoadSaved();
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
             _mobs.VillageNear = (x, z) => World.Gen.Villages.Near(x, z, 96);
@@ -177,6 +180,7 @@ namespace Stratum.Server
                     World.Water.Tick(dt);
                     _weather.Tick(dt);
                     _furnaces.Tick(dt);
+                    _chutes.Tick(dt);
                     _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
                     World.Growth.Tick(dt, _near);
                     _bodies.Clear();
@@ -335,6 +339,10 @@ namespace Stratum.Server
             foreach (long k in p.Waiting) if (_waiters.TryGetValue(k, out var l)) l.Remove(p);
             if (!p.Joined) return;
             SavePlayer(p);
+            // Their chests and their building are written in the same breath as their pack, so a crash right after
+            // can't leave an item both in the pack on disk and in the chest on disk (or in neither).
+            if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
+            World.Maintain(Needed, false);
             Counted();
             var left = new Packet(Net.Msg.Left).I32(c.Id).Bytes();
             foreach (var o in _players.Values) if (o.Joined) o.Conn.Send(left);
@@ -427,6 +435,7 @@ namespace Stratum.Server
             }
             World.SetRaw(x, y, z, id);
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
+            if (id == Blocks.Chute) _chutes.Add(x, y, z);
             World.Water.Wake(x, y, z);
             World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
@@ -570,7 +579,8 @@ namespace Stratum.Server
             if (!Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
-            if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;              // the fire and the progress are the furnace's own
+            if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;
+            if (World.Get(x, y, z) == Blocks.Chute && slot >= Chutes.Slots) return;                     // a chute has five slots              // the fire and the progress are the furnace's own
             // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
             var want = st;
             if (furnace && !hasSeen) return;       // a furnace changes under the player's hands: only games that say what they saw may use one

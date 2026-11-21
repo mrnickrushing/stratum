@@ -50,6 +50,7 @@ namespace Stratum.Game
         public readonly MobSim Sim;
         public readonly Containers Boxes = new Containers();
         public Furnaces Furnaces;
+        public Chutes Chutes;
         public readonly WeatherSim Weather = new WeatherSim(Environment.TickCount);
         readonly List<Seen> _seen = new List<Seen>();
         readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
@@ -66,6 +67,8 @@ namespace Stratum.Game
             Furnaces = new Furnaces(Boxes);
             Furnaces.WakeSaved();
             Furnaces.Changed = (x, y, z, slot, s) => { var at = new Vector3Int(x, y, z); if (_open && at == _box) BoxChanged?.Invoke(at, slot, s); };
+            Chutes = new Chutes(Boxes, world.Get, (x, z) => world.IsReady(x, z)) { Changed = Furnaces.Changed, Fed = Furnaces.Wake };
+            Chutes.LoadSaved();
             Sim = new MobSim(world.Get, seed ^ Environment.TickCount) { Difficulty = difficulty, BiomeAt = world.Gen.BiomeAt };
             Sim.Loaded = (x, z) => world.IsReady(x, z);
             Sim.VillageNear = (x, z) => world.Gen.Villages.Near(x, z, 96);
@@ -78,6 +81,7 @@ namespace Stratum.Game
             // Breaking a chest or opening a satchel hands over what was in it.
             world.Changed += (x, y, z, old, id) =>
             {
+                if (id == Blocks.Chute) Chutes?.Add(x, y, z);
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
                 foreach (var s in Boxes.Remove(x, y, z)) if (!s.Empty && !Smelting.Hidden(s.Item)) Gave?.Invoke(s.Item, s.Count, s.Wear);
@@ -91,6 +95,7 @@ namespace Stratum.Game
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);
+            Chutes.Tick(dt);
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
             foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
@@ -135,6 +140,7 @@ namespace Stratum.Game
             if (!_open || at != _box) return;
             bool furnace = Blocks.Get(_world.Get(at.x, at.y, at.z)).BaseId == Blocks.Furnace;
             if (furnace && slot > Smelting.Out) return;
+            if (_world.Get(at.x, at.y, at.z) == Blocks.Chute && slot >= Chutes.Slots) return;
             Boxes.Set(at.x, at.y, at.z, slot, s);
             if (furnace) Furnaces.Wake(at.x, at.y, at.z);
         }
