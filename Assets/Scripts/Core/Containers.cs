@@ -182,14 +182,37 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
 
         public void Load(string file)
         {
-            _boxes.Clear();
-            file = SafeFile.Pick(file);
-            if (!File.Exists(file)) return;
+            _boxes.Clear(); Signs.Clear();
+            // Read into fresh tables first: a file that breaks half-way must not leave half its contents behind.
+            Exception first = null;
+            foreach (var cand in new[] { file, file + ".bak" })
+            {
+                if (!File.Exists(cand) || new FileInfo(cand).Length == 0) continue;
+                var boxes = new Dictionary<long, Stack[]>(); var signs = new Dictionary<long, string>();
+                try { Read(cand, boxes, signs); }
+                catch (Exception e)
+                {
+                    first ??= e;
+                    if (cand == file) try { File.Copy(file, file + ".bad", true); } catch { }
+                    continue;
+                }
+                foreach (var kv in boxes) _boxes[kv.Key] = kv.Value;
+                foreach (var kv in signs) Signs[kv.Key] = kv.Value;
+                LoadedFrom = cand;
+                return;
+            }
+            if (first != null) throw new InvalidDataException("containers file and its backup are unreadable: " + first.Message, first);
+        }
+
+        public string LoadedFrom = "";       // which file the contents came from (the ".bak" after damage)
+
+        static void Read(string file, Dictionary<long, Stack[]> boxes, Dictionary<long, string> signs)
+        {
             using var r = new BinaryReader(File.OpenRead(file));
-            Signs.Clear();
             int ver = r.ReadInt32();
             if (ver != 1 && ver != Version) throw new InvalidDataException("containers file version " + ver);
             int n = r.ReadInt32();
+            if (n < 0 || n > 4_000_000) throw new InvalidDataException("containers count " + n);
             for (int i = 0; i < n; i++)
             {
                 long k = r.ReadInt64();
@@ -200,12 +223,13 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
                     string item = r.ReadString(); int count = r.ReadUInt16(); int wear = r.ReadUInt16();
                     if (item.Length > 0 && count > 0 && (Items.Get(item) != null || Smelting.Hidden(item))) a[j] = new Stack(item, count) { Wear = wear };
                 }
-                _boxes[k] = a;
+                boxes[k] = a;
             }
             if (ver >= 2)
             {
                 int ns = r.ReadInt32();
-                for (int i = 0; i < ns; i++) { long k = r.ReadInt64(); Signs[k] = CleanSign(r.ReadString()); }
+                if (ns < 0 || ns > 4_000_000) throw new InvalidDataException("signs count " + ns);
+                for (int i = 0; i < ns; i++) { long k = r.ReadInt64(); signs[k] = CleanSign(r.ReadString()); }
             }
         }
 

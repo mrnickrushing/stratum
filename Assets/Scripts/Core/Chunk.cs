@@ -16,6 +16,7 @@ namespace Stratum.Core
         public readonly byte[] Biome = new byte[Size * Size];
         public int MaxY;                                // highest non-air block
         public bool Modified;                           // changed by the player since it was made
+        public bool Unsaved;                            // changed since it was last written to disk
         public volatile bool Ready;                     // blocks are filled in
 
         public Chunk(int x, int z) { X = x; Z = z; }

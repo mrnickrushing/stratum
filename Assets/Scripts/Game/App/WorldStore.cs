@@ -48,16 +48,23 @@ namespace Stratum.Game
             if (!Directory.Exists(Root)) return list;
             foreach (var dir in Directory.GetDirectories(Root))
             {
-                if (dir.EndsWith(".new") || dir.EndsWith(".old")) continue;       // a restore's working copies
-                var f = Path.Combine(dir, "world.json");
-                if (!File.Exists(f)) continue;
-                try
+                if (dir.EndsWith(".new")) continue;                               // a restore's staged copy
+                var world = dir;
+                if (dir.EndsWith(".old"))
                 {
-                    var m = JsonUtility.FromJson<WorldMeta>(File.ReadAllText(f));
-                    m.Folder = dir;
-                    list.Add(m);
+                    // A restore that stopped half-way left the world under this name: put it back where it belongs.
+                    var home = dir.Substring(0, dir.Length - 4);
+                    if (Directory.Exists(home)) continue;
+                    try { Directory.Move(dir, home); world = home; Debug.LogWarning("recovered world left behind by an unfinished restore: " + home); }
+                    catch (Exception e) { Debug.LogWarning("could not recover " + dir + ": " + e.Message); continue; }
                 }
-                catch (Exception e) { Debug.LogWarning("skipping world " + dir + ": " + e.Message); }
+                var f = Path.Combine(world, "world.json");
+                // The manifest, or its backup when the manifest is missing or damaged: the world stays on the list.
+                var m = Core.SafeFile.Load(f, p => JsonUtility.FromJson<WorldMeta>(File.ReadAllText(p)), out string from);
+                if (m == null) { if (File.Exists(f) || File.Exists(f + ".bak")) Debug.LogWarning("world " + world + " has no readable world.json or backup"); continue; }
+                if (from != f) Debug.LogWarning("world " + world + ": world.json was unreadable, using its backup");
+                m.Folder = world;
+                list.Add(m);
             }
             return list.OrderByDescending(m => m.lastPlayed).ToList();
         }
@@ -156,6 +163,8 @@ namespace Stratum.Game
             catch (Exception e)
             {
                 Debug.LogWarning("restore failed: " + e.Message);
+                // Whatever step failed, the world as it was goes back under its own name.
+                try { if (m?.Folder != null && !Directory.Exists(m.Folder) && Directory.Exists(m.Folder + ".old")) Directory.Move(m.Folder + ".old", m.Folder); } catch { }
                 try { if (staged != null && Directory.Exists(staged)) Directory.Delete(staged, true); } catch { }
                 return false;
             }

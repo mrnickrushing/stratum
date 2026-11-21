@@ -25,7 +25,25 @@ namespace Stratum.Game
         }
 
         [Serializable] class Name { public string name, address; }
-        [Serializable] class Answer { public string address; public Name[] names; }
+        [Serializable] class Answer { public string address; public string key; public Name[] names; }
+
+        // Whether to trust a server showing this key (its fingerprint). Null: go ahead. Otherwise, why not.
+        // Our own server's key is published on the download site (fetched over HTTPS at launch); any other server's
+        // is remembered from the first visit, and a change is refused once so it can't pass unnoticed.
+        const string DefaultKey = "mp_default_key";
+        public static string Trust(string address, string fingerprint)
+        {
+            string real = Resolve(address);
+            string pinned = real == Address ? PlayerPrefs.GetString(DefaultKey, "") : "";
+            if (pinned != "")
+                return pinned == fingerprint ? null : "This doesn't look like the real server (its identity doesn't match the one on the Stratum site). Not logging in. Start the game again in a minute, and tell a grown-up if it keeps happening.";
+            string k = "mp_fp_" + real.ToLowerInvariant();
+            string seen = PlayerPrefs.GetString(k, "");
+            if (seen == "" ) { PlayerPrefs.SetString(k, fingerprint); PlayerPrefs.Save(); return null; }
+            if (seen == fingerprint) return null;
+            PlayerPrefs.DeleteKey(k); PlayerPrefs.Save();
+            return "This server's identity has changed since you last joined. If whoever runs it says that's expected, press Join again.";
+        }
 
         // Short names: one easy word typed as the address ("play") stands for a server's real address. "play" and
         // "stratum" always mean the default server; the site's server.json can name more (kept for next time).
@@ -53,7 +71,14 @@ namespace Stratum.Game
                 yield return req.SendWebRequest();
                 if (req.result != UnityWebRequest.Result.Success) yield break;
                 string now;
-                try { now = JsonUtility.FromJson<Answer>(req.downloadHandler.text)?.address?.Trim(); }
+                try
+                {
+                    var ans = JsonUtility.FromJson<Answer>(req.downloadHandler.text);
+                    now = ans?.address?.Trim();
+                    // The key our own server shows, vouched for by the site.
+                    string key = ans?.key?.Trim().ToLowerInvariant() ?? "";
+                    if (key.Length == 32 || key == "") { PlayerPrefs.SetString(DefaultKey, key); PlayerPrefs.Save(); }
+                }
                 catch (Exception) { yield break; }
                 try
                 {

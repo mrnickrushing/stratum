@@ -28,6 +28,7 @@ namespace Stratum.Server
         public bool Keep;                          // players keep their things when they die (STRATUM_KEEP, or "keep" on a world)
         public bool Backup = true;                 // copies of the data folder at start and twice a day (STRATUM_BACKUPS=0 turns it off)
         public List<WorldDef> Worlds = new List<WorldDef>();   // STRATUM_WORLDS; none: one world from the settings above
+        public bool LegacyLogin;                   // let games before 0.8 log in with their password sent in the clear (STRATUM_LEGACY_LOGIN=1)
 
         // The settings one world runs with: these, with its own folder, mode, difficulty and seed.
         public ServerConfig For(WorldDef w)
@@ -84,7 +85,26 @@ namespace Stratum.Server
     // player to the world they picked. Each world runs on its own thread (WorldHost).
     public sealed class GameServer
     {
-        sealed class Pending { public Connection Conn; public bool Checking; }
+        sealed class Pending { public Connection Conn; public bool Checking; public byte[] Nonce; }
+
+        // The server's own key pair (kept in the data folder): games seal their logins to it (Core.Secure).
+        readonly System.Security.Cryptography.RSA _key;
+        readonly byte[] _keyMod, _keyExp;
+        public string KeyFingerprint => Secure.Fingerprint(_keyMod);
+
+        static System.Security.Cryptography.RSA LoadKey(string dir)
+        {
+            string file = Path.Combine(dir, "server.key");
+            var rsa = System.Security.Cryptography.RSA.Create(2048);
+            try
+            {
+                if (File.Exists(file)) { rsa.ImportRSAPrivateKey(File.ReadAllBytes(file), out _); return rsa; }
+            }
+            catch (Exception e) { Log.Warn("server.key unreadable, making a new one (games will be told the server's identity changed): " + e.Message); try { File.Copy(file, file + ".bad", true); } catch { } rsa = System.Security.Cryptography.RSA.Create(2048); }
+            File.WriteAllBytes(file + ".tmp", rsa.ExportRSAPrivateKey());
+            File.Move(file + ".tmp", file, true);
+            return rsa;
+        }
 
         readonly ServerConfig _cfg;
         readonly Accounts _accounts;
@@ -112,6 +132,8 @@ namespace Stratum.Server
             _accounts = new Accounts(cfg.Dir);
             _accounts.ApplyReset(cfg.Reset);
             if (cfg.Backup) Backups.Take(cfg.Dir);          // before any world opens its files
+            _key = LoadKey(cfg.Dir);
+            var pub = _key.ExportParameters(false); _keyMod = pub.Modulus; _keyExp = pub.Exponent;
             var defs = cfg.Worlds.Count > 0 ? cfg.Worlds
                      : new List<WorldDef> { new WorldDef { Id = WorldDef.Main, Name = "World", Creative = cfg.Creative, Difficulty = cfg.Difficulty, Kind = cfg.Kind, Keep = cfg.Keep } };
             foreach (var d in defs) Worlds.Add(new WorldHost(this, cfg.For(d), d));
@@ -129,6 +151,7 @@ namespace Stratum.Server
             _loop.Start();
             Log.Info($"\"{_cfg.Name}\" listening on port {Port}, {Worlds.Count} world{(Worlds.Count == 1 ? "" : "s")} ({string.Join(", ", Worlds.Select(w => w.Def.Name))}), " +
                      $"up to {_cfg.MaxPlayers} players, {_accounts.Count} accounts{(_cfg.Password != "" ? ", invite code set" : ", anyone can make an account")}");
+            Log.Info($"logins are encrypted to this server's key, fingerprint {KeyFingerprint}{(_cfg.LegacyLogin ? " (older games may still log in unencrypted)" : "")}");
         }
 
         void Accept()
@@ -188,13 +211,15 @@ namespace Stratum.Server
         }
 
         // The answer to a ping: the server, then each world with how many are in it.
-        public byte[] Pong(double t)
+        public byte[] Pong(double t, byte[] nonce = null)
         {
             var pk = new Packet(Net.Msg.Pong).F64(t).Str(_cfg.Name).Str(_cfg.Motd).I32(Online).I32(_cfg.MaxPlayers).U8((byte)Worlds.Count);
             foreach (var w in Worlds) pk.Str(w.Def.Id).Str(w.Def.Name).Str(w.Def.Desc).Bool(w.Def.Creative).U8((byte)w.Def.Difficulty).I32(w.Online);
             // 0.4: each world's sort, after the list so 0.3 clients (which stop reading there) aren't thrown.
             pk.U8((byte)Worlds.Count);
             foreach (var w in Worlds) pk.U8((byte)w.World.Gen.Kind);
+            // 0.8: the server's public key and a number good for one login on this connection.
+            if (nonce != null) pk.Blob(_keyMod).Blob(_keyExp).Blob(nonce);
             return pk.Bytes();
         }
 
@@ -212,7 +237,7 @@ namespace Stratum.Server
             try { r = new Reader(frame); } catch { return; }
             try
             {
-                if (r.Type == Net.Msg.Ping) c.Send(Pong(r.F64()));
+                if (r.Type == Net.Msg.Ping) c.Send(Pong(r.F64(), p.Nonce ??= Secure.Nonce()));
                 else if (r.Type == Net.Msg.Hello) Hello(p, r);
                 else c.Close("spoke before saying hello");
             }
@@ -235,6 +260,16 @@ namespace Stratum.Server
             string world = r.More ? r.Str().Trim().ToLowerInvariant() : "";     // clients before 0.3.0 don't choose
             int features = r.More ? r.I32() : 0;                                  // 1: knows the themed world kinds (0.4)
             int outfit = r.More ? r.U8() : 0;                                     // 0.6: the outfit others see them in
+            byte[] sealedLogin = r.More ? r.Blob() : null;                        // 0.8: the password and invite, sealed to this server
+            byte[] loginKey = null;
+            if (sealedLogin != null)
+            {
+                if (!Secure.Open(_key, p.Nonce, sealedLogin, out secret, out invite, out loginKey))
+                { Refuse(p.Conn, "The login couldn't be read safely. Try again."); return; }
+                p.Nonce = null;                                                   // good for one login only
+            }
+            else if (!_cfg.LegacyLogin)
+            { Refuse(p.Conn, "This server needs a newer Stratum: logins are encrypted now. Get it at stratum.rushingtechnologies.com"); return; }
             p.Checking = true;
             // Password hashing takes a moment on purpose; do it off the loop, and answer a wrong one slowly.
             System.Threading.Tasks.Task.Run(async () =>
@@ -243,6 +278,8 @@ namespace Stratum.Server
                 try { res = _accounts.Enter(mode, name, secret, invite, _cfg.Password); }
                 catch (Exception e) { Log.Warn("login failed: " + e); res = new Accounts.Result("The server had trouble with that login. Try again."); }
                 if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
+                // The remember-me token goes back hidden with the key the game chose for this login.
+                if (res.Ok && loginKey != null && !string.IsNullOrEmpty(res.Token)) res = new Accounts.Result(null, res.Name, res.Key, Secure.SealText(loginKey, res.Token));
                 _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit));
             });
         }

@@ -566,6 +566,19 @@ namespace Stratum.Core
         public static BlockDef Get(byte id) => Defs[id] ?? Defs[0];
 
         // The same block with a bit of its variant flipped (open/shut, on/off), counted from the family's first id.
+        // Changing one block into another without breaking it: the same thing in another state (a door opened, a
+        // lever thrown, a button pressed, a rail turned), soil tilled, or a second slab laid on the first.
+        public static bool Changes(byte from, byte to)
+        {
+            if (from == 0 || to == 0 || from == to) return false;
+            var a = Get(from); var b = Get(to);
+            if (a.BaseId == b.BaseId) return true;
+            if (to == Farmland && (from == Grass || from == Dirt || from == SnowyGrass)) return true;
+            if (Get(Farmland).BaseId == a.BaseId && to == Dirt) return true;                       // farmland trodden back to dirt
+            foreach (byte s in Slabs) if ((from == s || from == s + 1) && to == Get(s).Pair) return true;
+            return false;
+        }
+
         public static byte Flip(byte id, int bit) { int b = Get(id).BaseId; return (byte)(b + ((id - b) ^ bit)); }
         public static byte Id(string key) => ByKey.TryGetValue(key, out var v) ? v : (byte)0;
         public static int Count => _next;

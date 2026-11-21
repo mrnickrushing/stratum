@@ -1,0 +1,20 @@
+name: Server tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build the server
+        run: dotnet build Server -c Release
+      - name: Self-test (shared game rules, saves, networking)
+        run: dotnet Server/bin/Release/net8.0/StratumServer.dll --selftest
+      - name: Installer script syntax
+        run: sh -n Tools/release/install.sh

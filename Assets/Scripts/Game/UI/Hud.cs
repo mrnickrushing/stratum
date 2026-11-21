@@ -36,6 +36,7 @@ namespace Stratum.Game
         Image _cursorIcon; Text _cursorCount;
         Image _tag; Text _tagText; string _tagFor = "";
         Image _blockTag; Text _blockTagText;
+        int _overSlot = -1;         // the pack slot under the pointer (for number-key swaps)
         Text _tip;
         Stack _cursor;
         string _station;
@@ -387,6 +388,7 @@ namespace Stratum.Game
 
         public void CloseInventory()
         {
+            _overSlot = -1;
             _tagFor = ""; if (_tag != null) _tag.gameObject.SetActive(false);
             if (!_cursor.Empty)
             {
@@ -416,7 +418,7 @@ namespace Stratum.Game
                     int row = (i - 9) / 9, col = (i - 9) % 9;
                     v.GetComponent<RectTransform>().Place(0, 1, col * (S + G), -row * (S + G), S, S);
                     v.Click = b => SlotClick(idx, b);
-                    v.Hover = on => Tip(on ? P.Inv.Slots[idx] : Stack.None);
+                    v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); };
                     _invSlots.Add(v);
                 }
             var hotLabel = UIKit.Label(_invGrid, "Hotbar", 22, UIKit.Dim);
@@ -427,7 +429,7 @@ namespace Stratum.Game
                 var v = SlotView.Make(_invGrid, S);
                 v.GetComponent<RectTransform>().Place(0, 1, i * (S + G), -(creative ? 584 : 326), S, S);
                 v.Click = b => SlotClick(idx, b);
-                v.Hover = on => Tip(on ? P.Inv.Slots[idx] : Stack.None);
+                v.Hover = on => { _overSlot = on ? idx : (_overSlot == idx ? -1 : _overSlot); Tip(on ? P.Inv.Slots[idx] : Stack.None); };
                 _invSlots.Add(v);
             }
             // Armour: head, body, legs, feet.
@@ -642,7 +644,7 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
-            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "Click to make one, Shift-click to make as many as you can.";
+            _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
             _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
@@ -668,8 +670,9 @@ namespace Stratum.Game
                 name.rectTransform.Place(0, 1, 88, -10, 360, 34);
                 string need = string.Join("   ", r.In.Select(x =>
                 {
-                    bool ok = P.Inv.Count(x.item) >= x.count;
-                    return $"<color=#{ColorUtility.ToHtmlStringRGB(ok ? UIKit.Good : UIKit.Bad)}>{x.count} {Items.DisplayName(x.item)}</color>";
+                    // "2/3 Planks": how many you have of how many it takes, so it reads without the colour too.
+                    int have = P.Inv.Count(x.item); bool ok = have >= x.count;
+                    return $"<color=#{ColorUtility.ToHtmlStringRGB(ok ? UIKit.Good : UIKit.Bad)}>{Mathf.Min(have, x.count)}/{x.count} {Items.DisplayName(x.item)}</color>";
                 }));
                 if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : "at a Workbench";
                 var needL = UIKit.Label(row.transform, need, 20, UIKit.Dim, TextAnchor.UpperLeft);
@@ -681,6 +684,10 @@ namespace Stratum.Game
                     var b = UIKit.Button(row.transform, "MAKE", () => Craft(rr), 22, can);
                     b.interactable = can;
                     ((RectTransform)b.transform).Place(1, 0.5f, -12, 0, 110, 52);
+                    // The picture lays the recipe out in the grid, so the pattern can be seen and learnt.
+                    var show = icon.gameObject.AddComponent<Button>();
+                    show.onClick.AddListener(() => FillGrid(rr));
+                    var sh = icon.gameObject.AddComponent<SlotHover>(); sh.Hover = on => { _tip.text = on ? "Click the picture to lay this out in the crafting grid" : ""; };
                 }
             }
         }
@@ -695,8 +702,7 @@ namespace Stratum.Game
             int made = 0;
             do { if (!P.Inv.Craft(r)) break; made++; } while (all && made < 64);
             if (made > 0) Sfx.I?.Play("craft", 0.6f);
-            if (made > 0 && r.Station == "furnace") P.AddXp((made + Random.Range(0, 2)) / 2);
-            else Toast("No room for it");
+            if (made == 0) Toast(P.Inv.CanCraft(r) ? "No room for it" : "You don't have everything for that");
             RebuildCraftingSoon();
         }
 
@@ -708,6 +714,16 @@ namespace Stratum.Game
             for (int i = 0; i < _armSlots.Count; i++) _armSlots[i].Show(P.Inv.Slots[Inventory.ArmourStart + i]);
             if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
             if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);
+            // A number key with the pointer over a slot swaps that slot with the hotbar's 1 to 9.
+            var keys = Keyboard.current;
+            if (keys != null && _overSlot >= 0 && _overSlot < Inventory.Main && _cursor.Empty && !ChatOpen)
+                for (int n = 0; n < 9; n++)
+                    if (keys[Key.Digit1 + n].wasPressedThisFrame && n != _overSlot)
+                    {
+                        (P.Inv.Slots[n], P.Inv.Slots[_overSlot]) = (P.Inv.Slots[_overSlot], P.Inv.Slots[n]);
+                        Sfx.I?.Play("click", 0.3f); _tagFor = "";
+                        RebuildCraftingSoon();
+                    }
             UpdateFurnace();
             UpdateWork();
             UpdateGrid();

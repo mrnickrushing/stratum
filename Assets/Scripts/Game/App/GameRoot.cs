@@ -161,6 +161,7 @@ namespace Stratum.Game
             ConfigurePipeline();
             ApplyDisplaySettings();
             int vd = Settings.ViewDistance;
+            if (Online) vd = Mathf.Min(vd, _maxView);          // the server's limit holds whatever setting was just changed
             if (_world != null) _world.ViewDistance = _state == State.Title ? Mathf.Min(vd, 10) : vd;
             _sky.ViewDistanceMeters = (_world != null ? _world.ViewDistance : vd) * 16;
         }
@@ -268,6 +269,11 @@ namespace Stratum.Game
                 _menus.SetLoading(p, p < 0.5f ? "Shaping the land" : p < 0.95f ? "Growing the forests" : "Lighting the world");
                 if (p >= 1 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;
                 _loadTime += Time.unscaledDeltaTime;
+                // Never stuck here: after a minute the world is entered as soon as the ground underfoot is drawn,
+                // and Esc goes back to the menu at any time.
+                if (_loadTime > 60 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;
+                if (_loadTime > 3) _menus.SetLoading(p, "Still working... press Esc to go back");
+                if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { ToTitle(); yield break; }
                 yield return null;
             }
             if (!meta.hasPlayer) PlaceOnGround();
@@ -449,6 +455,32 @@ namespace Stratum.Game
         }
 
         void Respawn()
+        {
+            // Died far from home: the land around the bed has to be fetched before the bed can be looked for.
+            if (_hasBed && !_world.IsReady(_bed.x, _bed.z)) { StartCoroutine(RespawnFarFromHome()); return; }
+            RespawnNow();
+        }
+
+        System.Collections.IEnumerator RespawnFarFromHome()
+        {
+            _menus.ShowLoading();
+            _player.Respawn(new Vector3(_bed.x + 0.5f, Mathf.Max(_bed.y + 3, 1), _bed.z + 0.5f));
+            float t = 0;
+            while (t < 20 && _player != null && _world != null)
+            {
+                _player.Feet = new Vector3(_bed.x + 0.5f, Mathf.Max(_bed.y + 3, 1), _bed.z + 0.5f); _player.Velocity = Vector3.zero; _player.ResetFall();
+                _world.SetFocus(_player.Feet);
+                if (Online) SendMove(true);
+                _menus.SetLoading(Mathf.Clamp01(t / 6f), "Going home");
+                if (_world.IsMeshed(_bed.x, _bed.z)) break;
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (_player == null || _world == null) yield break;
+            RespawnNow();
+        }
+
+        void RespawnNow()
         {
             var at = RespawnPoint(Online ? GroundAt(_netSpawn) + new Vector3(0, 0.01f, 0) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz), out _);
             _player.Respawn(at);

@@ -259,16 +259,21 @@ namespace Stratum.Game
             }
             Upload();
             if (_early.Count > 0)
-                for (int i = _early.Count - 1; i >= 0; i--)
+            {
+                // Oldest first, so when one block changed twice while its chunk was on the way the later change
+                // is the one that stays.
+                int keep = 0;
+                for (int i = 0; i < _early.Count; i++)
                 {
                     var (x, y, z, id) = _early[i];
                     var s = SlotAt(x, z);
-                    if (s == null) { _early.RemoveAt(i); continue; }
-                    if (!s.Chunk.Ready) continue;
-                    _early.RemoveAt(i);
+                    if (s == null) continue;                                  // out of range by now: it comes whole later
+                    if (!s.Chunk.Ready) { _early[keep++] = _early[i]; continue; }
                     _fromServer = true;
                     try { Set(x, y, z, id); } finally { _fromServer = false; }
                 }
+                _early.RemoveRange(keep, _early.Count - keep);
+            }
             if (!Remote)
             {
                 _waterSim.Tick(Time.deltaTime);
@@ -324,7 +329,7 @@ namespace Stratum.Game
                 foreach (var k in gone)
                 {
                     var s = _slots[k];
-                    if (s.Chunk.Modified) SaveChunk(s.Chunk);
+                    if (s.Chunk.Unsaved && !SaveChunk(s.Chunk)) continue;      // couldn't be written: it stays in memory and is tried again
                     if (s.Go != null) Destroy(s.Go);
                     if (s.Mesh != null) Destroy(s.Mesh);
                     s.DropLight();
@@ -464,7 +469,7 @@ namespace Stratum.Game
             if (old == id) return false;
             s.Chunk.Set(lx, y, lz, id);
             if (id == 0 && y == s.Chunk.MaxY) s.Chunk.RecalcMaxY();
-            s.Chunk.Modified = true;
+            s.Chunk.Modified = true; s.Chunk.Unsaved = true;
             // Light reaches 15 blocks, so the neighbours need a fresh mesh too.
             for (int dz = -1; dz <= 1; dz++)
                 for (int dx = -1; dx <= 1; dx++)
@@ -488,7 +493,7 @@ namespace Stratum.Game
             var s = SlotAt(x, z);
             if (s == null || !s.Chunk.Ready) return;
             s.Chunk.Set(x & 15, y, z & 15, id);
-            s.Chunk.Modified = true;
+            s.Chunk.Modified = true; s.Chunk.Unsaved = true;
             MarkDirty(x, z);
         }
 
@@ -506,23 +511,28 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ saving
 
-        void SaveChunk(Chunk c)
+        bool SaveChunk(Chunk c)
         {
-            if (SaveDir == null) return;
+            if (SaveDir == null) { c.Unsaved = false; return true; }
             try
             {
                 var path = ChunkPath(c.X, c.Z);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
                 var tmp = path + ".tmp";
                 using (var f = File.Create(tmp)) c.Write(f);
                 SafeFile.Swap(tmp, path);
+                c.Unsaved = false;
+                return true;
             }
-            catch (Exception e) { Debug.LogWarning("could not save chunk: " + e.Message); }
+            catch (Exception e) { Debug.LogWarning($"could not save chunk {c.X},{c.Z} (will try again): {e.Message}"); return false; }
         }
 
+        // Writes the chunks changed since they were last written (not every chunk that was ever edited).
         public void SaveAll()
         {
-            foreach (var s in _slots.Values) if (s.Chunk.Ready && s.Chunk.Modified) SaveChunk(s.Chunk);
+            foreach (var s in _slots.Values) if (s.Chunk.Ready && s.Chunk.Unsaved) SaveChunk(s.Chunk);
         }
+        public int UnsavedChunks { get { int n = 0; foreach (var s in _slots.Values) if (s.Chunk.Unsaved) n++; return n; } }
 
         public int LoadedChunks => _slots.Count;
         public int PendingJobs { get { lock (_lock) return _jobs.Count; } }
@@ -532,9 +542,13 @@ namespace Stratum.Game
         {
             int want = 0, have = 0;
             int cx = Mathf.FloorToInt(_focus.x / 16f), cz = Mathf.FloorToInt(_focus.z / 16f);
-            for (int dz = -radius; dz <= radius; dz++)
-                for (int dx = -radius; dx <= radius; dx++)
+            // A round patch, not a square: a chunk is only drawn once its neighbours exist, and at the smallest
+            // view distance the corners of the square never get theirs, so waiting for them would wait for ever.
+            int reach = Mathf.Min(radius, Mathf.Max(1, ViewDistance - 1));
+            for (int dz = -reach; dz <= reach; dz++)
+                for (int dx = -reach; dx <= reach; dx++)
                 {
+                    if (dx * dx + dz * dz > reach * reach) continue;
                     want++;
                     if (_slots.TryGetValue(Chunk.Key(cx + dx, cz + dz), out var s) && s.HasMesh) have++;
                 }

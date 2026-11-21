@@ -69,6 +69,7 @@ namespace Stratum.Server
             var keep = Get("STRATUM_KEEP", "--keep");
             c.Keep = keep == "1" || string.Equals(keep, "true", StringComparison.OrdinalIgnoreCase);
             c.Backup = Get("STRATUM_BACKUPS", "--backups") != "0";
+            c.LegacyLogin = Get("STRATUM_LEGACY_LOGIN", "--legacy-login") == "1";
             c.Worlds = WorldDef.Parse(Get("STRATUM_WORLDS", "--worlds"), SeedFrom);
             return c;
         }

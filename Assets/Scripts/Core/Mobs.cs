@@ -865,18 +865,39 @@ namespace Stratum.Core
         }
 
         // Torch light reaching a cell (a quick guess: the brightest source within reach, less its distance).
+// The light lamps and torches throw on a place, the way it is drawn: it spreads cell by cell through open
+        // space and loses one each step, so a torch behind a wall lights nothing on the dark side. (Counting straight
+        // through the wall kept monsters out of rooms that looked pitch black.)
+        const int LightReach = 12, LightSide = LightReach * 2 + 1;
+        readonly byte[] _lit = new byte[LightSide * LightSide * LightSide];
+        readonly int[] _litQueue = new int[LightSide * LightSide * LightSide];
+        byte _litMark;
+
         public int BlockLight(int x, int y, int z)
         {
-            int best = 0;
-            for (int dy = -6; dy <= 6; dy++)
-                for (int dz = -7; dz <= 7; dz++)
-                    for (int dx = -7; dx <= 7; dx++)
-                    {
-                        int e = Blocks.Get(_get(x + dx, y + dy, z + dz)).Emit;
-                        if (e == 0) continue;
-                        int l = e - Math.Abs(dx) - Math.Abs(dy) - Math.Abs(dz);
-                        if (l > best) best = l;
-                    }
+            if (++_litMark == 0) { Array.Clear(_lit, 0, _lit.Length); _litMark = 1; }
+            int best = Blocks.Get(_get(x, y, z)).Emit;
+            int head = 0, tail = 0;
+            int start = LightReach + LightReach * LightSide + LightReach * LightSide * LightSide;
+            _lit[start] = _litMark; _litQueue[tail++] = start;
+            int layerEnd = tail, dist = 0;
+            while (head < tail)
+            {
+                if (head == layerEnd) { dist++; layerEnd = tail; if (dist >= LightReach || 15 - (dist + 1) <= best) break; }
+                int c = _litQueue[head++];
+                int cx = c % LightSide, cy = c / LightSide % LightSide, cz = c / (LightSide * LightSide);
+                for (int d = 0; d < 6; d++)
+                {
+                    int nx = cx + (d == 0 ? 1 : d == 1 ? -1 : 0), ny = cy + (d == 2 ? 1 : d == 3 ? -1 : 0), nz = cz + (d == 4 ? 1 : d == 5 ? -1 : 0);
+                    if ((uint)nx >= LightSide || (uint)ny >= LightSide || (uint)nz >= LightSide) continue;
+                    int n = nx + ny * LightSide + nz * LightSide * LightSide;
+                    if (_lit[n] == _litMark) continue;
+                    _lit[n] = _litMark;
+                    var def = Blocks.Get(_get(x + nx - LightReach, y + ny - LightReach, z + nz - LightReach));
+                    if (def.Emit > 0) { int l = def.Emit - (dist + 1); if (l > best) best = l; }
+                    if (!def.Opaque) _litQueue[tail++] = n;
+                }
+            }
             return best;
         }
 

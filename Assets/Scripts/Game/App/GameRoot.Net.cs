@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using Stratum.Core;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Stratum.Game
 {
@@ -100,7 +101,39 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit));    // 1: knows the world kinds
+            // Ask for the server's key and a one-time number, so the password never crosses the wire in the clear.
+            net.Send(new Packet(Net.Msg.Ping).F64(Time.realtimeSinceStartupAsDouble));
+            byte[] keyMod = null, keyExp = null, nonce = null, loginKey = null; bool ponged = false; t = 0;
+            while (!ponged)
+            {
+                var pr = net.Poll();
+                if (pr == null)
+                {
+                    if (!net.Open) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "The server closed the connection."); yield break; }
+                    t += Time.unscaledDeltaTime;
+                    if (t > 8) { net.Dispose(); _pendingNet = null; _menus.ShowJoin("The server didn't answer. Try again."); yield break; }
+                    yield return null;
+                    continue;
+                }
+                if (pr.Type != Net.Msg.Pong) continue;
+                ponged = true;
+                try { ReadWorlds(pr); if (pr.More) { keyMod = pr.Blob(); keyExp = pr.Blob(); nonce = pr.Blob(); } } catch (Exception) { keyMod = null; }
+            }
+            var hello = new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user);
+            if (keyMod != null && keyExp != null && nonce != null)
+            {
+                // Is this the server we think it is? The download site vouches for our own server's key; any other
+                // server is remembered from the first visit.
+                string why = DefaultServer.Trust(address, Secure.Fingerprint(keyMod));
+                if (why != null) { net.Dispose(); _pendingNet = null; _menus.ShowJoin(why); yield break; }
+                byte[] sealedLogin;
+                try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
+                catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit).Blob(sealedLogin);
+            }
+            else   // a server from before 0.8 has no key to seal to
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit);
+            net.Send(hello);
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -147,6 +180,7 @@ namespace Stratum.Game
             int selected = welcome.U8();
             var slots = welcome.Stacks();
             string name = welcome.Str(), token = welcome.Str();
+            if (Secure.IsSealed(token)) token = Secure.OpenText(loginKey, token) ?? "";       // the remember-me token came hidden
             float food = welcome.F32(), sat = welcome.F32();
             bool hasBed = welcome.Bool(); var bed = new Vector3Int(welcome.I32(), welcome.I32(), welcome.I32());
             int difficulty = welcome.U8();
@@ -211,7 +245,9 @@ namespace Stratum.Game
                 _menus.SetLoading(p, p < 0.5f ? "Fetching the land from " + _serverName : p < 0.95f ? "Growing the forests" : "Lighting the world");
                 if (p >= 1 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;
                 t += Time.unscaledDeltaTime;
-                if (t > 90) { LeaveServer("The server is taking too long to send the world."); yield break; }
+                if (t > 45 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;      // enough to stand on: the rest arrives as we play
+                if (t > 90) { LeaveServer("The server is taking too long to send the world. Check your connection and try again."); yield break; }
+                if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { LeaveServer(null); yield break; }
                 yield return null;
             }
             if (!hasPos) { _player.Feet = GroundAt(_netSpawn); _netSpawn = _player.Feet; }
