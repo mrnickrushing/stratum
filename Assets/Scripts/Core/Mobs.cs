@@ -3,7 +3,9 @@ using System.Collections.Generic;
 
 namespace Stratum.Core
 {
-    public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Boat, Cart, Count }
+    public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Boat, Cart,
+        // 0.12: more wildlife
+        Deer, Fox, Rabbit, Penguin, Goat, Camel, Count }
 
     public sealed class MobDef
     {
@@ -93,6 +95,18 @@ namespace Stratum.Core
                 Drops = new[] { ("colossus_heart", 1, 1, 1f), ("gold_ingot", 6, 12, 1f), ("ember", 6, 10, 1f) } });
             D(new MobDef { Kind = MobKind.Villager, Name = "Villager", Health = 20, Speed = 1.1f, HalfW = 0.3f, Height = 1.9f });
             D(new MobDef { Kind = MobKind.Boat, Name = "Boat", Health = 4, HalfW = 0.7f, Height = 0.6f, Vehicle = true, Drops = new[] { ("boat", 1, 1, 1f) } });
+            D(new MobDef { Kind = MobKind.Deer, Name = "Deer", Health = 10, Speed = 1.9f, HalfW = 0.4f, Height = 1.5f, Xp = 2,
+                Drops = new[] { ("raw_beef", 1, 2, 1f), ("hide", 0, 2, 1f) } });
+            D(new MobDef { Kind = MobKind.Fox, Name = "Fox", Health = 8, Speed = 2.0f, HalfW = 0.3f, Height = 0.75f, Xp = 2,
+                Drops = new[] { ("hide", 0, 1, 1f) } });
+            D(new MobDef { Kind = MobKind.Rabbit, Name = "Rabbit", Health = 3, Speed = 2.1f, HalfW = 0.2f, Height = 0.5f, Xp = 1,
+                Drops = new[] { ("hide", 0, 1, 0.6f) } });
+            D(new MobDef { Kind = MobKind.Penguin, Name = "Penguin", Health = 6, Speed = 0.9f, HalfW = 0.25f, Height = 0.9f, Floats = true, Xp = 1,
+                Drops = new[] { ("feather", 0, 2, 1f) } });
+            D(new MobDef { Kind = MobKind.Goat, Name = "Goat", Health = 10, Speed = 1.5f, HalfW = 0.4f, Height = 1.2f, Xp = 2,
+                Drops = new[] { ("raw_mutton", 1, 2, 1f), ("hide", 0, 1, 1f) } });
+            D(new MobDef { Kind = MobKind.Camel, Name = "Camel", Health = 16, Speed = 1.2f, HalfW = 0.5f, Height = 2.1f, Xp = 3,
+                Drops = new[] { ("hide", 1, 3, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -221,7 +235,8 @@ namespace Stratum.Core
         // What each animal eats (and follows): the food that breeds them.
         public static string FoodOf(MobKind k) => k switch
         {
-            MobKind.Cow => "wheat", MobKind.Sheep => "wheat", MobKind.Pig => "berries", MobKind.Chicken => "seeds", _ => null
+            MobKind.Cow => "wheat", MobKind.Sheep => "wheat", MobKind.Pig => "berries", MobKind.Chicken => "seeds",
+            MobKind.Deer => "wheat", MobKind.Goat => "wheat", MobKind.Camel => "wheat", MobKind.Rabbit => "seeds", MobKind.Fox => "berries", _ => null
         };
 
         public const float GrowUp = 1200, LoveFor = 30, BreedRest = 300;
@@ -600,7 +615,7 @@ namespace Stratum.Core
             for (int dy = 0; dy <= 3; dy++)
             {
                 ushort b = _get(x, y - 1 - dy, z);
-                if (Blocks.IsFluid(b)) return m.Kind == MobKind.Chicken && Blocks.IsWater(b);
+                if (Blocks.IsFluid(b)) return (m.Kind == MobKind.Chicken || m.Kind == MobKind.Penguin) && Blocks.IsWater(b);
                 if (Blocks.Get(b).Solid) return true;
             }
             return false;
@@ -807,24 +822,32 @@ namespace Stratum.Core
             int x = (int)Math.Floor(p.X + Math.Cos(a) * r), z = (int)Math.Floor(p.Z + Math.Sin(a) * r);
             if (!Loaded(x, z)) return;
             int y = Ground(x, z, (int)p.Y + 24, 48, out ushort floor);
-            if (y == int.MinValue || floor != Blocks.Grass && floor != Blocks.SnowyGrass) return;
-            if (!SkyOpen(x, y, z) || !FarFromAll(x, y, z, players, 22)) return;
+            if (y == int.MinValue) return;
             var biome = BiomeAt?.Invoke(x, z) ?? Biome.Plains;
+            // Most animals want grass; camels walk the sand and goats the bare rock.
+            bool Stands(ushort f) => f == Blocks.Grass || f == Blocks.SnowyGrass || biome == Biome.Desert && f == Blocks.Sand
+                                     || biome == Biome.Peaks && (f == Blocks.Stone || f == Blocks.Snow);
+            if (!Stands(floor)) return;
+            if (!SkyOpen(x, y, z) || !FarFromAll(x, y, z, players, 22)) return;
             MobKind kind;
             float k = Rand();
             switch (biome)
             {
-                case Biome.Taiga: case Biome.Tundra: kind = k < 0.6f ? MobKind.Sheep : MobKind.Cow; break;
-                case Biome.Forest: case Biome.BirchWood: kind = k < 0.4f ? MobKind.Pig : k < 0.7f ? MobKind.Chicken : MobKind.Cow; break;
-                case Biome.Desert: case Biome.Beach: case Biome.Ocean: return;
-                default: kind = k < 0.3f ? MobKind.Cow : k < 0.6f ? MobKind.Sheep : k < 0.8f ? MobKind.Pig : MobKind.Chicken; break;
+                case Biome.Taiga: kind = k < 0.35f ? MobKind.Sheep : k < 0.55f ? MobKind.Cow : k < 0.8f ? MobKind.Fox : MobKind.Deer; break;
+                case Biome.Tundra: kind = k < 0.5f ? MobKind.Penguin : k < 0.8f ? MobKind.Sheep : MobKind.Fox; break;
+                case Biome.Forest: case Biome.BirchWood:
+                    kind = k < 0.25f ? MobKind.Pig : k < 0.45f ? MobKind.Chicken : k < 0.6f ? MobKind.Cow : k < 0.85f ? MobKind.Deer : MobKind.Rabbit; break;
+                case Biome.Desert: if (Rand() > 0.35f) return; kind = MobKind.Camel; break;
+                case Biome.Peaks: kind = MobKind.Goat; break;
+                case Biome.Beach: case Biome.Ocean: return;
+                default: kind = k < 0.25f ? MobKind.Cow : k < 0.5f ? MobKind.Sheep : k < 0.65f ? MobKind.Pig : k < 0.8f ? MobKind.Chicken : MobKind.Rabbit; break;
             }
             int n = 2 + _r.Next(3);
             for (int i = 0; i < n; i++)
             {
                 int sx = x + _r.Next(-2, 3), sz = z + _r.Next(-2, 3);
                 int sy = Ground(sx, sz, y + 3, 6, out ushort f2);
-                if (sy == int.MinValue || (f2 != Blocks.Grass && f2 != Blocks.SnowyGrass)) continue;
+                if (sy == int.MinValue || !Stands(f2)) continue;
                 Spawn(kind, sx + 0.5f, sy, sz + 0.5f);
             }
         }

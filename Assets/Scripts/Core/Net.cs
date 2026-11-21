@@ -12,7 +12,7 @@ namespace Stratum.Core
     // player moves themselves and keeps their own backpack, which the server saves for them.
     public static class Net
     {
-        public const int Protocol = 4;                  // 2: accounts, voice chat. 3: survival, villages, vehicles, spark power, the Ember Deep
+        public const int Protocol = 5;                  // 2: accounts, voice chat. 3: survival, villages, vehicles, spark power, the Ember Deep
         public const int DefaultPort = 25600;
         public const int MaxMessage = 1 << 20;          // a chunk is ~4-12 KB compressed; nothing should come near
         public const int MaxNameLength = 16;

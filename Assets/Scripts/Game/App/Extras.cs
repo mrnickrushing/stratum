@@ -19,10 +19,69 @@ namespace Stratum.Game
         public Color Tunic, Hood, Trim, Trousers, Boots;
     }
 
+    // An outfit made piece by piece on the Extras page. It travels to other players as a few bytes.
+    public sealed class CustomLook
+    {
+        public Color Tunic = new Color(0.34f, 0.46f, 0.63f), Hood = new Color(0.23f, 0.31f, 0.43f), Trim = new Color(0.82f, 0.75f, 0.59f),
+                     Trousers = new Color(0.2f, 0.19f, 0.23f), Boots = new Color(0.3f, 0.2f, 0.13f), Hair = new Color(0.25f, 0.17f, 0.1f);
+        public int Skin, Hat;               // skin 0: by name, 1-4 a tone; hat 0 hood, 1 none, 2 cap, 3 crown, 4 pointed hat, 5 helmet
+        public bool Cape;
+        public static readonly string[] HatNames = { "Hood", "No hat", "Cap", "Crown", "Pointed hat", "Helmet" };
+
+        public byte[] Pack()
+        {
+            var b = new byte[22]; b[0] = 1; int i = 1;
+            foreach (var c in new[] { Tunic, Hood, Trim, Trousers, Boots, Hair })
+            { b[i++] = (byte)Mathf.RoundToInt(Mathf.Clamp01(c.r) * 255); b[i++] = (byte)Mathf.RoundToInt(Mathf.Clamp01(c.g) * 255); b[i++] = (byte)Mathf.RoundToInt(Mathf.Clamp01(c.b) * 255); }
+            b[19] = (byte)Skin; b[20] = (byte)Hat; b[21] = (byte)(Cape ? 1 : 0);
+            return b;
+        }
+
+        // Null for anything that isn't one of ours (another player's game sent it: trust nothing).
+        public static CustomLook Unpack(byte[] b)
+        {
+            if (b == null || b.Length != 22 || b[0] != 1) return null;
+            var o = new CustomLook(); int i = 1;
+            Color Next() { var c = new Color(b[i] / 255f, b[i + 1] / 255f, b[i + 2] / 255f, 1); i += 3; return c; }
+            o.Tunic = Next(); o.Hood = Next(); o.Trim = Next(); o.Trousers = Next(); o.Boots = Next(); o.Hair = Next();
+            o.Skin = Mathf.Clamp(b[19], 0, 4); o.Hat = Mathf.Clamp(b[20], 0, HatNames.Length - 1); o.Cape = b[21] == 1;
+            return o;
+        }
+
+        static CustomLook _mine;
+        public static CustomLook Mine
+        {
+            get
+            {
+                if (_mine != null) return _mine;
+                try { _mine = Unpack(System.Convert.FromBase64String(PlayerPrefs.GetString("outfit_made", ""))); } catch { _mine = null; }
+                return _mine ??= new CustomLook();
+            }
+        }
+        public static void SaveMine() { PlayerPrefs.SetString("outfit_made", System.Convert.ToBase64String(Mine.Pack())); PlayerPrefs.Save(); }
+    }
+
+    // A bundle: a world, a look and an outfit that go together, switched on with one button.
+    public sealed class Bundle
+    {
+        public string Name, Desc, World; public int Look, Outfit;
+    }
+
     public static class Extras
     {
         public static readonly WorldPack[] Worlds =
         {
+            new WorldPack { Id = "castle", Name = "Castle Keep", Tag = "Adventure · Easy", Kind = WorldKind.Castle, Seed = 101, Keep = true,
+                Desc = "A moated castle with towers, a great hall, a throne room and a dungeon. Hold it through the night.",
+                Kit = new[] { ("iron_sword", 1), ("bow", 1), ("arrow", 32), ("bread", 8), ("torch", 16) } },
+            new WorldPack { Id = "skyrun", Name = "Sky Run", Tag = "Adventure · Peaceful", Kind = WorldKind.Parkour, Seed = 102, Keep = true, Difficulty = 0,
+                Desc = "A parkour run over water: six stages of jumps, each harder, up to a golden tower. Fall in and swim back.",
+                Kit = new[] { ("bread", 8) } },
+            new WorldPack { Id = "maze", Name = "Hedge Maze", Tag = "Adventure · Peaceful", Kind = WorldKind.Maze, Seed = 103, Keep = true, Difficulty = 0,
+                Desc = "A big hedge maze with a prize in the middle. Climb the lookout first, then find your way.",
+                Kit = new[] { ("bread", 6), ("compass", 1), ("torch", 8) } },
+            new WorldPack { Id = "town", Name = "Market Town", Tag = "Adventure · Creative", Kind = WorldKind.Town, Seed = 104, Creative = true,
+                Desc = "A furnished town with houses, an inn, a bakery, a library and a market square. Move in, or build it bigger." },
             new WorldPack { Id = "cloud", Name = "Cloud Hopper", Tag = "Sky Islands · Easy", Kind = WorldKind.Sky, Seed = 4242, Keep = true,
                 Desc = "Start on a floating island with planks in your pack and bridge your way across the sky. Fall, and you keep your things.",
                 Kit = new[] { ("oak_planks", 64), ("torch", 16), ("bread", 6) } },
@@ -65,12 +124,32 @@ namespace Stratum.Game
             new Outfit { Name = "River Guard", Desc = "Teal and cream, for sailors and bridge builders.", Tunic = C(40, 140, 140), Hood = C(26, 96, 100), Trim = C(240, 228, 196), Trousers = C(44, 60, 78), Boots = C(70, 52, 36) },
             new Outfit { Name = "Harvest Hand", Desc = "Straw yellow and barn red, for farmers.", Tunic = C(176, 58, 46), Hood = C(214, 178, 84), Trim = C(244, 226, 150), Trousers = C(70, 84, 120), Boots = C(84, 56, 34) },
             new Outfit { Name = "Royal Builder", Desc = "Purple and gold, for whoever built the biggest castle.", Tunic = C(110, 58, 150), Hood = C(76, 38, 108), Trim = C(250, 204, 70), Trousers = C(44, 34, 60), Boots = C(60, 40, 30) },
+            new Outfit { Name = "Castle Guard", Desc = "Steel grey and royal red, for the watch on the wall.", Tunic = C(150, 38, 40), Hood = C(132, 138, 146), Trim = C(232, 196, 84), Trousers = C(70, 72, 80), Boots = C(46, 40, 36) },
+            new Outfit { Name = "Sky Runner", Desc = "Bright lime and white. Light on the feet.", Tunic = C(134, 196, 58), Hood = C(240, 240, 236), Trim = C(40, 44, 52), Trousers = C(44, 48, 56), Boots = C(232, 232, 228) },
+            new Outfit { Name = "Gardener", Desc = "Leaf green with a straw hood and muddy boots.", Tunic = C(96, 150, 70), Hood = C(222, 196, 120), Trim = C(232, 96, 110), Trousers = C(110, 84, 58), Boots = C(74, 56, 40) },
+            new Outfit { Name = "Merchant", Desc = "Plum and gold, with good boots for the road.", Tunic = C(120, 50, 84), Hood = C(196, 150, 60), Trim = C(248, 220, 130), Trousers = C(58, 46, 40), Boots = C(96, 64, 38) },
+            new Outfit { Name = "Deep Miner", Desc = "Dusty brown with a lamp-yellow hood.", Tunic = C(122, 96, 70), Hood = C(240, 200, 60), Trim = C(60, 60, 66), Trousers = C(72, 66, 60), Boots = C(40, 36, 34) },
+            new Outfit { Name = "Baker", Desc = "Flour white with a cherry trim.", Tunic = C(240, 236, 226), Hood = C(250, 248, 240), Trim = C(200, 50, 60), Trousers = C(150, 150, 156), Boots = C(110, 84, 60) },
+            new Outfit { Name = "Sea Captain", Desc = "Navy blue and brass buttons.", Tunic = C(36, 52, 96), Hood = C(24, 34, 64), Trim = C(214, 170, 70), Trousers = C(236, 232, 220), Boots = C(30, 26, 24) },
+            new Outfit { Name = "Sunset", Desc = "Orange into pink, like the evening sky.", Tunic = C(240, 130, 60), Hood = C(232, 96, 130), Trim = C(255, 226, 150), Trousers = C(110, 60, 110), Boots = C(70, 40, 70) },
         };
+
+        public static readonly Bundle[] Bundles =
+        {
+            new Bundle { Name = "A Knight's Tale", World = "castle", Look = 2, Outfit = 9, Desc = "Castle Keep in the Storybook look, dressed as a Castle Guard." },
+            new Bundle { Name = "Retro Run", World = "skyrun", Look = 1, Outfit = 10, Desc = "Sky Run in the Chunky look, dressed as a Sky Runner." },
+            new Bundle { Name = "Garden Party", World = "maze", Look = 3, Outfit = 11, Desc = "The Hedge Maze in the Pastel look, dressed as a Gardener." },
+            new Bundle { Name = "Comic Town", World = "town", Look = 4, Outfit = 12, Desc = "Market Town in the Inked look, dressed as a Merchant." },
+            new Bundle { Name = "Above the Clouds", World = "cloud", Look = 3, Outfit = 3, Desc = "Cloud Hopper in the Pastel look, dressed as a Frost Walker." },
+            new Bundle { Name = "The Usual", World = null, Look = 0, Outfit = 0, Desc = "Back to how Stratum normally looks: the usual blocks and the Traveller's tunic." },
+        };
+
+        public const int Custom = 255;      // the outfit made piece by piece (CustomLook.Mine)
 
         public static int Outfit
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt("outfit", 0), 0, Outfits.Length - 1);
-            set { PlayerPrefs.SetInt("outfit", Mathf.Clamp(value, 0, Outfits.Length - 1)); PlayerPrefs.Save(); }
+            get { int v = PlayerPrefs.GetInt("outfit", 0); return v == Custom ? Custom : Mathf.Clamp(v, 0, Outfits.Length - 1); }
+            set { PlayerPrefs.SetInt("outfit", value == Custom ? Custom : Mathf.Clamp(value, 0, Outfits.Length - 1)); PlayerPrefs.Save(); }
         }
     }
 }

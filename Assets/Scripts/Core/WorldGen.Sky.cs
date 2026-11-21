@@ -8,7 +8,9 @@ namespace Stratum.Core
     // Themed worlds reshape the normal land (Frozen, Dunes, Islands, Peaks, Flat); Sky Islands is its own generator.
     public enum WorldKind : byte { Normal = 0, Sky = 1, Frozen = 2, Dunes = 3, Islands = 4, Peaks = 5, Flat = 6,
         // 0.5: everything taller and wilder; the same land with every region four times as wide; one biome everywhere.
-        Towering = 7, Vast = 8, OnlyMeadow = 9, OnlyOakwood = 10, OnlyBirch = 11, OnlyPine = 12, OnlyFrost = 13, OnlyDunes = 14, OnlyPeaks = 15, Count }
+        Towering = 7, Vast = 8, OnlyMeadow = 9, OnlyOakwood = 10, OnlyBirch = 11, OnlyPine = 12, OnlyFrost = 13, OnlyDunes = 14, OnlyPeaks = 15,
+        // 0.12: hand-built adventure worlds on flat grass (see Builds).
+        Castle = 16, Parkour = 17, Maze = 18, Town = 19, Count }
 
     // Sky Islands: floating islands over open sky. Each island has its own climate (a snowy one beside a desert one),
     // a grassy top with a little dome, and a rocky underside that tapers to a ragged point. Big islands may hold a
@@ -18,7 +20,8 @@ namespace Stratum.Core
     {
         public readonly WorldKind Kind;
         public static readonly string[] KindNames = { "Normal", "Sky Islands", "Frozen Wilds", "Endless Dunes", "Archipelago", "Giant Peaks", "Flatlands",
-            "Towering Wilds", "Vast Lands", "All Meadow", "All Oakwood", "All Birch Grove", "All Pinewood", "All Frostland", "All Dunes", "All High Peaks" };
+            "Towering Wilds", "Vast Lands", "All Meadow", "All Oakwood", "All Birch Grove", "All Pinewood", "All Frostland", "All Dunes", "All High Peaks",
+            "Castle Keep", "Sky Run", "Hedge Maze", "Market Town" };
         public static readonly string[] KindHints =
         {
             "Hills, forests, rivers and seas, deserts and snowy peaks.",
@@ -37,12 +40,18 @@ namespace Stratum.Core
             "Snowfields everywhere, with frozen rivers. Few trees.",
             "Desert everywhere. No trees: bring what you need, or play creative.",
             "Bare rock and snow everywhere. No trees: one for creative builders.",
+            "A moated castle with towers, a great hall, a throne room and a dungeon.",
+            "A parkour run over water: six stages of jumps to a golden tower.",
+            "A big hedge maze with a prize in the middle.",
+            "A furnished town: houses, an inn, a bakery, a library and a market square.",
         };
         public const WorldKind FirstOnly = WorldKind.OnlyMeadow, LastOnly = WorldKind.OnlyPeaks;
         static readonly Biome[] OnlyBiomes = { Biome.Plains, Biome.Forest, Biome.BirchWood, Biome.Taiga, Biome.Tundra, Biome.Desert, Biome.Peaks };
         public static bool IsOnly(WorldKind k) => k >= FirstOnly && k <= LastOnly;
         // The one biome of a single-biome world.
         public static Biome OnlyBiome(WorldKind k) => OnlyBiomes[(int)k - (int)FirstOnly];
+        // Flat grass: the plain flat world and the ground the adventure builds stand on.
+        public bool Level => Kind == WorldKind.Flat || Builds.Is(Kind);
         public const int FlatTop = Chunk.SeaLevel + 3;   // just above where the rules call the ground beach
 
         // "sky", "frozen", "dunes"/"desert", "islands"/"archipelago", "peaks"/"mountains", "flat"; anything else: normal.
@@ -61,6 +70,10 @@ namespace Stratum.Core
                     if (b.StartsWith("dune") || b.StartsWith("desert")) return WorldKind.OnlyDunes;
                     if (b.StartsWith("peak") || b.StartsWith("high") || b.StartsWith("mountain")) return WorldKind.OnlyPeaks;
                 }
+            if (s.StartsWith("castle")) return WorldKind.Castle;
+            if (s.StartsWith("parkour") || s.StartsWith("sky run") || s.StartsWith("skyrun")) return WorldKind.Parkour;
+            if (s.StartsWith("maze") || s.StartsWith("hedge")) return WorldKind.Maze;
+            if (s.StartsWith("town") || s.StartsWith("market")) return WorldKind.Town;
             if (s.StartsWith("tower") || s.StartsWith("ampl")) return WorldKind.Towering;
             if (s.StartsWith("vast") || s.StartsWith("large") || s.StartsWith("wide")) return WorldKind.Vast;
             if (s.StartsWith("sky")) return WorldKind.Sky;

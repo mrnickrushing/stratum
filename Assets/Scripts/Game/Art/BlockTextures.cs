@@ -21,19 +21,39 @@ namespace Stratum.Game
             { filterMode = FilterMode.Trilinear, anisoLevel = 8, wrapMode = TextureWrapMode.Repeat, name = "BlockAlbedo" };
             Normal = new Texture2DArray(Paint.S, Paint.S, n, TextureFormat.RGBA32, true, true)
             { filterMode = FilterMode.Trilinear, anisoLevel = 8, wrapMode = TextureWrapMode.Repeat, name = "BlockNormal" };
+            Repaint();
+        }
+
+        // Paints every block picture in the chosen look (Extras > Looks) into the same two textures, so the world
+        // changes at once. Kept writable for that.
+        public static void Repaint()
+        {
+            int n = (int)Tex.Count, look = Looks.Current;
+            Albedo.filterMode = look == 1 ? FilterMode.Point : FilterMode.Trilinear;
             for (int i = 0; i < n; i++)
             {
                 var p = new Paint(1000 + i * 31);
-                float bump = Draw((Tex)i, p);
+                float bump = Draw((Tex)i, p) * Looks.All[look].Bump;
+                var normals = p.Normals(bump);
+                Looks.Apply(p.C, Paint.S, look);
                 Albedo.SetPixels(p.C, i);
-                Normal.SetPixels(p.Normals(bump), i);
+                Normal.SetPixels(normals, i);
                 _pixels[i] = p.C;
                 Color sum = Color.clear; int k = 0;
                 foreach (var c in p.C) if (c.a > 0.5f) { sum += c; k++; }
                 Average[i] = k > 0 ? sum / k : Color.gray;
             }
-            Albedo.Apply(true, true);
-            Normal.Apply(true, true);
+            Albedo.Apply(true, false);
+            Normal.Apply(true, false);
+        }
+
+        // One block picture in a look, for the Extras page.
+        public static Color[] Sample(Tex t, int look)
+        {
+            var p = new Paint(1000 + (int)t * 31);
+            Draw(t, p);
+            Looks.Apply(p.C, Paint.S, look);
+            return p.C;
         }
 
         static Color Hex(int rgb) => new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1);

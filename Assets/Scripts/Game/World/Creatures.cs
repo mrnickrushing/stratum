@@ -313,6 +313,12 @@ namespace Stratum.Game
                 case MobKind.Villager: Villager(m); break;
                 case MobKind.Boat: Boat(m); break;
                 case MobKind.Cart: Cart(m); break;
+                case MobKind.Deer: Deer(m); break;
+                case MobKind.Fox: Fox(m); break;
+                case MobKind.Rabbit: Rabbit(m); break;
+                case MobKind.Penguin: Penguin(m); break;
+                case MobKind.Goat: Goat(m); break;
+                case MobKind.Camel: Camel(m); break;
             }
             return m;
         }
@@ -356,6 +362,125 @@ namespace Stratum.Game
             B(m, m.Head, 0.33f, 0.3f, 0.16f, 0.16f, 0.1f, 0.1f, Hex(0xe6dcc4));
             B(m, m.Head, -0.33f, 0.15f, 0.12f, 0.12f, 0.06f, 0.16f, hide);              // ears
             B(m, m.Head, 0.33f, 0.15f, 0.12f, 0.12f, 0.06f, 0.16f, hide);
+        }
+
+        void Deer(Model m)
+        {
+            Color coat = Hex(0xa8743e), belly = Hex(0xe8dcc4), dark = Hex(0x3a2818), antler = Hex(0xd8c8a0);
+            Legs4(m, 0.2f, 0.72f, 0.42f, 0.13f, 0.72f, coat, dark);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.72f, 0));
+            B(m, m.Body, 0, 0.26f, 0, 0.62f, 0.56f, 1.2f, coat);
+            B(m, m.Body, 0, 0.0f, 0, 0.5f, 0.06f, 1.0f, belly);
+            B(m, m.Body, 0, 0.42f, -0.63f, 0.16f, 0.2f, 0.08f, belly);                  // white tail
+            foreach (var (sx, z) in new[] { (-1, 0.2f), (1, -0.1f), (-1, -0.35f), (1, 0.35f) }) B(m, m.Body, sx * 0.312f, 0.36f, z, 0.02f, 0.08f, 0.08f, belly);   // spots
+            m.Head = Pivot(m.Root, new Vector3(0, 1.22f, 0.56f));
+            B(m, m.Head, 0, -0.12f, 0.02f, 0.22f, 0.5f, 0.22f, coat);                   // neck
+            B(m, m.Head, 0, 0.2f, 0.14f, 0.3f, 0.3f, 0.4f, coat);
+            B(m, m.Head, 0, 0.14f, 0.38f, 0.2f, 0.18f, 0.12f, belly);
+            B(m, m.Head, 0, 0.16f, 0.445f, 0.1f, 0.07f, 0.02f, dark, 0, false);
+            Eyes(m, m.Head, 0.155f, 0.24f, 0.22f, 0.06f, dark);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                B(m, m.Head, sx * 0.2f, 0.3f, 0.0f, 0.14f, 0.07f, 0.1f, coat);           // ears
+                B(m, m.Head, sx * 0.1f, 0.5f, 0.02f, 0.05f, 0.34f, 0.05f, antler);
+                B(m, m.Head, sx * 0.2f, 0.56f, 0.02f, 0.18f, 0.05f, 0.05f, antler);
+                B(m, m.Head, sx * 0.27f, 0.66f, 0.02f, 0.05f, 0.18f, 0.05f, antler);
+            }
+        }
+
+        void Fox(Model m)
+        {
+            Color fur = Hex(0xd8702a), white = Hex(0xf2ece0), dark = Hex(0x2a1c14);
+            Legs4(m, 0.14f, 0.3f, 0.28f, 0.1f, 0.3f, dark, dark);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.3f, 0));
+            B(m, m.Body, 0, 0.16f, 0, 0.4f, 0.34f, 0.8f, fur);
+            B(m, m.Body, 0, 0.0f, 0.05f, 0.3f, 0.04f, 0.6f, white);
+            B(m, m.Body, 0, 0.2f, -0.6f, 0.22f, 0.22f, 0.44f, fur);                    // brush
+            B(m, m.Body, 0, 0.2f, -0.86f, 0.18f, 0.18f, 0.12f, white);
+            m.Head = Pivot(m.Root, new Vector3(0, 0.52f, 0.4f));
+            B(m, m.Head, 0, 0.06f, 0.12f, 0.4f, 0.32f, 0.32f, fur);
+            B(m, m.Head, 0, -0.02f, 0.34f, 0.2f, 0.14f, 0.16f, white);
+            B(m, m.Head, 0, 0.02f, 0.425f, 0.08f, 0.06f, 0.02f, dark, 0, false);
+            Eyes(m, m.Head, 0.11f, 0.1f, 0.285f, 0.06f, dark);
+            foreach (int sx in new[] { -1, 1 }) { B(m, m.Head, sx * 0.14f, 0.28f, 0.08f, 0.12f, 0.16f, 0.06f, fur); B(m, m.Head, sx * 0.14f, 0.34f, 0.08f, 0.07f, 0.06f, 0.07f, dark); }
+        }
+
+        void Rabbit(Model m)
+        {
+            Color fur = Hex(0xb8a48a), white = Hex(0xf4f0e8), dark = Hex(0x2a2018);
+            Legs4(m, 0.09f, 0.14f, 0.14f, 0.08f, 0.14f, fur, fur);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.14f, 0));
+            B(m, m.Body, 0, 0.14f, -0.02f, 0.28f, 0.28f, 0.42f, fur);
+            B(m, m.Body, 0, 0.16f, -0.25f, 0.12f, 0.12f, 0.08f, white);                // scut
+            m.Head = Pivot(m.Root, new Vector3(0, 0.34f, 0.18f));
+            B(m, m.Head, 0, 0.06f, 0.08f, 0.24f, 0.22f, 0.24f, fur);
+            B(m, m.Head, 0, 0.02f, 0.205f, 0.07f, 0.05f, 0.02f, Hex(0xe8a0a0), 0, false);
+            Eyes(m, m.Head, 0.085f, 0.09f, 0.205f, 0.045f, dark);
+            foreach (int sx in new[] { -1, 1 }) { B(m, m.Head, sx * 0.07f, 0.3f, 0.02f, 0.07f, 0.28f, 0.05f, fur); B(m, m.Head, sx * 0.07f, 0.3f, 0.047f, 0.04f, 0.22f, 0.01f, Hex(0xe8b8b0), 0, false); }
+        }
+
+        void Penguin(Model m)
+        {
+            Color black = Hex(0x1e2228), white = Hex(0xf2f2ee), orange = Hex(0xf0a020);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                var p = Pivot(m.Root, new Vector3(sx * 0.1f, 0.1f, 0));
+                B(m, p, 0, -0.05f, 0, 0.08f, 0.1f, 0.08f, orange);
+                B(m, p, 0, -0.09f, 0.06f, 0.14f, 0.02f, 0.18f, orange);
+                m.Legs.Add(p);
+            }
+            m.Body = Pivot(m.Root, new Vector3(0, 0.1f, 0));
+            B(m, m.Body, 0, 0.3f, 0, 0.42f, 0.6f, 0.36f, black);
+            B(m, m.Body, 0, 0.28f, 0.171f, 0.3f, 0.5f, 0.02f, white);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                var w = Pivot(m.Body, new Vector3(sx * 0.22f, 0.52f, 0));
+                B(m, w, sx * 0.02f, -0.18f, 0, 0.05f, 0.4f, 0.24f, black);
+                m.Wings.Add(w);
+            }
+            m.Head = Pivot(m.Root, new Vector3(0, 0.7f, 0.02f));
+            B(m, m.Head, 0, 0.12f, 0, 0.34f, 0.28f, 0.32f, black);
+            B(m, m.Head, 0, 0.08f, 0.161f, 0.24f, 0.14f, 0.02f, white);
+            B(m, m.Head, 0, 0.06f, 0.22f, 0.1f, 0.06f, 0.14f, orange);
+            Eyes(m, m.Head, 0.085f, 0.16f, 0.165f, 0.05f, black);
+        }
+
+        void Goat(Model m)
+        {
+            Color coat = Hex(0xe2dccc), dark = Hex(0x5a5248), horn = Hex(0x8a7a60);
+            Legs4(m, 0.2f, 0.5f, 0.34f, 0.13f, 0.5f, coat, dark);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.5f, 0));
+            B(m, m.Body, 0, 0.28f, 0, 0.6f, 0.58f, 1.0f, coat);
+            B(m, m.Body, 0, 0.5f, -0.52f, 0.1f, 0.14f, 0.06f, coat);
+            m.Head = Pivot(m.Root, new Vector3(0, 0.96f, 0.5f));
+            B(m, m.Head, 0, 0.04f, 0.14f, 0.34f, 0.36f, 0.4f, coat);
+            B(m, m.Head, 0, -0.06f, 0.36f, 0.22f, 0.18f, 0.08f, Hex(0xcfc6b2));
+            B(m, m.Head, 0, -0.24f, 0.3f, 0.08f, 0.2f, 0.06f, coat);                    // beard
+            Eyes(m, m.Head, 0.175f, 0.1f, 0.25f, 0.06f, dark);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                B(m, m.Head, sx * 0.22f, 0.12f, 0.04f, 0.14f, 0.06f, 0.1f, coat);
+                B(m, m.Head, sx * 0.1f, 0.3f, 0.02f, 0.07f, 0.22f, 0.07f, horn);
+                B(m, m.Head, sx * 0.1f, 0.42f, -0.08f, 0.06f, 0.06f, 0.2f, horn);
+            }
+        }
+
+        void Camel(Model m)
+        {
+            Color coat = Hex(0xc89a5a), dark = Hex(0x7a5830), light = Hex(0xdcb47a);
+            Legs4(m, 0.24f, 1.05f, 0.5f, 0.16f, 1.05f, coat, dark);
+            m.Body = Pivot(m.Root, new Vector3(0, 1.05f, 0));
+            B(m, m.Body, 0, 0.3f, 0, 0.72f, 0.62f, 1.5f, coat);
+            B(m, m.Body, 0, 0.74f, 0.3f, 0.44f, 0.32f, 0.4f, light);                   // two humps
+            B(m, m.Body, 0, 0.74f, -0.3f, 0.44f, 0.32f, 0.4f, light);
+            B(m, m.Body, 0, 0.3f, -0.78f, 0.07f, 0.44f, 0.06f, dark);
+            m.Head = Pivot(m.Root, new Vector3(0, 1.5f, 0.74f));
+            B(m, m.Head, 0, 0.26f, 0.04f, 0.24f, 0.8f, 0.24f, coat);                    // the long neck
+            B(m, m.Head, 0, 0.72f, 0.2f, 0.3f, 0.3f, 0.5f, coat);
+            B(m, m.Head, 0, 0.66f, 0.47f, 0.24f, 0.2f, 0.06f, light);
+            B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
+            Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
+            foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
         }
 
         void Pig(Model m)

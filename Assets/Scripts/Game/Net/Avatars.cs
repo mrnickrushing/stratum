@@ -64,10 +64,10 @@ namespace Stratum.Game
             a.Plate.color = on ? new Color(0.16f, 0.62f, 0.30f, 0.85f) : new Color(0, 0, 0, 0.5f);
         }
 
-        public void Add(int id, string name, Vector3 pos, float yaw, int outfit = 0)
+        public void Add(int id, string name, Vector3 pos, float yaw, int outfit = 0, byte[] made = null)
         {
             Remove(id);
-            var a = Build(id, name, outfit);
+            var a = Build(id, name, outfit, made);
             a.Pos = a.Target = pos; a.Yaw = a.TargetYaw = yaw;
             _all[id] = a;
             Place(a, 0);
@@ -180,7 +180,7 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ building a figure
 
-        Avatar Build(int id, string name, int outfit = 0)
+        Avatar Build(int id, string name, int outfit = 0, byte[] made = null)
         {
             var a = new Avatar { Id = id, Name = name };
             uint h = 2166136261; foreach (char ch in name) h = (h ^ ch) * 16777619;
@@ -198,6 +198,15 @@ namespace Stratum.Game
                 var o = Extras.Outfits[outfit];
                 tunic = o.Tunic; hood = o.Hood; trim = o.Trim; trousers = o.Trousers; boots = o.Boots;
             }
+            // An outfit made piece by piece: its own colours, skin, hair, hat and cape.
+            var own = outfit == Extras.Custom ? CustomLook.Unpack(made) : null;
+            int hat = 0; bool cape = false; var hair = new Color(0.25f, 0.17f, 0.10f);
+            if (own != null)
+            {
+                tunic = own.Tunic; hood = own.Hood; trim = own.Trim; trousers = own.Trousers; boots = own.Boots;
+                if (own.Skin > 0) skin = skins[(own.Skin - 1) % skins.Length];
+                hat = own.Hat; cape = own.Cape; hair = own.Hair;
+            }
 
             var parts = new List<Renderer>(); var cols = new List<Color>();
             a.Root = new GameObject("Player " + name).transform;
@@ -211,8 +220,37 @@ namespace Stratum.Game
             Box(a.Body, new Vector3(0, 0.66f, -0.145f), new Vector3(0.20f, 0.10f, 0.02f), trim, parts, cols);         // clasp
             a.Head = Pivot(a.Body, "Head", new Vector3(0, 0.74f, 0));
             Box(a.Head, new Vector3(0, 0.24f, 0), new Vector3(0.44f, 0.44f, 0.44f), skin, parts, cols);
-            Box(a.Head, new Vector3(0, 0.30f, 0.03f), new Vector3(0.50f, 0.38f, 0.44f), hood, parts, cols);          // hood, open at the face
-            Box(a.Head, new Vector3(0, 0.50f, 0), new Vector3(0.50f, 0.08f, 0.50f), hood, parts, cols);
+            if (hat == 0 || hat == 5)
+            {
+                Box(a.Head, new Vector3(0, 0.30f, 0.03f), new Vector3(0.50f, 0.38f, 0.44f), hood, parts, cols);          // hood, open at the face
+                Box(a.Head, new Vector3(0, 0.50f, 0), new Vector3(0.50f, 0.08f, 0.50f), hood, parts, cols);
+                if (hat == 5) Box(a.Head, new Vector3(0, 0.30f, -0.235f), new Vector3(0.06f, 0.30f, 0.03f), hood, parts, cols);   // a helmet's nose guard
+            }
+            else
+            {
+                Box(a.Head, new Vector3(0, 0.47f, 0.01f), new Vector3(0.48f, 0.08f, 0.47f), hair, parts, cols);          // hair on top and behind
+                Box(a.Head, new Vector3(0, 0.28f, 0.17f), new Vector3(0.48f, 0.36f, 0.14f), hair, parts, cols);
+                if (hat == 2)                                                                                            // a cap with a peak
+                {
+                    Box(a.Head, new Vector3(0, 0.53f, 0), new Vector3(0.50f, 0.10f, 0.50f), hood, parts, cols);
+                    Box(a.Head, new Vector3(0, 0.49f, -0.32f), new Vector3(0.44f, 0.04f, 0.20f), hood, parts, cols);
+                }
+                else if (hat == 3)                                                                                       // a crown
+                {
+                    Box(a.Head, new Vector3(0, 0.54f, 0), new Vector3(0.50f, 0.08f, 0.50f), trim, parts, cols);
+                    foreach (var (px, pz) in new[] { (-0.2f, -0.2f), (0.2f, -0.2f), (-0.2f, 0.2f), (0.2f, 0.2f), (0f, -0.22f) })
+                        Box(a.Head, new Vector3(px, 0.62f, pz), new Vector3(0.08f, 0.10f, 0.08f), trim, parts, cols);
+                }
+                else if (hat == 4)                                                                                       // a pointed hat
+                {
+                    Box(a.Head, new Vector3(0, 0.52f, 0), new Vector3(0.74f, 0.05f, 0.74f), hood, parts, cols);
+                    Box(a.Head, new Vector3(0, 0.63f, 0), new Vector3(0.42f, 0.18f, 0.42f), hood, parts, cols);
+                    Box(a.Head, new Vector3(0, 0.57f, 0), new Vector3(0.44f, 0.05f, 0.44f), trim, parts, cols);
+                    Box(a.Head, new Vector3(0, 0.80f, 0.02f), new Vector3(0.28f, 0.18f, 0.28f), hood, parts, cols);
+                    Box(a.Head, new Vector3(0, 0.96f, 0.05f), new Vector3(0.14f, 0.16f, 0.14f), hood, parts, cols);
+                }
+            }
+            if (cape) Box(a.Body, new Vector3(0, 0.28f, 0.17f), new Vector3(0.48f, 0.84f, 0.04f), trim, parts, cols);
             Box(a.Head, new Vector3(-0.10f, 0.25f, -0.225f), new Vector3(0.07f, 0.07f, 0.01f), dark, parts, cols);   // eyes
             Box(a.Head, new Vector3(0.10f, 0.25f, -0.225f), new Vector3(0.07f, 0.07f, 0.01f), dark, parts, cols);
             a.ArmL = Pivot(a.Body, "ArmL", new Vector3(-0.36f, 0.66f, 0));

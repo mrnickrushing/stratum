@@ -261,6 +261,9 @@ namespace Stratum.Server
             int features = r.More ? r.I32() : 0;                                  // 1: knows the themed world kinds (0.4)
             int outfit = r.More ? r.U8() : 0;                                     // 0.6: the outfit others see them in
             byte[] sealedLogin = r.More ? r.Blob() : null;                        // 0.8: the password and invite, sealed to this server
+            if (sealedLogin != null && sealedLogin.Length == 0) sealedLogin = null;
+            byte[] look = r.More ? r.Blob() : null;                               // 0.12: an outfit made piece by piece
+            if (look != null && (look.Length == 0 || look.Length > 32)) look = null;
             byte[] loginKey = null;
             if (sealedLogin != null)
             {
@@ -280,23 +283,24 @@ namespace Stratum.Server
                 if (!res.Ok) await System.Threading.Tasks.Task.Delay(600);
                 // The remember-me token goes back hidden with the key the game chose for this login.
                 if (res.Ok && loginKey != null && !string.IsNullOrEmpty(res.Token)) res = new Accounts.Result(null, res.Name, res.Key, Secure.SealText(loginKey, res.Token));
-                _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit));
+                _later.Enqueue(() => Admit(p, res, mode, version, world, features, outfit, look));
             });
         }
 
         public const int KnowsTransfers = 4;    // 0.7.2: says what it saw in a slot before changing it (needed for furnaces)
         long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
+        public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
-        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit)
+        void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit, byte[] look = null)
         {
             if (!_pending.TryGetValue(p.Conn.Id, out var still) || still != p) return;    // gone meanwhile
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
             var host = Worlds.FirstOrDefault(w => w.Def.Id == world) ?? Worlds[0];
             // An older game would draw a themed world's land right but get its look and creatures wrong.
             var hk = host.World.Gen.Kind;
-            if (hk != WorldKind.Normal && (features & (hk > WorldKind.Flat ? KnowsTypes : KnowsKinds)) == 0)
+            if (hk != WorldKind.Normal && (features & (Builds.Is(hk) ? KnowsBuilds : hk > WorldKind.Flat ? KnowsTypes : KnowsKinds)) == 0)
             { Refuse(p.Conn, $"{host.Def.Name} needs the newest Stratum. Get it at stratum.rushingtechnologies.com"); return; }
             // Coming back replaces the old session wherever it is; a full server only turns away someone new.
             int others = Worlds.Sum(w => w.OnlineExcept(res.Key));
@@ -306,7 +310,7 @@ namespace Stratum.Server
             long order = ++_order;
             foreach (var w in Worlds) if (w != host) w.Drop(res.Key, order);
             _pending.Remove(p.Conn.Id);
-            host.Adopt(p.Conn, res, mode, version, outfit, order, features);
+            host.Adopt(p.Conn, res, mode, version, outfit, order, features, look);
         }
     }
 }

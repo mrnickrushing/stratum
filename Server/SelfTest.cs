@@ -46,7 +46,8 @@ namespace Stratum.Server
         public bool Sealed;                                      // log in the 0.8 way
         public byte[] KeyMod, KeyExp, Nonce, LoginKey, SentSealed;
         public int Outfit;
-        public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes | GameServer.KnowsTransfers;     // 0: act like a 0.3 client
+        public byte[] Look;                              // an outfit made piece by piece (0.12)
+        public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes | GameServer.KnowsTransfers | GameServer.KnowsBuilds;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
@@ -55,11 +56,11 @@ namespace Stratum.Server
                 // A 0.8 game: asks for the server's key first, then sends the password and invite sealed to it.
                 if (KeyMod == null) Worlds();
                 SentSealed = Secure.Seal(KeyMod, KeyExp, Nonce, secret, invite, out LoginKey);
-                Send(new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str("").Str("").Str("selftest").Str(world ?? "").I32(Features).U8((byte)Outfit).Blob(SentSealed));
+                Send(new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str("").Str("").Str("selftest").Str(world ?? "").I32(Features).U8((byte)Outfit).Blob(SentSealed).Blob(Look ?? new byte[0]));
                 return;
             }
             var pk = new Packet(Net.Msg.Hello).I32(proto).U8((byte)mode).Str(name).Str(secret).Str(invite).Str("selftest");
-            if (world != null) { pk.Str(world); if (Features != 0) { pk.I32(Features); if (Outfit != 0) pk.U8((byte)Outfit); } }   // clients before 0.3.0 don't say which world
+            if (world != null) { pk.Str(world); if (Features != 0) { pk.I32(Features); if (Outfit != 0) { pk.U8((byte)Outfit); if (Look != null) pk.Blob(new byte[0]).Blob(Look); } } }   // clients before 0.3.0 don't say which world
             Send(pk);
         }
         public void Create(string name, string pw, string invite = "", string world = null) => Hello(Accounts.Mode.Create, name, pw, invite, world: world);
@@ -335,6 +336,52 @@ namespace Stratum.Server
                 Check(R(new Stack("iron_ingot", 2), new Stack("iron_ingot", 1), Stack.None).Count == 1, "taking the one ingot you saw leaves the one made since");
                 Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
                 Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
+
+                // The adventure worlds: the same build from the same kind every time, standing where it should.
+                {
+                    foreach (WorldKind k in new[] { WorldKind.Castle, WorldKind.Parkour, WorldKind.Maze, WorldKind.Town })
+                    {
+                        var g1 = new WorldGen(5, k); var g2 = new WorldGen(99, k); var cv = Builds.Of(k);
+                        int filled = 0, same = 0, total = 0;
+                        for (int cx = -3; cx <= 3; cx++)
+                            for (int cz = 0; cz <= 5; cz++)
+                            {
+                                var a1 = new Chunk(cx, cz); g1.Generate(a1); var a2 = new Chunk(cx, cz); g2.Generate(a2);
+                                for (int y = Builds.Ground; y < Builds.Ground + 30; y++)
+                                    for (int i = 0; i < 256; i++)
+                                    {
+                                        ushort v = a1.Blocks[i | (y << 8)];
+                                        if (v != 0 && Blocks.Defs[v] == null) filled = -100000;
+                                        if (v != 0 && v != Blocks.TallGrass) filled++;
+                                        int wx = cx * 16 + (i & 15), wz = cz * 16 + (i >> 4); if (!cv.In(wx, y - Builds.Ground, wz) || cv.Get(wx, y - Builds.Ground, wz) == Builds.Leave) continue;
+                                        total++; if (v == a2.Blocks[i | (y << 8)]) same++;
+                                    }
+                            }
+                        var (px0, py0, pz0) = g1.FindSpawn();
+                        var sc0 = new Chunk(px0 >> 4, pz0 >> 4); g1.Generate(sc0);
+                        bool stand = Blocks.Get(sc0.Get(px0 & 15, py0 - 1, pz0 & 15)).Solid && sc0.Get(px0 & 15, py0, pz0 & 15) == 0 && sc0.Get(px0 & 15, py0 + 1, pz0 & 15) == 0;
+                        Check(filled > 1500 && same == total && stand && WorldGen.ParseKind(WorldGen.KindName(k)) == k,
+                            $"{WorldGen.KindName(k)}: built the same whatever the seed ({filled} blocks above ground), with somewhere to stand at the start");
+                    }
+                    var maze = Builds.Of(WorldKind.Maze);
+                    // Walk the maze from the gate: the prize in the middle can be reached.
+                    var mq = new Queue<(int, int)>(); var been = new HashSet<(int, int)>();
+                    mq.Enqueue((1, 9)); been.Add((1, 9)); bool reached = false;
+                    while (mq.Count > 0)
+                    {
+                        var (x, z) = mq.Dequeue();
+                        if (Math.Abs(x - (-30 + 9 * 3 + 3)) <= 1 && Math.Abs(z - (10 + 9 * 3 + 3)) <= 1) { reached = true; break; }
+                        foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                        {
+                            int nx = x + dx, nz = z + dz;
+                            ushort a0 = maze.Get(nx, 0, nz), a1 = maze.Get(nx, 1, nz);
+                            if (a0 == Builds.Leave || been.Contains((nx, nz))) continue;
+                            if (Blocks.Get(a0).Solid || Blocks.Get(a1).Solid) continue;
+                            been.Add((nx, nz)); mq.Enqueue((nx, nz));
+                        }
+                    }
+                    Check(reached, "Hedge Maze: there is a way from the gate to the prize");
+                }
 
                 // Block numbers are two bytes now; a chunk file from before (one byte a block) still loads as it was.
                 {
@@ -783,12 +830,13 @@ namespace Stratum.Server
                     a.Create("Ada", pwA, world: "");      // a current game: it says which world (the first) and what it can do
                     Check(a.Welcome() && a.Seed == 20261119 && !a.HasPos && a.Name == "Ada" && a.Token.Length == 64, "Ada makes an account, joins, gets the seed and a remember-me token");
                     tokenA = a.Token;
-                    b.Outfit = 3;
+                    b.Outfit = 3; b.Look = new byte[22]; b.Look[0] = 1; b.Look[5] = 200; b.Look[20] = 4;
                     b.Create("Bea", "bea-password", world: "");
                     Check(b.Welcome(), "Bea makes an account and joins");
-                    int wears = -1;
-                    Check(a.Wait(Net.Msg.Joined, r => { r.I32(); if (r.Str() != "Bea") return false; r.F32(); r.F32(); r.F32(); r.F32(); wears = r.More ? r.U8() : -1; return true; }) != null, "Ada hears that Bea joined");
+                    int wears = -1; byte[] madeLook = null;
+                    Check(a.Wait(Net.Msg.Joined, r => { r.I32(); if (r.Str() != "Bea") return false; r.F32(); r.F32(); r.F32(); r.F32(); wears = r.More ? r.U8() : -1; madeLook = r.More ? r.Blob() : null; return true; }) != null, "Ada hears that Bea joined");
                     Check(wears == 3, $"and which outfit Bea is wearing ({wears})");
+                    Check(madeLook != null && madeLook.Length == 22 && madeLook[5] == 200 && madeLook[20] == 4, "and the outfit Bea made piece by piece comes with it");
 
                     int scx = a.SX >> 4, scz = a.SZ >> 4;
                     var keys = new List<(int, int)>();

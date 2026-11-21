@@ -132,6 +132,9 @@ namespace Stratum.Game
         }
 
         // Renders every block item as a small three-quarter view cube and paints the rest.
+        // After the look changes: draw every picture again.
+        public static void Rebuild(Material blockMat) { _icons.Clear(); _sprites.Clear(); Build(blockMat); }
+
         public static void Build(Material blockMat)
         {
             if (_icons.Count > 0) return;
