@@ -36,7 +36,7 @@ namespace Stratum.Server
         public readonly Signal Signal;
 
         // A change the server makes itself, told to everyone (through Changed).
-        public void Put(int x, int y, int z, byte id) { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); Signal.Wake(x, y, z); } }
+        public void Put(int x, int y, int z, ushort id) { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); Signal.Wake(x, y, z); } }
 
         readonly Dictionary<long, Chunk> _chunks = new Dictionary<long, Chunk>();
         readonly Dictionary<long, byte[]> _packed = new Dictionary<long, byte[]>();    // compressed copies to send
@@ -89,7 +89,7 @@ namespace Stratum.Server
         }
 
         // Water and anything else the world changes by itself, for the loop to tell the players.
-        public event Action<int, int, int, byte> Changed;
+        public event Action<int, int, int, ushort> Changed;
 
         string ChunkPath(int x, int z) => Path.Combine(Dir, "chunks", x + "_" + z + ".bin");
         // Things players should be told (a damaged piece of the world): the world's host says them in chat.
@@ -166,22 +166,22 @@ namespace Stratum.Server
             return p;
         }
 
-        public byte Get(int x, int y, int z)
+        public ushort Get(int x, int y, int z)
         {
             if ((uint)y >= Chunk.Height) return 0;
-            return _chunks.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var c) ? c.Blocks[Chunk.Index(x & 15, y, z & 15)] : (byte)0;
+            return _chunks.TryGetValue(Chunk.Key(x >> 4, z >> 4), out var c) ? c.Blocks[Chunk.Index(x & 15, y, z & 15)] : (ushort)0;
         }
 
         public bool IsLoaded(int x, int z) => _chunks.ContainsKey(Chunk.Key(x >> 4, z >> 4));
 
         // Changes a block without telling anyone (the caller does).
-        public bool SetRaw(int x, int y, int z, byte id)
+        public bool SetRaw(int x, int y, int z, ushort id)
         {
             if ((uint)y >= Chunk.Height) return false;
             long k = Chunk.Key(x >> 4, z >> 4);
             if (!_chunks.TryGetValue(k, out var c)) return false;
             int lx = x & 15, lz = z & 15;
-            byte old = c.Get(lx, y, lz);
+            ushort old = c.Get(lx, y, lz);
             if (old == id) return false;
             c.Set(lx, y, lz, id);
             if (id == 0 && y == c.MaxY) c.RecalcMaxY();

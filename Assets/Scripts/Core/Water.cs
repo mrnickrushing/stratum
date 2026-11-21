@@ -10,8 +10,8 @@ namespace Stratum.Core
     // server each run one; nothing moves until a block next to a fluid changes.
     public sealed class Water
     {
-        readonly Func<int, int, int, byte> _get;
-        readonly Action<int, int, int, byte> _set;
+        readonly Func<int, int, int, ushort> _get;
+        readonly Action<int, int, int, ushort> _set;
         public Func<int, int, bool> Loaded;               // false for columns that aren't here (never flow into them)
         public float LavaEvery = 1.5f;                    // seconds between lava steps (faster in the Ember Deep)
         const float WaterEvery = 0.25f;
@@ -22,7 +22,7 @@ namespace Stratum.Core
         readonly List<(int x, int y, int z)> _work = new List<(int, int, int)>();
         readonly float[] _timer = new float[2];
 
-        public Water(Func<int, int, int, byte> get, Action<int, int, int, byte> set) { _get = get; _set = set; }
+        public Water(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set) { _get = get; _set = set; }
 
         public bool Busy => _next[0].Count > 0 || _next[1].Count > 0;
 
@@ -63,7 +63,7 @@ namespace Stratum.Core
             }
         }
 
-        void Set(int x, int y, int z, byte id)
+        void Set(int x, int y, int z, ushort id)
         {
             _set(x, y, z, id);
             Wake(x, y, z);
@@ -72,7 +72,7 @@ namespace Stratum.Core
         bool Here(int x, int z) => Loaded == null || Loaded(x, z);
 
         // Can a fluid run into a cell holding this?
-        static bool Open(int fluid, byte id)
+        static bool Open(int fluid, ushort id)
         {
             if (id == 0) return true;
             var d = Blocks.Get(id);
@@ -131,7 +131,7 @@ namespace Stratum.Core
             bool fell = false;
             if (y > 0)
             {
-                byte below = _get(x, y - 1, z);
+                ushort below = _get(x, y - 1, z);
                 var bd = Blocks.Get(below);
                 if (f == 2 && bd.Fluid == 1) Set(x, y - 1, z, Blocks.Stone);
                 else if (f == 1 && bd.Fluid == 2) Set(x, y - 1, z, bd.Level == 0 ? Blocks.Obsidian : Blocks.Cobble);
@@ -147,7 +147,7 @@ namespace Stratum.Core
             {
                 int nx = x + DX[i], nz = z + DZ[i];
                 if (!Here(nx, nz)) continue;
-                byte nb = _get(nx, y, nz);
+                ushort nb = _get(nx, y, nz);
                 var nd = Blocks.Get(nb);
                 if (f == 1 && nd.Fluid == 2) { Set(nx, y, nz, nd.Level == 0 ? Blocks.Obsidian : Blocks.Cobble); continue; }
                 if (Open(f, nb) || nd.Fluid == f && nd.Level > next) Set(nx, y, nz, at[next]);
@@ -157,7 +157,7 @@ namespace Stratum.Core
         bool Falls(int f, int x, int y, int z)
         {
             if (y <= 0) return false;
-            byte below = _get(x, y - 1, z);
+            ushort below = _get(x, y - 1, z);
             var bd = Blocks.Get(below);
             return Open(f, below) || bd.Fluid == f && bd.Level > 0;
         }

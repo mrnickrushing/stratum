@@ -7,7 +7,7 @@ namespace Stratum.Core
     {
         public string Id;
         public string Name;
-        public byte Block;           // the block it places (0 = not a block)
+        public ushort Block;           // the block it places (0 = not a block)
         public int MaxStack = 64;
         public Tool Tool;            // tools: what they're for
         public int Tier;             // tools: 1 wood, 2 stone, 3 copper, 4 iron
@@ -82,7 +82,7 @@ namespace Stratum.Core
             {
                 var b = Blocks.Defs[i];
                 if (b == null || !b.Creative) continue;
-                Add(new ItemDef { Id = Blocks.Keys[i], Name = b.Name, Block = (byte)i });
+                Add(new ItemDef { Id = Blocks.Keys[i], Name = b.Name, Block = (ushort)i });
             }
             Add(new ItemDef { Id = "stick", Name = "Stick" });
             Add(new ItemDef { Id = "coal", Name = "Coal" });

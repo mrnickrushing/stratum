@@ -172,7 +172,7 @@ namespace Stratum.Game
             Say($"ate steak: food {g._player.Food} sat {g._player.Saturation}");
             // Bed: two halves, sleep through the night.
             int bx = x, bz = z - 2;
-            g._world.Set(bx, y, bz, (byte)(Blocks.Bed + 0)); g._world.Set(bx, y, bz + 1, (byte)(Blocks.Bed + 1));
+            g._world.Set(bx, y, bz, (ushort)(Blocks.Bed + 0)); g._world.Set(bx, y, bz + 1, (ushort)(Blocks.Bed + 1));
             g._sky.Time01 = 0.85f;
             g._player.Feet = new Vector3(bx + 1.5f, y, bz + 0.5f);
             g.TrySleep(new Vector3Int(bx, y, bz));
@@ -187,19 +187,19 @@ namespace Stratum.Game
             int x0 = Mathf.FloorToInt(f.x) - 6, y = Mathf.FloorToInt(f.y), z0 = Mathf.FloorToInt(f.z) + 5;
             g._player.Yaw = 0; g._player.Pitch = 12;
             for (int dz = -1; dz <= 8; dz++) for (int dx = -1; dx <= 14; dx++) { w.Set(x0 + dx, y - 1, z0 + dz, Blocks.Grass); for (int h = 0; h < 5; h++) w.Set(x0 + dx, y + h, z0 + dz, 0); }
-            void P(int dx, int dz, byte id, int h = 0) => w.Set(x0 + dx, y + h, z0 + dz, id);
-            P(0, 0, Blocks.Slabs[0]); P(1, 0, (byte)(Blocks.Slabs[3] + 1)); P(2, 0, Blocks.Slabs[5]);
-            P(3, 0, (byte)(Blocks.Stairs[0] + 2)); P(4, 0, (byte)(Blocks.Stairs[3] + 2)); P(5, 0, (byte)(Blocks.Stairs[4] + 2));
-            P(7, 0, (byte)(Blocks.OakDoor + 2 * 4)); P(7, 0, (byte)(Blocks.OakDoor + 2 * 4 + 1), 1);
-            P(8, 0, (byte)(Blocks.OakDoor + 2 * 4 + 2)); P(8, 0, (byte)(Blocks.OakDoor + 2 * 4 + 3), 1);
-            P(10, 0, (byte)(Blocks.Trapdoor + 4)); P(11, 0, (byte)(Blocks.Trapdoor + 5));
+            void P(int dx, int dz, ushort id, int h = 0) => w.Set(x0 + dx, y + h, z0 + dz, id);
+            P(0, 0, Blocks.Slabs[0]); P(1, 0, (ushort)(Blocks.Slabs[3] + 1)); P(2, 0, Blocks.Slabs[5]);
+            P(3, 0, (ushort)(Blocks.Stairs[0] + 2)); P(4, 0, (ushort)(Blocks.Stairs[3] + 2)); P(5, 0, (ushort)(Blocks.Stairs[4] + 2));
+            P(7, 0, (ushort)(Blocks.OakDoor + 2 * 4)); P(7, 0, (ushort)(Blocks.OakDoor + 2 * 4 + 1), 1);
+            P(8, 0, (ushort)(Blocks.OakDoor + 2 * 4 + 2)); P(8, 0, (ushort)(Blocks.OakDoor + 2 * 4 + 3), 1);
+            P(10, 0, (ushort)(Blocks.Trapdoor + 4)); P(11, 0, (ushort)(Blocks.Trapdoor + 5));
             for (int i = 0; i < 4; i++) P(i, 3, Blocks.OakFence);
-            P(4, 3, (byte)(Blocks.FenceGate + 0)); P(5, 3, Blocks.OakFence); P(5, 4, Blocks.OakFence);
+            P(4, 3, (ushort)(Blocks.FenceGate + 0)); P(5, 3, Blocks.OakFence); P(5, 4, Blocks.OakFence);
             for (int i = 7; i < 10; i++) P(i, 3, Blocks.CobbleWall);
             for (int i = 11; i < 14; i++) { P(i, 3, Blocks.GlassPane); P(i, 3, Blocks.IronBars, 1); }
             P(13, 0, Blocks.Stone); P(13, 0, Blocks.Stone, 1); P(13, 0, Blocks.Stone, 2);
-            P(13, -1, (byte)(Blocks.Ladder + 0)); P(13, -1, (byte)(Blocks.Ladder + 0), 1); P(13, -1, (byte)(Blocks.Ladder + 0), 2);
-            P(6, 1, (byte)(Blocks.Sign + 2));
+            P(13, -1, (ushort)(Blocks.Ladder + 0)); P(13, -1, (ushort)(Blocks.Ladder + 0), 1); P(13, -1, (ushort)(Blocks.Ladder + 0), 2);
+            P(6, 1, (ushort)(Blocks.Sign + 2));
             g._link.SetSign(new Vector3Int(x0 + 6, y, z0 + 1), "Welcome to\nStratum!");
             // Water and lava on a raised shelf, to spill off.
             for (int dx = 0; dx < 3; dx++) for (int dz = 6; dz < 8; dz++) P(dx, dz, Blocks.Cobble);
@@ -222,7 +222,7 @@ namespace Stratum.Game
                 for (int r = 0; r < 2; r++)
                 {
                     w.Set(x0 + dx, y - 1, z0 + r * 3 + 1 - (r == 0 ? 0 : 0), Blocks.FarmlandWet);
-                    w.Set(x0 + dx, y, z0 + r * 3 + 1, (byte)(Blocks.Wheat + Mathf.Min(3, dx / 2)));
+                    w.Set(x0 + dx, y, z0 + r * 3 + 1, (ushort)(Blocks.Wheat + Mathf.Min(3, dx / 2)));
                 }
             }
             w.Set(x0 + 10, y, z0 + 1, Blocks.SaplingOak); w.Set(x0 + 11, y, z0 + 3, Blocks.SaplingBirch); w.Set(x0 + 10, y, z0 + 5, Blocks.SaplingPine);

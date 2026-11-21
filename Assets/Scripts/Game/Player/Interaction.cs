@@ -121,7 +121,7 @@ namespace Stratum.Game
             if (Creatures != null && Creatures.Raycast(o, d, P.Creative ? 7f : 4.5f, out int mob, out float md)) { HasMob = true; TargetMob = mob; mobDist = md; }
             while (t <= reach && t <= mobDist)
             {
-                byte b = World.Get(x, y, z);
+                ushort b = World.Get(x, y, z);
                 if (b != 0 && !Blocks.IsFluid(b))
                 {
                     bool hit = true;
@@ -179,7 +179,7 @@ namespace Stratum.Game
             {
                 var p = o + d * t;
                 var c = new Vector3Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z));
-                byte id = World.Get(c.x, c.y, c.z);
+                ushort id = World.Get(c.x, c.y, c.z);
                 if (Blocks.IsWater(id))
                 {
                     while (Blocks.IsWater(World.Get(c.x, c.y + 1, c.z))) c.y++;
@@ -387,7 +387,7 @@ namespace Stratum.Game
         static readonly Vector3Int[] Dir4 = { new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 0), new Vector3Int(0, 0, -1), new Vector3Int(-1, 0, 0) };
 
         // Blocks the right button does something to (rather than placing against).
-        static bool IsUsable(byte id)
+        static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
             return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
@@ -395,7 +395,7 @@ namespace Stratum.Game
 
         void Break(Vector3Int p)
         {
-            byte id = World.Get(p.x, p.y, p.z);
+            ushort id = World.Get(p.x, p.y, p.z);
             var def = Blocks.Get(id);
             if (id == 0 || def.Hardness < 0 && !P.Creative) return;
             if (!World.Set(p.x, p.y, p.z, 0)) return;
@@ -416,7 +416,7 @@ namespace Stratum.Game
             Burst(p, def);
             _swing = 0;
             // A plant on top goes with it.
-            byte above = World.Get(p.x, p.y + 1, p.z);
+            ushort above = World.Get(p.x, p.y + 1, p.z);
             if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch)) Break(p + Vector3Int.up);
             if (P.Creative) return;
             var held = Items.Get(P.Inv.Held.Item);
@@ -448,7 +448,7 @@ namespace Stratum.Game
         {
             var kb = Keyboard.current;
             bool sneak = Keys.Down(Stratum.Game.Act.Sneak);
-            byte target = World.Get(Target.x, Target.y, Target.z);
+            ushort target = World.Get(Target.x, Target.y, Target.z);
             var tdef = Blocks.Get(target);
             var held = P.Inv.Held;
             var item = Items.Get(held.Item);
@@ -463,7 +463,7 @@ namespace Stratum.Game
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }
                 if (tdef.BaseId == Blocks.Lever) { World.Set(Target.x, Target.y, Target.z, Blocks.Flip(target, 1)); Sfx.I?.Play("door_close", 0.4f, 1.8f); _swing = 0; return; }
-                if (tdef.BaseId == Blocks.Button) { if ((tdef.Variant & 1) == 0) { World.Set(Target.x, Target.y, Target.z, (byte)(target + 1)); Sfx.I?.Play("door_close", 0.35f, 2.2f); } _swing = 0; return; }
+                if (tdef.BaseId == Blocks.Button) { if ((tdef.Variant & 1) == 0) { World.Set(Target.x, Target.y, Target.z, (ushort)(target + 1)); Sfx.I?.Play("door_close", 0.35f, 2.2f); } _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Sign || tdef.BaseId == Blocks.WallSign) { EditSign?.Invoke(Target); return; }
             }
             if (item == null) return;
@@ -506,7 +506,7 @@ namespace Stratum.Game
             if (item.Id == "water_bucket" || item.Id == "lava_bucket")
             {
                 var spot = tdef.Replaceable && target != 0 ? Target : Target + TargetNormal;
-                byte there = World.Get(spot.x, spot.y, spot.z);
+                ushort there = World.Get(spot.x, spot.y, spot.z);
                 if (there != 0 && !Blocks.Get(there).Replaceable) return;
                 if (World.Set(spot.x, spot.y, spot.z, item.Id == "water_bucket" ? Blocks.Water : Blocks.Lava))
                 {
@@ -516,7 +516,7 @@ namespace Stratum.Game
                 return;
             }
             if (item.Block == 0) return;
-            byte id = item.Block;
+            ushort id = item.Block;
             var def = Blocks.Get(id);
             var look = P.Cam.transform.forward;
 
@@ -525,18 +525,18 @@ namespace Stratum.Game
             {
                 bool merge = target == id && TargetNormal.y > 0 || target == id + 1 && TargetNormal.y < 0;
                 var at0 = Target + TargetNormal;
-                byte there = World.Get(at0.x, at0.y, at0.z);
+                ushort there = World.Get(at0.x, at0.y, at0.z);
                 if (merge) { Place(Target, def.Pair, id); return; }
                 if (there == id || there == id + 1) { Place(at0, def.Pair, id); return; }
             }
 
             // Into the block itself when it can be replaced (grass, water), else beside the face.
             var at = tdef.Replaceable && target != 0 ? Target : Target + TargetNormal;
-            byte cur = World.Get(at.x, at.y, at.z);
+            ushort cur = World.Get(at.x, at.y, at.z);
             if (cur != 0 && !Blocks.Get(cur).Replaceable) return;
             if (at.y < 1 || at.y >= Chunk.Height) return;
             if (def.Solid && P.Overlaps(at.x, at.y, at.z)) return;
-            byte below = World.Get(at.x, at.y - 1, at.z);
+            ushort below = World.Get(at.x, at.y - 1, at.z);
             if (def.Shape == Shape.Cross && !CanStand(id, at)) return;
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
             int f = DirOf(look);
@@ -544,50 +544,50 @@ namespace Stratum.Game
             {
                 // Two blocks: the foot here and the head one further on, the way the player is looking.
                 var head = at + Dir4[f];
-                byte hc = World.Get(head.x, head.y, head.z);
+                ushort hc = World.Get(head.x, head.y, head.z);
                 if (hc != 0 && !Blocks.Get(hc).Replaceable || P.Overlaps(head.x, head.y, head.z) || P.Overlaps(at.x, at.y, at.z)) { Toast?.Invoke("No room for a bed here"); return; }
                 if (!Blocks.Get(below).Solid || !Blocks.Get(World.Get(head.x, head.y - 1, head.z)).Solid) { Toast?.Invoke("A bed needs flat ground"); return; }
-                if (!World.Set(at.x, at.y, at.z, (byte)(Blocks.Bed + f * 2))) return;
-                World.Set(head.x, head.y, head.z, (byte)(Blocks.Bed + f * 2 + 1));
+                if (!World.Set(at.x, at.y, at.z, (ushort)(Blocks.Bed + f * 2))) return;
+                World.Set(head.x, head.y, head.z, (ushort)(Blocks.Bed + f * 2 + 1));
                 Placed(id);
                 return;
             }
             if (id == Blocks.OakDoor)
             {
                 var up = at + Vector3Int.up;
-                byte uc = World.Get(up.x, up.y, up.z);
+                ushort uc = World.Get(up.x, up.y, up.z);
                 if (uc != 0 && !Blocks.Get(uc).Replaceable || P.Overlaps(at.x, at.y, at.z) || P.Overlaps(up.x, up.y, up.z)) { Toast?.Invoke("No room for a door here"); return; }
                 if (!Blocks.Get(below).Solid) return;
-                if (!World.Set(at.x, at.y, at.z, (byte)(Blocks.OakDoor + f * 4))) return;
-                World.Set(up.x, up.y, up.z, (byte)(Blocks.OakDoor + f * 4 + 1));
+                if (!World.Set(at.x, at.y, at.z, (ushort)(Blocks.OakDoor + f * 4))) return;
+                World.Set(up.x, up.y, up.z, (ushort)(Blocks.OakDoor + f * 4 + 1));
                 Placed(id);
                 return;
             }
-            byte place;
+            ushort place;
             if (Blocks.Slabs.Contains(id))
             {
                 bool top = TargetNormal.y < 0 || TargetNormal.y == 0 && TargetPoint.y - Mathf.Floor(TargetPoint.y) > 0.5f;
-                place = (byte)(id + (top ? 1 : 0));
+                place = (ushort)(id + (top ? 1 : 0));
             }
-            else if (Blocks.Stairs.Contains(id) || def.BaseId == Blocks.FenceGate) place = (byte)(id + (def.BaseId == Blocks.FenceGate ? f * 2 : f));
-            else if (id == Blocks.Trapdoor) place = (byte)(Blocks.Trapdoor + f * 2);
+            else if (Blocks.Stairs.Contains(id) || def.BaseId == Blocks.FenceGate) place = (ushort)(id + (def.BaseId == Blocks.FenceGate ? f * 2 : f));
+            else if (id == Blocks.Trapdoor) place = (ushort)(Blocks.Trapdoor + f * 2);
             else if (id == Blocks.Ladder)
             {
                 // On the side of something solid.
                 if (TargetNormal.y != 0 || !Blocks.Get(target).Solid) return;
-                place = (byte)(Blocks.Ladder + DirOf(-TargetNormal));
+                place = (ushort)(Blocks.Ladder + DirOf(-TargetNormal));
             }
             else if (id == Blocks.SparkWire || id == Blocks.Lever || id == Blocks.PressurePlate || id == Blocks.Repeater)
             {
                 var bb = Blocks.Get(below);
                 if (!(bb.Solid && bb.Opaque && bb.Shape == Shape.Cube) && !Blocks.Slabs.Contains(below)) return;
-                place = id == Blocks.Lever ? (byte)(Blocks.Lever + (f & 1) * 2) : id == Blocks.Repeater ? (byte)(Blocks.Repeater + f * 2) : id;
+                place = id == Blocks.Lever ? (ushort)(Blocks.Lever + (f & 1) * 2) : id == Blocks.Repeater ? (ushort)(Blocks.Repeater + f * 2) : id;
             }
             else if (id == Blocks.Button)
             {
                 // On the side of something solid.
                 if (TargetNormal.y != 0 || !Blocks.Get(target).Opaque) return;
-                place = (byte)(Blocks.Button + DirOf(-TargetNormal) * 2);
+                place = (ushort)(Blocks.Button + DirOf(-TargetNormal) * 2);
             }
             else if (id == Blocks.Rail || id == Blocks.BoosterRail)
             {
@@ -600,8 +600,8 @@ namespace Stratum.Game
             }
             else if (id == Blocks.Sign)
             {
-                if (TargetNormal.y > 0) place = (byte)(Blocks.Sign + f);
-                else if (TargetNormal.y == 0) place = (byte)(Blocks.WallSign + DirOf(-TargetNormal));
+                if (TargetNormal.y > 0) place = (ushort)(Blocks.Sign + f);
+                else if (TargetNormal.y == 0) place = (ushort)(Blocks.WallSign + DirOf(-TargetNormal));
                 else return;
             }
             else place = Blocks.Facing(id, look.x, look.z);
@@ -611,9 +611,9 @@ namespace Stratum.Game
         }
 
         // Can this plant live here? Seeds want farmland; sugar cane wants water beside its ground (or more cane).
-        bool CanStand(byte id, Vector3Int at)
+        bool CanStand(ushort id, Vector3Int at)
         {
-            byte below = World.Get(at.x, at.y - 1, at.z);
+            ushort below = World.Get(at.x, at.y - 1, at.z);
             var bd = Blocks.Get(below);
             if (id == Blocks.Wheat) return bd.BaseId == Blocks.Farmland;
             if (id == Blocks.SugarCane)
@@ -633,7 +633,7 @@ namespace Stratum.Game
             for (int guard = 0; guard < 64; guard++)
             {
                 var up = p + Vector3Int.up;
-                byte id = World.Get(up.x, up.y, up.z);
+                ushort id = World.Get(up.x, up.y, up.z);
                 var d = Blocks.Get(id);
                 bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id);
                 if (id == 0 || !needs) return;
@@ -654,14 +654,14 @@ namespace Stratum.Game
             if (b2 != null) Gain(b2, 1);
         }
 
-        void Place(Vector3Int at, byte block, byte item)
+        void Place(Vector3Int at, ushort block, ushort item)
         {
             if (P.Overlaps(at.x, at.y, at.z) && Blocks.Get(block).Solid && !Blocks.Slabs.Contains(World.Get(at.x, at.y, at.z))) return;
             if (!World.Set(at.x, at.y, at.z, block)) return;
             Placed(item);
         }
 
-        void Placed(byte id)
+        void Placed(ushort id)
         {
             Sfx.I?.Block("place", id, 0.8f);
             _swing = 0;
@@ -671,13 +671,13 @@ namespace Stratum.Game
         // Doors (both halves), trapdoors and gates swing open and shut.
         void Toggle(Vector3Int p, BlockDef d)
         {
-            byte id = World.Get(p.x, p.y, p.z);
+            ushort id = World.Get(p.x, p.y, p.z);
             if (d.BaseId == Blocks.OakDoor)
             {
                 bool upper = (d.Variant & 1) == 1;
                 var other = upper ? p + Vector3Int.down : p + Vector3Int.up;
                 World.Set(p.x, p.y, p.z, Blocks.Flip(id, 2));
-                byte oid = World.Get(other.x, other.y, other.z);
+                ushort oid = World.Get(other.x, other.y, other.z);
                 if (Blocks.Get(oid).BaseId == Blocks.OakDoor) World.Set(other.x, other.y, other.z, Blocks.Flip(oid, 2));
                 Sfx.I?.Play((d.Variant & 2) == 0 ? "door_open" : "door_close", 0.7f);
             }
@@ -691,7 +691,7 @@ namespace Stratum.Game
 
         void Pick()
         {
-            byte id = World.Get(Target.x, Target.y, Target.z);
+            ushort id = World.Get(Target.x, Target.y, Target.z);
             var key = Blocks.Keys[Blocks.Get(id).BaseId];
             if (Items.Get(key) == null) return;
             // Already in the hotbar: select it.
@@ -707,7 +707,7 @@ namespace Stratum.Game
             _outline.SetActive(show);
             if (show)
             {
-                byte b = World.Get(Target.x, Target.y, Target.z);
+                ushort b = World.Get(Target.x, Target.y, Target.z);
                 var sh = Blocks.Get(b).Shape;
                 _outline.transform.position = Target;
                 _outline.transform.localScale = Vector3.one;

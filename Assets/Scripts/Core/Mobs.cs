@@ -100,7 +100,7 @@ namespace Stratum.Core
 
         public readonly List<Mob> All = new List<Mob>();
         readonly Dictionary<int, Mob> _byId = new Dictionary<int, Mob>();
-        readonly Func<int, int, int, byte> _get;
+        readonly Func<int, int, int, ushort> _get;
         readonly Random _r;
         int _nextId = 1;
         float _spawnTimer;
@@ -120,7 +120,7 @@ namespace Stratum.Core
         // A creature made a sound worth hearing: (it, "hurt"/"die"/"say"/"shoot").
         public event Action<Mob, string> Sound;
 
-        public MobSim(Func<int, int, int, byte> get, int seed)
+        public MobSim(Func<int, int, int, ushort> get, int seed)
         {
             _get = get;
             _r = new Random(seed);
@@ -599,7 +599,7 @@ namespace Stratum.Core
             if (!Loaded(x, z)) return false;
             for (int dy = 0; dy <= 3; dy++)
             {
-                byte b = _get(x, y - 1 - dy, z);
+                ushort b = _get(x, y - 1 - dy, z);
                 if (Blocks.IsFluid(b)) return m.Kind == MobKind.Chicken && Blocks.IsWater(b);
                 if (Blocks.Get(b).Solid) return true;
             }
@@ -626,7 +626,7 @@ namespace Stratum.Core
         {
             var d = m.Def;
             int cx = (int)Math.Floor(m.X), cz = (int)Math.Floor(m.Z);
-            byte at = _get(cx, (int)Math.Floor(m.Y + 0.3f), cz);
+            ushort at = _get(cx, (int)Math.Floor(m.Y + 0.3f), cz);
             m.InWater = Blocks.IsWater(at);
             m.InLava = Blocks.IsLava(at);
             float g = m.InWater || m.InLava ? 8 : d.Floats && m.VY < 0 ? 12 : 26;
@@ -746,14 +746,14 @@ namespace Stratum.Core
         }
 
         // The top of the ground in a column near a height, or int.MinValue.
-        int Ground(int x, int z, int fromY, int down, out byte floor)
+        int Ground(int x, int z, int fromY, int down, out ushort floor)
         {
             floor = 0;
             for (int y = Math.Min(fromY, Chunk.Height - 3); y > Math.Max(1, fromY - down); y--)
             {
-                byte b = _get(x, y, z);
+                ushort b = _get(x, y, z);
                 if (!Blocks.Get(b).Solid) continue;
-                byte a1 = _get(x, y + 1, z), a2 = _get(x, y + 2, z);
+                ushort a1 = _get(x, y + 1, z), a2 = _get(x, y + 2, z);
                 if (Blocks.Get(a1).Solid || Blocks.Get(a2).Solid || Blocks.IsFluid(a1)) continue;
                 floor = b;
                 return y + 1;
@@ -773,7 +773,7 @@ namespace Stratum.Core
             {
                 int x = v.X + _r.Next(-10, 11), z = v.Z + _r.Next(-10, 11);
                 if (!Loaded(x, z)) continue;
-                int y = Ground(x, z, v.Y + 12, 24, out byte floor);
+                int y = Ground(x, z, v.Y + 12, 24, out ushort floor);
                 if (y == int.MinValue || Blocks.Get(floor).Fluid != 0) continue;
                 var m = Spawn(MobKind.Villager, x + 0.5f, y, z + 0.5f);
                 m.Kept = true; m.HomeX = v.X; m.HomeZ = v.Z; m.Job = (byte)((have + (v.X * 31 + v.Z)) % Trades.Jobs.Length & 7);
@@ -806,7 +806,7 @@ namespace Stratum.Core
             float a = Rand() * 6.283f, r = 24 + Rand() * 32;
             int x = (int)Math.Floor(p.X + Math.Cos(a) * r), z = (int)Math.Floor(p.Z + Math.Sin(a) * r);
             if (!Loaded(x, z)) return;
-            int y = Ground(x, z, (int)p.Y + 24, 48, out byte floor);
+            int y = Ground(x, z, (int)p.Y + 24, 48, out ushort floor);
             if (y == int.MinValue || floor != Blocks.Grass && floor != Blocks.SnowyGrass) return;
             if (!SkyOpen(x, y, z) || !FarFromAll(x, y, z, players, 22)) return;
             var biome = BiomeAt?.Invoke(x, z) ?? Biome.Plains;
@@ -823,7 +823,7 @@ namespace Stratum.Core
             for (int i = 0; i < n; i++)
             {
                 int sx = x + _r.Next(-2, 3), sz = z + _r.Next(-2, 3);
-                int sy = Ground(sx, sz, y + 3, 6, out byte f2);
+                int sy = Ground(sx, sz, y + 3, 6, out ushort f2);
                 if (sy == int.MinValue || (f2 != Blocks.Grass && f2 != Blocks.SnowyGrass)) continue;
                 Spawn(kind, sx + 0.5f, sy, sz + 0.5f);
             }
@@ -838,7 +838,7 @@ namespace Stratum.Core
                 if (!Loaded(x, z)) continue;
                 // Underground below the player as well as on the surface.
                 int from = (int)p.Y + (Rand() < 0.5f ? 10 : -6 + _r.Next(-10, 6));
-                int y = Ground(x, z, from, 24, out byte floor);
+                int y = Ground(x, z, from, 24, out ushort floor);
                 if (y == int.MinValue || floor == Blocks.Bedrock || floor == Blocks.OakLeaves || floor == Blocks.BirchLeaves || floor == Blocks.PineNeedles || Blocks.Get(floor).Container) continue;
                 bool open = SkyOpen(x, y, z);
                 if (open && IsDay) continue;                       // the sun keeps the surface safe
@@ -858,7 +858,7 @@ namespace Stratum.Core
             float a = Rand() * 6.283f, r = 18 + Rand() * 22;
             int x = (int)Math.Floor(p.X + Math.Cos(a) * r), z = (int)Math.Floor(p.Z + Math.Sin(a) * r);
             if (!Loaded(x, z)) return;
-            int y = Ground(x, z, (int)p.Y + 12, 30, out byte floor);
+            int y = Ground(x, z, (int)p.Y + 12, 30, out ushort floor);
             if (y == int.MinValue || !FarFromAll(x, y, z, players, 16)) return;
             if (Body.Blocked(_get, x + 0.5f, y, z + 0.5f, 0.4f, 1.6f)) return;
             Spawn(MobKind.EmberImp, x + 0.5f, y, z + 0.5f);

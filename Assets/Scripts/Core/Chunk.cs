@@ -11,7 +11,7 @@ namespace Stratum.Core
         public const int SeaLevel = 63;
 
         public readonly int X, Z;                       // chunk coordinates (block = chunk * 16 + local)
-        public readonly byte[] Blocks = new byte[Volume];
+        public readonly ushort[] Blocks = new ushort[Volume];       // block numbers (two bytes each since 0.11: room for thousands)
         public readonly byte[] Tint = new byte[Size * Size * 4];   // per column: grass rgb, foliage brightness
         public readonly byte[] Biome = new byte[Size * Size];
         public int MaxY;                                // highest non-air block
@@ -23,9 +23,9 @@ namespace Stratum.Core
 
         public static int Index(int x, int y, int z) => x | (z << 4) | (y << 8);
 
-        public byte Get(int x, int y, int z) => (uint)y < Height ? Blocks[x | (z << 4) | (y << 8)] : (byte)0;
+        public ushort Get(int x, int y, int z) => (uint)y < Height ? Blocks[x | (z << 4) | (y << 8)] : (ushort)0;
 
-        public void Set(int x, int y, int z, byte id)
+        public void Set(int x, int y, int z, ushort id)
         {
             if ((uint)y >= Height) return;
             Blocks[x | (z << 4) | (y << 8)] = id;
@@ -42,22 +42,15 @@ namespace Stratum.Core
             MaxY = 0;
         }
 
-        public void Write(Stream s)
-        {
-            using var z = new DeflateStream(s, CompressionLevel.Fastest, true);
-            z.Write(Blocks, 0, Blocks.Length);
-        }
+// On disk: the blocks, two bytes each, compressed. Files written before 0.11 hold one byte a block and are
+        // read as they are (told apart by their length).
+        public void Write(Stream s) { var raw = Net.Compress(Blocks); s.Write(raw, 0, raw.Length); }
 
         public void Read(Stream s)
         {
-            using var z = new DeflateStream(s, CompressionMode.Decompress, true);
-            int off = 0;
-            while (off < Blocks.Length)
-            {
-                int n = z.Read(Blocks, off, Blocks.Length - off);
-                if (n <= 0) throw new EndOfStreamException("chunk data cut short");
-                off += n;
-            }
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            Net.Decompress(ms.ToArray(), Blocks);
             RecalcMaxY();
         }
 

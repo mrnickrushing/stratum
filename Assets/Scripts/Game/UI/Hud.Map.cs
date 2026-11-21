@@ -92,7 +92,7 @@ namespace Stratum.Game
 
         Color32 MapColour(int wx, int wz, out int h)
         {
-            if (!World.Top(wx, wz, out h, out byte id)) { h = -1; return new Color32(214, 200, 160, 255); }
+            if (!World.Top(wx, wz, out h, out ushort id)) { h = -1; return new Color32(214, 200, 160, 255); }
             var d = Blocks.Get(id);
             if (d.Fluid == 1)
             {

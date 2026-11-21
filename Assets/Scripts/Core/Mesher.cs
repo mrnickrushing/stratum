@@ -41,7 +41,7 @@ namespace Stratum.Core
     public sealed class Mesher
     {
         const int R = 48, RA = R * R;               // region width and area
-        readonly byte[] _blk = new byte[RA * Chunk.Height];
+        readonly ushort[] _blk = new ushort[RA * Chunk.Height];
         readonly byte[] _sky = new byte[RA * Chunk.Height];
         readonly byte[] _lit = new byte[RA * Chunk.Height];
         readonly int[] _queue = new int[RA * Chunk.Height];
@@ -51,19 +51,19 @@ namespace Stratum.Core
         int[] _is = new int[1 << 17]; int _isn;
         int[] _iw = new int[1 << 15]; int _iwn;
 
-        static readonly bool[] Opaque = new bool[256];
-        static readonly byte[] Opac = new byte[256];
-        static readonly byte[] Emit = new byte[256];
-        static readonly byte[] ShapeOf = new byte[256];
-        static readonly int[] FlagsOf = new int[256 * 6];
+        static readonly bool[] Opaque = new bool[Blocks.Max];
+        static readonly byte[] Opac = new byte[Blocks.Max];
+        static readonly byte[] Emit = new byte[Blocks.Max];
+        static readonly byte[] ShapeOf = new byte[Blocks.Max];
+        static readonly int[] FlagsOf = new int[Blocks.Max * 6];
 
         static Mesher()
         {
-            for (int i = 0; i < 256; i++)
+            for (int i = 0; i < Blocks.Max; i++)
             {
                 var d = Blocks.Defs[i];
                 if (d == null) { Opaque[i] = false; Opac[i] = 0; continue; }
-                Opaque[i] = d.Opaque; Opac[i] = d.Opaque ? (byte)15 : d.Opacity; Emit[i] = d.Emit; ShapeOf[i] = (byte)d.Shape;
+                Opaque[i] = d.Opaque; Opac[i] = d.Opaque ? (byte)15 : (byte)d.Opacity; Emit[i] = (byte)d.Emit; ShapeOf[i] = (byte)d.Shape;
                 for (int f = 0; f < 6; f++)
                 {
                     var t = d.Face(f);
@@ -118,7 +118,7 @@ namespace Stratum.Core
                     var src = n[cz * 3 + cx].Blocks;
                     for (int y = 0; y < _top; y++)
                         for (int z = 0; z < 16; z++)
-                            Buffer.BlockCopy(src, (z << 4) | (y << 8), _blk, cx * 16 + (cz * 16 + z) * R + y * RA, 16);
+                            Array.Copy(src, (z << 4) | (y << 8), _blk, cx * 16 + (cz * 16 + z) * R + y * RA, 16);
                 }
         }
 
@@ -136,7 +136,7 @@ namespace Stratum.Core
                 for (int y = top - 1; y >= 0; y--)
                 {
                     int i = col + y * RA;
-                    byte o = Opac[blk[i]];
+                    ushort o = Opac[blk[i]];
                     if (o >= 15) l = 0; else if (o > 0) l = Math.Max(0, l - o);
                     sky[i] = (byte)l;
                 }
@@ -187,7 +187,7 @@ namespace Stratum.Core
                         case 4: if (y == top - 1) continue; j = i + RA; break;
                         default: if (y == 0) continue; j = i - RA; break;
                     }
-                    byte b = blk[j];
+                    ushort b = blk[j];
                     if (Opaque[b]) continue;
                     int nl = l - 1 - Opac[b];
                     if (nl > L[j])
@@ -201,7 +201,7 @@ namespace Stratum.Core
 
         // ------------------------------------------------------------------ meshing
 
-        byte B(int x, int y, int z) => (uint)y < (uint)_top ? _blk[x + z * R + y * RA] : (byte)0;
+        ushort B(int x, int y, int z) => (uint)y < (uint)_top ? _blk[x + z * R + y * RA] : (ushort)0;
         int SkyAt(int x, int y, int z) => y >= _top ? 15 : y < 0 ? 0 : _sky[x + z * R + y * RA];
         int LitAt(int x, int y, int z) => (uint)y < (uint)_top ? _lit[x + z * R + y * RA] : 0;
         bool Op(int x, int y, int z) => (uint)y < (uint)_top && Opaque[_blk[x + z * R + y * RA]];
@@ -232,7 +232,7 @@ namespace Stratum.Core
                     for (int x = 0; x < 16; x++)
                     {
                         int rx = x + 16, rz = z + 16;
-                        byte id = _blk[rx + rz * R + y * RA];
+                        ushort id = _blk[rx + rz * R + y * RA];
                         if (id == 0) continue;
                         int start = _vn;
                         switch ((Shape)ShapeOf[id])
@@ -264,7 +264,7 @@ namespace Stratum.Core
 
         static uint Pack(int sky, int lit, int ao) => (uint)(sky * 17) | ((uint)(lit * 17) << 8) | ((uint)(ao * 85) << 16) | 0xFF000000u;
 
-        uint TintFor(Chunk c, int x, int z, int flags, byte id)
+        uint TintFor(Chunk c, int x, int z, int flags, ushort id)
         {
             uint rgb;
             if ((flags & (Flag.Tint | Flag.TintMask)) == 0) rgb = 0xFFFFFF;
@@ -278,7 +278,7 @@ namespace Stratum.Core
             return rgb | ((uint)flags << 24);
         }
 
-        void Cube(Chunk c, byte id, int x, int y, int z, int rx, int rz)
+        void Cube(Chunk c, ushort id, int x, int y, int z, int rx, int rz)
         {
             bool selfOpaque = Opaque[id];
             Span<int> ao = stackalloc int[4];
@@ -286,7 +286,7 @@ namespace Stratum.Core
             {
                 int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
                 if (ny < 0) continue;
-                byte nb = B(nx, ny, nz);
+                ushort nb = B(nx, ny, nz);
                 if (Opaque[nb]) continue;
                 if (!selfOpaque && nb == id && id != Blocks.OakLeaves && id != Blocks.BirchLeaves && id != Blocks.PineNeedles) continue; // glass, ice
                 Grow();
@@ -351,11 +351,11 @@ namespace Stratum.Core
             return n > 0 ? sum / n : 0.875f;
         }
 
-        void Water(byte id, int x, int y, int z, int rx, int rz) => Liquid(id, 1, x, y, z, rx, rz);
-        void Lava(byte id, int x, int y, int z, int rx, int rz) => Liquid(id, 2, x, y, z, rx, rz);
+        void Water(ushort id, int x, int y, int z, int rx, int rz) => Liquid(id, 1, x, y, z, rx, rz);
+        void Lava(ushort id, int x, int y, int z, int rx, int rz) => Liquid(id, 2, x, y, z, rx, rz);
 
         // Water goes in the see-through pass; lava is opaque, glowing and drawn with the solid blocks.
-        void Liquid(byte id, int fluid, int x, int y, int z, int rx, int rz)
+        void Liquid(ushort id, int fluid, int x, int y, int z, int rx, int rz)
         {
             bool lava = fluid == 2;
             Span<float> corner = stackalloc float[4];
@@ -367,7 +367,7 @@ namespace Stratum.Core
             {
                 int nx = rx + N[f, 0], ny = y + N[f, 1], nz = rz + N[f, 2];
                 if (ny < 0) continue;
-                byte nb = B(nx, ny, nz);
+                ushort nb = B(nx, ny, nz);
                 var nd = Blocks.Defs[nb];
                 if (nd != null && nd.Fluid == fluid) continue;
                 if (Opaque[nb]) continue;
@@ -414,7 +414,7 @@ namespace Stratum.Core
         // Blocks made of a few boxes (chests, beds, slabs, doors...). Each box face takes the part of the block's
         // texture it covers, so the pixels line up with whole blocks beside it. A face on the cell's edge is
         // hidden by an opaque neighbour and lit by the light there; inner faces take the cell's own light.
-        void Boxes(Chunk c, byte id, int x, int y, int z, int rx, int rz)
+        void Boxes(Chunk c, ushort id, int x, int y, int z, int rx, int rz)
         {
             var d = Blocks.Defs[id];
             if (d.Boxes == null) return;
@@ -489,7 +489,7 @@ namespace Stratum.Core
             return m;
         }
 
-        void Cross(Chunk c, byte id, int x, int y, int z, int rx, int rz)
+        void Cross(Chunk c, ushort id, int x, int y, int z, int rx, int rz)
         {
             Grow();
             int flags = FlagsOf[id * 6 + 2] | Flag.Plant;
@@ -524,7 +524,7 @@ namespace Stratum.Core
             }
         }
 
-        void Torch(byte id, int x, int y, int z, int rx, int rz)
+        void Torch(ushort id, int x, int y, int z, int rx, int rz)
         {
             Grow();
             var td = Blocks.Defs[id];

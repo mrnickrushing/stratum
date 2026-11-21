@@ -8,8 +8,8 @@ namespace Stratum.Core
     // at random every step and looked at, so on average a crop moves on every few minutes. Bone meal hurries it.
     public sealed class Growth
     {
-        readonly Func<int, int, int, byte> _get;
-        readonly Action<int, int, int, byte> _set;
+        readonly Func<int, int, int, ushort> _get;
+        readonly Action<int, int, int, ushort> _set;
         public Func<int, int, bool> Loaded;
         public int Radius = 4;                 // chunks round each player
         public int PerChunk = 192;             // blocks looked at per chunk per step
@@ -18,7 +18,7 @@ namespace Stratum.Core
         Rng _rng;
         readonly HashSet<long> _chunks = new HashSet<long>();
 
-        public Growth(Func<int, int, int, byte> get, Action<int, int, int, byte> set, uint seed)
+        public Growth(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set, uint seed)
         {
             _get = get; _set = set; _rng = new Rng(seed | 1);
         }
@@ -46,13 +46,13 @@ namespace Stratum.Core
                 {
                     uint r = _rng.Next();
                     int x = bx + (int)(r & 15), z = bz + (int)((r >> 4) & 15), y = 1 + (int)((r >> 8) % (Chunk.Height - 2));
-                    byte id = _get(x, y, z);
+                    ushort id = _get(x, y, z);
                     if (id != 0) Tick(x, y, z, id);
                 }
             }
         }
 
-        void Tick(int x, int y, int z, byte id)
+        void Tick(int x, int y, int z, ushort id)
         {
             var d = Blocks.Get(id);
             if (d.BaseId == Blocks.Wheat)
@@ -60,7 +60,7 @@ namespace Stratum.Core
                 var below = Blocks.Get(_get(x, y - 1, z));
                 if (below.BaseId != Blocks.Farmland) { _set(x, y, z, 0); return; }
                 if (d.Variant < Blocks.WheatStages - 1 && _rng.Value() < (below.Id == Blocks.FarmlandWet ? 0.34f : 0.15f))
-                    _set(x, y, z, (byte)(Blocks.Wheat + d.Variant + 1));
+                    _set(x, y, z, (ushort)(Blocks.Wheat + d.Variant + 1));
             }
             else if (d.Grows == 2)
             {
@@ -113,13 +113,13 @@ namespace Stratum.Core
         // Bone meal on a block: true if it did something (and the bone meal is used up).
         public bool BoneMeal(int x, int y, int z)
         {
-            byte id = _get(x, y, z);
+            ushort id = _get(x, y, z);
             var d = Blocks.Get(id);
             if (d.BaseId == Blocks.Wheat)
             {
                 if (d.Variant >= Blocks.WheatStages - 1) return false;
                 int to = Math.Min(Blocks.WheatStages - 1, d.Variant + 1 + _rng.Range(0, 2));
-                _set(x, y, z, (byte)(Blocks.Wheat + to));
+                _set(x, y, z, (ushort)(Blocks.Wheat + to));
                 return true;
             }
             if (d.Grows == 2)
@@ -143,7 +143,7 @@ namespace Stratum.Core
         }
 
         // A sapling becomes a tree of its kind if there's room for one.
-        public bool GrowTree(int x, int y, int z, byte sapling)
+        public bool GrowTree(int x, int y, int z, ushort sapling)
         {
             bool pine = sapling == Blocks.SaplingPine, birch = sapling == Blocks.SaplingBirch;
             int h = pine ? _rng.Range(7, 11) : birch ? _rng.Range(5, 8) : _rng.Range(4, 7);
@@ -153,8 +153,8 @@ namespace Stratum.Core
                 if (b.Solid && !b.Sway) return false;
                 if (y + i >= Chunk.Height - 1) return false;
             }
-            byte log = pine ? Blocks.PineLog : birch ? Blocks.BirchLog : Blocks.OakLog;
-            byte leaves = pine ? Blocks.PineNeedles : birch ? Blocks.BirchLeaves : Blocks.OakLeaves;
+            ushort log = pine ? Blocks.PineLog : birch ? Blocks.BirchLog : Blocks.OakLog;
+            ushort leaves = pine ? Blocks.PineNeedles : birch ? Blocks.BirchLeaves : Blocks.OakLeaves;
             int top = y + h;
             if (pine)
             {
@@ -186,9 +186,9 @@ namespace Stratum.Core
             return true;
         }
 
-        void Leaf(int x, int y, int z, byte leaves)
+        void Leaf(int x, int y, int z, ushort leaves)
         {
-            byte cur = _get(x, y, z);
+            ushort cur = _get(x, y, z);
             if (cur == 0 || Blocks.Get(cur).Replaceable && Blocks.Get(cur).Fluid == 0) _set(x, y, z, leaves);
         }
     }

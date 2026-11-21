@@ -10,7 +10,7 @@ namespace Stratum.Core
         const float Eps = 0.0005f;
 
         // Does anything solid overlap the box (x0..x1, y0..y1, z0..z1)?
-        public static bool Blocked(Func<int, int, int, byte> get, float x0, float y0, float z0, float x1, float y1, float z1)
+        public static bool Blocked(Func<int, int, int, ushort> get, float x0, float y0, float z0, float x1, float y1, float z1)
         {
             int ix0 = (int)Math.Floor(x0 + Eps), ix1 = (int)Math.Floor(x1 - Eps);
             int iy0 = (int)Math.Floor(y0 + Eps), iy1 = (int)Math.Floor(y1 - Eps);
@@ -34,11 +34,11 @@ namespace Stratum.Core
             return false;
         }
 
-        public static bool Blocked(Func<int, int, int, byte> get, float fx, float fy, float fz, float hw, float h) =>
+        public static bool Blocked(Func<int, int, int, ushort> get, float fx, float fy, float fz, float hw, float h) =>
             Blocked(get, fx - hw, fy, fz - hw, fx + hw, fy + h, fz + hw);
 
         // How far the body can move along one axis (0 x, 1 y, 2 z) toward d before something solid stops it.
-        public static float Sweep(Func<int, int, int, byte> get, float fx, float fy, float fz, float hw, float h, int axis, float d)
+        public static float Sweep(Func<int, int, int, ushort> get, float fx, float fy, float fz, float hw, float h, int axis, float d)
         {
             if (d == 0) return 0;
             Span<float> lo = stackalloc float[3], hi = stackalloc float[3], slo = stackalloc float[3], shi = stackalloc float[3];
@@ -89,7 +89,7 @@ namespace Stratum.Core
         static Box Raise(Box b) => b.Y1 >= 0.99f ? new Box(b.X0, b.Y0, b.Z0, b.X1, 1.5f, b.Z1) : b;
 
         // Height of the solid top of a cell's blocks under a point (0..1 within the cell), or -1 if nothing's there.
-        public static float TopAt(byte id, float lx, float lz)
+        public static float TopAt(ushort id, float lx, float lz)
         {
             var d = Blocks.Get(id);
             if (!d.Solid) return -1;
@@ -100,7 +100,7 @@ namespace Stratum.Core
         }
 
         // Ray against a block's shape (cell-local origin and direction); distance along the ray, or -1.
-        public static float Ray(byte id, float ox, float oy, float oz, float dx, float dy, float dz, Box[] shape = null)
+        public static float Ray(ushort id, float ox, float oy, float oz, float dx, float dy, float dz, Box[] shape = null)
         {
             var d = Blocks.Get(id);
             if (d.Shape != Shape.Boxes || d.Boxes == null) return RayBox(Whole, ox, oy, oz, dx, dy, dz);

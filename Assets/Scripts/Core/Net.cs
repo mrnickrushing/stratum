@@ -12,7 +12,7 @@ namespace Stratum.Core
     // player moves themselves and keeps their own backpack, which the server saves for them.
     public static class Net
     {
-        public const int Protocol = 3;                  // 2: accounts, voice chat. 3: survival, villages, vehicles, spark power, the Ember Deep
+        public const int Protocol = 4;                  // 2: accounts, voice chat. 3: survival, villages, vehicles, spark power, the Ember Deep
         public const int DefaultPort = 25600;
         public const int MaxMessage = 1 << 20;          // a chunk is ~4-12 KB compressed; nothing should come near
         public const int MaxNameLength = 16;
@@ -45,24 +45,37 @@ namespace Stratum.Core
             return n.Trim() == n;
         }
 
-        public static byte[] Compress(byte[] blocks)
+// A chunk's blocks packed for sending or saving: two bytes a block (little-endian), deflated.
+        public static byte[] Compress(ushort[] blocks)
         {
+            var raw = new byte[blocks.Length * 2];
+            Buffer.BlockCopy(blocks, 0, raw, 0, raw.Length);
+            if (!BitConverter.IsLittleEndian) for (int i = 0; i < raw.Length; i += 2) { byte t = raw[i]; raw[i] = raw[i + 1]; raw[i + 1] = t; }
             using var ms = new MemoryStream(8192);
-            using (var z = new DeflateStream(ms, CompressionLevel.Fastest, true)) z.Write(blocks, 0, blocks.Length);
+            using (var z = new DeflateStream(ms, CompressionLevel.Fastest, true)) z.Write(raw, 0, raw.Length);
             return ms.ToArray();
         }
 
-        public static void Decompress(byte[] data, byte[] into)
+        // Unpacks blocks packed by Compress, or by a game before 0.11 (one byte a block: half the length).
+        public static void Decompress(byte[] data, ushort[] into)
         {
             using var ms = new MemoryStream(data);
             using var z = new DeflateStream(ms, CompressionMode.Decompress);
+            var raw = new byte[into.Length * 2];
             int off = 0;
-            while (off < into.Length)
+            while (off < raw.Length)
             {
-                int n = z.Read(into, off, into.Length - off);
-                if (n <= 0) throw new EndOfStreamException("chunk data cut short");
+                int n = z.Read(raw, off, raw.Length - off);
+                if (n <= 0) break;
                 off += n;
             }
+            if (off == raw.Length)
+            {
+                if (!BitConverter.IsLittleEndian) for (int i = 0; i < raw.Length; i += 2) { byte t = raw[i]; raw[i] = raw[i + 1]; raw[i + 1] = t; }
+                Buffer.BlockCopy(raw, 0, into, 0, raw.Length);
+            }
+            else if (off == into.Length) for (int i = 0; i < into.Length; i++) into[i] = raw[i];       // the old one-byte form
+            else throw new EndOfStreamException("chunk data cut short");
         }
     }
 

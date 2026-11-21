@@ -44,7 +44,7 @@ namespace Stratum.Core
 
         // Bottom and Water are for Sky Islands (the underside, and a pond's surface); Sky marks its columns.
         // Lift raises where bare peaks begin (Towering Wilds); Only is a single-biome world's biome + 1.
-        public struct Column { public float Height, Temp, Humid, River, Mountain, Bottom, Lift; public int Water; public bool Sky; public byte Only; }
+        public struct Column { public float Height, Temp, Humid, River, Mountain, Bottom, Lift; public int Water; public bool Sky; public ushort Only; }
 
         // The climate that goes with each biome, for a single-biome world's grass colour and weather.
         static readonly float[] OnlyTemp = { 0.15f, 0.1f, 0.1f, -0.3f, -0.7f, 0.7f, -0.2f };
@@ -97,11 +97,11 @@ namespace Stratum.Core
                 case WorldKind.Dunes: t = 0.62f + t * 0.25f; u = -0.32f + u * 0.4f; break;     // sand, and dry grass by the rivers
                 case WorldKind.Islands: t = 0.22f + t * 0.3f; u = 0.2f + u * 0.5f; break;      // warm and green
             }
-            byte one = 0;
+            ushort one = 0;
             if (only)
             {
                 int k = (int)Kind - (int)FirstOnly;
-                one = (byte)((int)OnlyBiome(Kind) + 1);
+                one = (ushort)((int)OnlyBiome(Kind) + 1);
                 t = OnlyTemp[k] + t * 0.08f; u = OnlyHumid[k] + u * 0.08f;       // a little drift, so the grass isn't one flat colour
             }
             return new Column { Height = Clamp(h, 6, 245), Temp = t, Humid = u, River = river, Mountain = mountain, Lift = lift, Only = one };
@@ -166,7 +166,7 @@ namespace Stratum.Core
                     int slateTop = 46 + (int)strata, basaltTop = 18 + (int)(strata * 0.75f);
                     uint hh = Noise.Hash(wx, 0, wz, Seed);
 
-                    byte top, fill; int fillDepth = 3 + (int)(hh % 2);
+                    ushort top, fill; int fillDepth = 3 + (int)(hh % 2);
                     switch (biome)
                     {
                         case Biome.Desert: top = Blocks.Sand; fill = Blocks.Sand; fillDepth = 4; break;
@@ -189,7 +189,7 @@ namespace Stratum.Core
                     b[ci] = Blocks.Bedrock;
                     for (int y = 1; y <= h; y++)
                     {
-                        byte id;
+                        ushort id;
                         if (y <= 3 && (Noise.Hash(wx, y, wz, Seed) & 3) < (uint)(4 - y)) id = Blocks.Bedrock;
                         else if (y == h) id = top;
                         else if (y > h - fillDepth) id = fill;
@@ -289,7 +289,7 @@ namespace Stratum.Core
                         }
                         if (!cave) continue;
                         int idx = x | (z << 4) | (y << 8);
-                        byte cur = b[idx];
+                        ushort cur = b[idx];
                         if (cur == Blocks.Bedrock || cur == Blocks.Water || cur == Blocks.Ice) continue;
                         b[idx] = 0;
                         // Turn the dirt under an opening back to grass.
@@ -341,18 +341,18 @@ namespace Stratum.Core
                         if ((b[idx] == Blocks.Sand || b[idx] == Blocks.Gravel) && b[idx - 256] == 0) b[idx] = b[idx] == Blocks.Sand ? Blocks.Sandstone : Blocks.Stone;
                     }
                     // New ground wherever the cut left rock or soil under open air.
-                    byte turf = biome == Biome.Desert ? Blocks.Sand : biome == Biome.Tundra ? Blocks.SnowyGrass : biome == Biome.Peaks ? (byte)0 : Blocks.Grass;
+                    ushort turf = biome == Biome.Desert ? Blocks.Sand : biome == Biome.Tundra ? Blocks.SnowyGrass : biome == Biome.Peaks ? (ushort)0 : Blocks.Grass;
                     if (turf == 0) continue;
                     int air = 0;
                     for (int y = h + 1; y >= Low - 1; y--)
                     {
                         int idx = x | (z << 4) | (y << 8);
-                        byte cur = b[idx];
+                        ushort cur = b[idx];
                         if (cur == 0) { air++; continue; }
                         if (air >= 3 && y < h && (cur == Blocks.Stone || cur == Blocks.Dirt || cur == Blocks.Slate))
                         {
                             b[idx] = turf;
-                            for (int d = 1; d <= 2; d++) { byte under = b[idx - d * 256]; if (under == Blocks.Stone || under == Blocks.Slate) b[idx - d * 256] = turf == Blocks.Sand ? Blocks.Sand : Blocks.Dirt; }
+                            for (int d = 1; d <= 2; d++) { ushort under = b[idx - d * 256]; if (under == Blocks.Stone || under == Blocks.Slate) b[idx - d * 256] = turf == Blocks.Sand ? Blocks.Sand : Blocks.Dirt; }
                         }
                         air = 0;
                     }
@@ -384,7 +384,7 @@ namespace Stratum.Core
             // Moss grows on rock beside cave air below 50.
         }
 
-        static void Vein(Chunk ch, ref Rng rng, byte ore, int count, int minY, int maxY, int size)
+        static void Vein(Chunk ch, ref Rng rng, ushort ore, int count, int minY, int maxY, int size)
         {
             for (int v = 0; v < count; v++)
             {
@@ -396,7 +396,7 @@ namespace Stratum.Core
                     if ((uint)ix < 16 && (uint)iz < 16 && (uint)iy < Chunk.Height)
                     {
                         int idx = ix | (iz << 4) | (iy << 8);
-                        byte cur = ch.Blocks[idx];
+                        ushort cur = ch.Blocks[idx];
                         if (cur == Blocks.Stone || cur == Blocks.Slate || cur == Blocks.Basalt) ch.Blocks[idx] = ore;
                     }
                     x += rng.Range(-1, 2); y += rng.Range(-1, 2) * 0.6f; z += rng.Range(-1, 2);
@@ -459,11 +459,11 @@ namespace Stratum.Core
                 }
         }
 
-        static void Put(Chunk ch, int x, int y, int z, byte id, bool force)
+        static void Put(Chunk ch, int x, int y, int z, ushort id, bool force)
         {
             if ((uint)x >= 16 || (uint)z >= 16 || (uint)y >= Chunk.Height) return;
             int i = x | (z << 4) | (y << 8);
-            byte cur = ch.Blocks[i];
+            ushort cur = ch.Blocks[i];
             if (force || cur == 0 || Blocks.Get(cur).Replaceable && cur != Blocks.Water) ch.Blocks[i] = id;
             else if (Blocks.Get(cur).Sway && !Blocks.Get(id).Sway) ch.Blocks[i] = id;   // a trunk beats a leaf
         }
@@ -471,12 +471,12 @@ namespace Stratum.Core
         static bool BaseOk(Chunk ch, int x, int y, int z, bool sand)
         {
             if ((uint)x >= 16 || (uint)z >= 16) return true;   // the neighbour decides; the tree is the same there
-            byte below = ch.Get(x, y - 1, z);
+            ushort below = ch.Get(x, y - 1, z);
             if (sand) return below == Blocks.Sand;
             return below == Blocks.Grass || below == Blocks.SnowyGrass || below == Blocks.Dirt;
         }
 
-        static void Broadleaf(Chunk ch, int x, int y, int z, ref Rng rng, byte log, byte leaves, int minH, int maxH)
+        static void Broadleaf(Chunk ch, int x, int y, int z, ref Rng rng, ushort log, ushort leaves, int minH, int maxH)
         {
             if (!BaseOk(ch, x, y, z, false)) return;
             int hgt = rng.Range(minH, maxH + 1);
@@ -567,12 +567,12 @@ namespace Stratum.Core
                 {
                     int h = (int)cols[(x + M) + (z + M) * W].Height;
                     if (h + 1 >= Chunk.Height) continue;
-                    byte ground = ch.Get(x, h, z), above = ch.Get(x, h + 1, z);
+                    ushort ground = ch.Get(x, h, z), above = ch.Get(x, h + 1, z);
                     if (above != 0) continue;
                     var biome = (Biome)ch.Biome[x + z * 16];
                     float r = Noise.Hash01(bx + x, 3, bz + z, Seed);
                     float p = _patch.S2((bx + x) / 9f, (bz + z) / 9f) * 0.5f + 0.5f;   // patchy meadows
-                    byte plant = 0;
+                    ushort plant = 0;
                     if (ground == Blocks.Grass)
                     {
                         float grass = biome == Biome.Plains ? 0.38f : biome == Biome.Forest || biome == Biome.BirchWood ? 0.16f : 0.12f;

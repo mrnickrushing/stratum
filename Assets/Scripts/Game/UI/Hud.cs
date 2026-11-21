@@ -611,7 +611,7 @@ namespace Stratum.Game
 
         void RebuildCraftingSoon() => _rebuildTimer = 0.05f;
 
-        bool Near(byte block, int radius)
+        bool Near(ushort block, int radius)
         {
             var f = P.Feet;
             int x = Mathf.FloorToInt(f.x), y = Mathf.FloorToInt(f.y), z = Mathf.FloorToInt(f.z);
@@ -619,7 +619,7 @@ namespace Stratum.Game
                 for (int dz = -radius; dz <= radius; dz++)
                     for (int dx = -radius; dx <= radius; dx++)
                     {
-                        byte b = World.Get(x + dx, y + dy, z + dz);
+                        ushort b = World.Get(x + dx, y + dy, z + dz);
                         if (b == block || Blocks.Get(b).BaseId == block) return true;
                     }
             return false;
