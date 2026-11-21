@@ -317,6 +317,7 @@ namespace Stratum.Game
             var kb = Keyboard.current;
             if (Online && _state != State.Loading) PumpNet();
             if (_looseBack.Count > 0 && _state == State.Playing) ReturnLoose();
+            if (_world != null && _hud != null && _state == State.Playing) while (_world.Notices.TryDequeue(out var note)) { _hud.AddChat("", note); _hud.Toast("Part of this world was damaged. See the chat."); }
             switch (_state)
             {
                 case State.Title:

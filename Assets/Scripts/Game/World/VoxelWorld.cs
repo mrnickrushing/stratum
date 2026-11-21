@@ -126,6 +126,8 @@ namespace Stratum.Game
         }
 
         string ChunkPath(int x, int z) => Path.Combine(SaveDir, "chunks", x + "_" + z + ".bin");
+        // Things the player should be told about (a damaged piece of the world); the game shows them.
+        public readonly System.Collections.Concurrent.ConcurrentQueue<string> Notices = new System.Collections.Concurrent.ConcurrentQueue<string>();
 
         void Generate(Chunk c)
         {
@@ -151,10 +153,12 @@ namespace Stratum.Game
                         if (from != null)
                         {
                             Debug.LogWarning($"chunk {c.X},{c.Z} was unreadable ({e.Message}); restored from the backup of {from}");
+                            Notices.Enqueue("A damaged piece of this world was put back from a backup. Anything built there since is missing.");
                             Gen.TintOnly(c); c.Modified = true; c.Ready = true;
                             return;
                         }
                         Debug.LogWarning($"chunk {c.X},{c.Z} is unreadable and no backup has it ({e.Message}). Fresh land is used; the damaged file is kept as {path}.bad");
+                        Notices.Enqueue($"A piece of this world near {c.X * 16 + 8}, {c.Z * 16 + 8} was damaged and no backup has it. It was made fresh.");
                         Array.Clear(c.Blocks, 0, c.Blocks.Length);
                     }
                 }

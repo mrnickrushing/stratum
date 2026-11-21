@@ -91,6 +91,7 @@ namespace Stratum.Game
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);
+            RetryNoRoom(dt);
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
             foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
@@ -146,13 +147,20 @@ namespace Stratum.Game
         {
             bool any = false; foreach (var s in stacks) if (!s.Empty) any = true;
             if (!any) return;
-            var (x, y, z) = Containers.SpotFor(_world.Get, Mathf.FloorToInt(at.x), Mathf.FloorToInt(at.y), Mathf.FloorToInt(at.z));
-            var all = new List<Stack>();
-            if (Blocks.Get(_world.Get(x, y, z)).Container) foreach (var s in Boxes.At(x, y, z)) if (!s.Empty) all.Add(s);
-            foreach (var s in stacks) if (!s.Empty) all.Add(s);
-            if (all.Count > Containers.MaxSlots) all.RemoveRange(0, all.Count - Containers.MaxSlots);     // newest kept; never a container too big to show
-            Boxes.Put(x, y, z, all.ToArray());
-            _world.Set(x, y, z, Blocks.Satchel);
+            // One satchel is topped up, a full one gets a neighbour, and what finds no room comes back to the pack.
+            var rest = Boxes.Stash(_world.Get, (x, y, z) => _world.Set(x, y, z, Blocks.Satchel), Mathf.FloorToInt(at.x), Mathf.FloorToInt(at.y), Mathf.FloorToInt(at.z), stacks);
+            foreach (var s in rest) _noRoom.Add(s);
+        }
+
+        // Things a Drop found no ground for: kept here and tried again, never thrown away.
+        readonly List<Stack> _noRoom = new List<Stack>();
+        float _noRoomTimer;
+        void RetryNoRoom(float dt)
+        {
+            if (_noRoom.Count == 0 || (_noRoomTimer -= dt) > 0) return;
+            _noRoomTimer = 2;
+            var again = _noRoom.ToArray(); _noRoom.Clear();
+            Drop(_player.Feet, again);
         }
 
         public override void SetSign(Vector3Int at, string text)

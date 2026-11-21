@@ -59,17 +59,87 @@ namespace Stratum.Core
         // A player changed a slot from what they saw (`seen`) to `want`, but the slot really holds `now` (a furnace
         // finished a piece, or used one, in between). What they did is applied as a difference, "took three" or
         // "added five", to what is really there, so nothing made meanwhile is wiped out and nothing is counted twice.
-        public static Stack Reconcile(Stack now, Stack seen, Stack want)
+public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(now, seen, want, null);
+
+        // As above, and `owed` gets what the player must be given (n > 0) or must hand back (n < 0) so that nothing is
+        // made or lost: they acted on `seen` and already count themselves richer by seen - want, but the slot only
+        // gave up now - result.
+        public static Stack Reconcile(Stack now, Stack seen, Stack want, List<(string item, int n, int wear)> owed)
         {
+            Stack result;
             if (Same(now, seen)) return want;
-            if (!seen.Empty && !want.Empty && seen.Item != want.Item) return want;      // swapped for something else: theirs stands
             string item = want.Empty ? seen.Item : want.Item;
-            if (item == null) return now;
-            int delta = (want.Empty ? 0 : want.Count) - (seen.Empty ? 0 : seen.Count);
-            if (now.Empty) return delta > 0 ? new Stack(item, delta) { Wear = want.Wear } : Stack.None;
-            if (now.Item != item || now.Wear != 0 || want.Wear != 0) return want;
-            int n = Math.Clamp(now.Count + delta, 0, Items.Get(item)?.MaxStack ?? 64);
-            return n > 0 ? new Stack(item, n) : Stack.None;
+            if (!seen.Empty && !want.Empty && seen.Item != want.Item) result = want;        // swapped for something else: theirs stands
+            else if (item == null) result = now;
+            else
+            {
+                int delta = (want.Empty ? 0 : want.Count) - (seen.Empty ? 0 : seen.Count);
+                if (now.Empty) result = delta > 0 ? new Stack(item, delta) { Wear = want.Wear } : Stack.None;
+                else if (now.Item != item || now.Wear != 0 || want.Wear != 0) result = want;
+                else
+                {
+                    int n = Math.Clamp(now.Count + delta, 0, Items.Get(item)?.MaxStack ?? 64);
+                    result = n > 0 ? new Stack(item, n) : Stack.None;
+                }
+            }
+            if (owed != null)
+            {
+                void Count(Stack s, int sign)
+                {
+                    if (s.Empty) return;
+                    for (int k = 0; k < owed.Count; k++) if (owed[k].item == s.Item) { owed[k] = (s.Item, owed[k].n + sign * s.Count, Math.Max(owed[k].wear, s.Wear)); return; }
+                    owed.Add((s.Item, sign * s.Count, s.Wear));
+                }
+                Count(now, 1); Count(result, -1); Count(seen, -1); Count(want, 1);
+                owed.RemoveAll(o => o.n == 0);
+            }
+            return result;
+        }
+
+        // Stacks of the same thing joined up to their limit, so a satchel holds as much as it can.
+        public static List<Stack> Compact(IEnumerable<Stack> stacks)
+        {
+            var list = new List<Stack>();
+            foreach (var s0 in stacks)
+            {
+                var s = s0;
+                if (s.Empty) continue;
+                int max = Items.Get(s.Item)?.MaxStack ?? 1;
+                if (s.Wear == 0 && max > 1)
+                    for (int k = 0; k < list.Count && s.Count > 0; k++)
+                    {
+                        if (list[k].Item != s.Item || list[k].Wear != 0 || list[k].Count >= max) continue;
+                        int n = Math.Min(max - list[k].Count, s.Count);
+                        var t = list[k]; t.Count += n; list[k] = t; s.Count -= n;
+                    }
+                if (s.Count > 0) list.Add(s);
+            }
+            return list;
+        }
+
+        // Puts things into satchels at and around a place: a satchel already there is topped up, and when one is
+        // full (MaxSlots) the rest goes into another beside it. `place` sets the satchel block. Returns whatever
+        // found no room anywhere near, which the caller must hand back: nothing is thrown away here.
+        public List<Stack> Stash(Func<int, int, int, byte> get, Action<int, int, int> place, int x, int y, int z, IEnumerable<Stack> stacks)
+        {
+            var rest = Compact(stacks);
+            var tried = new HashSet<long>();
+            for (int guard = 0; guard < 12 && rest.Count > 0; guard++)
+            {
+                if (!SpotFor(get, x, y, z, (cx, cy, cz) => tried.Contains(Key(cx, cy, cz)), out var at)) break;
+                tried.Add(Key(at.x, at.y, at.z));
+                bool satchel = get(at.x, at.y, at.z) == Blocks.Satchel;
+                var have = new List<Stack>();
+                if (Has(at.x, at.y, at.z)) foreach (var s in Remove(at.x, at.y, at.z)) if (!s.Empty) have.Add(s);
+                int before = have.Count;
+                var all = Compact(System.Linq.Enumerable.Concat(have, rest));
+                // What was there stays there (it comes first); the newcomers fill what room is left.
+                int keep = Math.Min(all.Count, Math.Max(MaxSlots, before));
+                Put(at.x, at.y, at.z, all.GetRange(0, keep).ToArray());
+                if (!satchel) place(at.x, at.y, at.z);
+                rest = all.GetRange(keep, all.Count - keep);
+            }
+            return rest;
         }
 
         public bool Has(int x, int y, int z) => _boxes.ContainsKey(Key(x, y, z));
@@ -172,6 +242,14 @@ namespace Stratum.Core
         // A free cell near a point for a satchel: air (or a plant) with something solid under it, nearest first.
         public static (int x, int y, int z) SpotFor(Func<int, int, int, byte> get, int x, int y, int z)
         {
+            return SpotFor(get, x, y, z, null, out var at) ? at : (x, y, z);
+        }
+
+        // The same, also counting a satchel already lying there as a place (to add to), leaving out cells `skip`
+        // names, and saying honestly when there is nowhere at all.
+        public static bool SpotFor(Func<int, int, int, byte> get, int x, int y, int z, Func<int, int, int, bool> skip, out (int x, int y, int z) at)
+        {
+            at = (x, y, z);
             y = Math.Clamp(y, 1, Chunk.Height - 2);
             for (int r = 0; r <= 3; r++)
                 for (int dy = 0; dy <= 4; dy++)
@@ -182,12 +260,15 @@ namespace Stratum.Core
                                 if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
                                 int cx = x + dx, cy = y + dy * sy, cz = z + dz;
                                 if (cy < 1 || cy >= Chunk.Height - 1) continue;
+                                if (skip != null && skip(cx, cy, cz)) continue;
                                 var here = Blocks.Get(get(cx, cy, cz));
-                                if (!(here.Id == 0 || here.Replaceable && here.Fluid == 0)) continue;
-                                if (!Blocks.Get(get(cx, cy - 1, cz)).Solid) continue;
-                                return (cx, cy, cz);
+                                bool satchel = skip != null && here.Id == Blocks.Satchel;
+                                if (!satchel && !(here.Id == 0 || here.Replaceable && here.Fluid == 0)) continue;
+                                if (!satchel && !Blocks.Get(get(cx, cy - 1, cz)).Solid) continue;
+                                at = (cx, cy, cz);
+                                return true;
                             }
-            return (x, y, z);
+            return false;
         }
     }
 }
