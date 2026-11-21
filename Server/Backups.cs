@@ -29,6 +29,31 @@ namespace Stratum.Server
             catch (Exception e) { Log.Warn("backup failed: " + e.Message); }
         }
 
+        // A file from the newest backup that holds a readable copy of it: `read` is tried on each and the first that
+        // doesn't throw wins. Returns the backup's name, or null.
+        public static string Recover(string file, Action<string> read)
+        {
+            try
+            {
+                string full = Path.GetFullPath(file);
+                for (var dir = Path.GetDirectoryName(full); dir != null; dir = Path.GetDirectoryName(dir))
+                {
+                    string root = Path.Combine(dir, "backups");
+                    if (!Directory.Exists(root)) continue;
+                    string rel = Path.GetRelativePath(dir, full);
+                    foreach (var stamp in Directory.GetDirectories(root).Where(d => !d.EndsWith(".part")).OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal))
+                    {
+                        string cand = Path.Combine(stamp, rel);
+                        if (!File.Exists(cand)) continue;
+                        try { read(cand); return Path.GetFileName(stamp); } catch { }
+                    }
+                    return null;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         static int Copy(string from, string to, bool top)
         {
             if (Directory.Exists(to)) Directory.Delete(to, true);

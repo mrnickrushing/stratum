@@ -150,6 +150,7 @@ namespace Stratum.Game
             var all = new List<Stack>();
             if (Blocks.Get(_world.Get(x, y, z)).Container) foreach (var s in Boxes.At(x, y, z)) if (!s.Empty) all.Add(s);
             foreach (var s in stacks) if (!s.Empty) all.Add(s);
+            if (all.Count > Containers.MaxSlots) all.RemoveRange(0, all.Count - Containers.MaxSlots);     // newest kept; never a container too big to show
             Boxes.Put(x, y, z, all.ToArray());
             _world.Set(x, y, z, Blocks.Satchel);
         }

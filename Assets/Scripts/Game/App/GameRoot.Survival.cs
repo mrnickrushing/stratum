@@ -333,7 +333,23 @@ namespace Stratum.Game
         public override void Shoot(Vector3 o, Vector3 v, float damage) => Send(new Packet(Net.Msg.Shoot).F32(o.x).F32(o.y).F32(o.z).F32(v.x).F32(v.y).F32(v.z).F32(damage));
         public override void UseMob(int mob, string item) => Send(new Packet(Net.Msg.UseMob).I32(mob).Str(item ?? ""));
         public override void OpenBox(Vector3Int at) => Send(new Packet(Net.Msg.OpenBox).I32(at.x).I32(at.y).I32(at.z));
-        public override void BoxSlot(Vector3Int at, int slot, Core.Stack s) => Send(new Packet(Net.Msg.BoxSlot).I32(at.x).I32(at.y).I32(at.z).U8((byte)slot).Slot(s));
+        // What the server last said each slot of the open container holds. Every change is sent with what was seen
+        // there before it, so the server can apply "took three" to what is really there now.
+        Core.Stack[] _seen = new Core.Stack[0]; Vector3Int _seenAt;
+        public void Saw(Vector3Int at, Core.Stack[] all) { _seenAt = at; _seen = (Core.Stack[])all.Clone(); }
+        public void Saw(Vector3Int at, int slot, Core.Stack s)
+        {
+            if (at != _seenAt) return;
+            if (slot >= _seen.Length) Array.Resize(ref _seen, slot + 1);
+            _seen[slot] = s;
+        }
+
+        public override void BoxSlot(Vector3Int at, int slot, Core.Stack s)
+        {
+            var seen = at == _seenAt && slot < _seen.Length ? _seen[slot] : default;
+            Send(new Packet(Net.Msg.BoxSlot).I32(at.x).I32(at.y).I32(at.z).U8((byte)slot).Slot(s).Slot(seen));
+            Saw(at, slot, s);
+        }
         public override void CloseBox() => Send(new Packet(Net.Msg.CloseBox));
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
         public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));

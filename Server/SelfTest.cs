@@ -296,6 +296,83 @@ namespace Stratum.Server
                 for (int i = 0; i < 3000; i++) f3.Tick(0.1f);
                 Check(b3.At(4, 5, 6)[Smelting.Out].Count == 3 && b3.At(4, 5, 6)[Smelting.Fuel].Empty, "and finishes on the coal it had already lit");
                 File.Delete(file);
+
+                // Loaded and fuelled but never lit before the save: it starts by itself after loading. A chest with
+                // the same things in the same slots does not.
+                var b4 = new Containers(); var f4 = new Furnaces(b4);
+                b4.Set(7, 8, 9, Smelting.In, new Stack("sand", 2)); b4.Set(7, 8, 9, Smelting.Fuel, new Stack("coal", 1)); f4.Wake(7, 8, 9);
+                b4.Set(1, 1, 1, 0, new Stack("sand", 2)); b4.Set(1, 1, 1, 1, new Stack("coal", 1));           // a chest
+                b4.Save(file);
+                var b5 = new Containers(); b5.Load(file); var f5 = new Furnaces(b5); f5.WakeSaved();
+                for (int i = 0; i < 400; i++) f5.Tick(0.1f);
+                Check(b5.At(7, 8, 9)[Smelting.Out].Item == "glass" && b5.At(7, 8, 9)[Smelting.Out].Count == 2, "a furnace saved ready to start gets going after a reload");
+                Check(b5.At(1, 1, 1)[0].Count == 2 && b5.At(1, 1, 1)[1].Count == 1 && b5.At(1, 1, 1)[2].Empty, "and a chest holding sand over coal is left alone");
+                File.Delete(file);
+
+                // Progress on one thing doesn't finish another.
+                var sw = new Stack[27]; sw[Smelting.In] = new Stack("iron_ore", 2); sw[Smelting.Fuel] = new Stack("coal", 1);
+                for (int i = 0; i < 79; i++) Smelting.Step(sw);
+                sw[Smelting.In] = new Stack("gold_ore", 2); Smelting.Step(sw);
+                Check(sw[Smelting.Out].Empty && sw[Smelting.Cook].Count <= 1, $"swapping the ore starts the work again (progress {sw[Smelting.Cook].Count}, nothing made)");
+                for (int i = 0; i < Smelting.CookTicks; i++) Smelting.Step(sw);
+                Check(sw[Smelting.Out].Item == "gold_ingot" && sw[Smelting.Out].Count == 1, "and the new ore takes its full time");
+
+                // A change made on an out-of-date view is applied as a difference.
+                Stack R(Stack now, Stack seen, Stack want) => Containers.Reconcile(now, seen, want);
+                Check(R(new Stack("iron_ingot", 2), new Stack("iron_ingot", 1), Stack.None).Count == 1, "taking the one ingot you saw leaves the one made since");
+                Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
+                Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
+
+                // A list of stacks too long for its one-byte count is cut, not garbled.
+                var many = new Stack[300]; for (int i = 0; i < many.Length; i++) many[i] = new Stack("cobble", 1 + i % 60);
+                var rd = new Reader(new Packet(Net.Msg.Box).Stacks(many).I32(777).Bytes().AsSpan(4).ToArray());      // without the length in front
+                var got = rd.Stacks();
+                Check(got.Length == 255 && got[254].Count == many[254].Count && rd.I32() == 777 && !rd.More, $"300 stacks travel as 255 and the reader keeps its place ({got.Length})");
+            }
+
+            // Saving: a chunk that can't be written is tried again, and a damaged one comes back from a backup.
+            {
+                string wdir = Path.Combine(dir, "save-test"); Directory.CreateDirectory(wdir);
+                Chunk Load(ServerWorld w, int cx, int cz)
+                {
+                    w.Want(cx, cz); var made = new List<Chunk>();
+                    for (int i = 0; i < 400 && !w.TryGet(cx, cz, out _); i++) { Thread.Sleep(10); w.Collect(made); }
+                    w.TryGet(cx, cz, out var c); return c;
+                }
+                var w1 = new ServerWorld(wdir, 5);
+                Load(w1, 0, 0);
+                int ty = Chunk.Height - 2; while (ty > 1 && w1.Get(3, ty, 3) == 0) ty--;
+                w1.SetRaw(3, ty + 1, 3, Blocks.Stone);
+                string cdir = Path.Combine(wdir, "chunks"), parked = cdir + ".away";
+                if (Directory.Exists(cdir)) Directory.Move(cdir, parked);
+                File.WriteAllText(cdir, "in the way");                 // nowhere to write the chunk
+                w1.Maintain((x, z) => false, true);
+                Check(w1.Unsaved == 1 && w1.IsLoaded(3, 3), "a chunk that couldn't be saved stays in memory and on the list");
+                File.Delete(cdir);
+                if (Directory.Exists(parked)) Directory.Move(parked, cdir); else Directory.CreateDirectory(cdir);
+                w1.Maintain((x, z) => false, true);
+                string cfile = Path.Combine(cdir, "0_0.bin");
+                Check(w1.Unsaved == 0 && File.Exists(cfile) && !w1.IsLoaded(3, 3), "and is saved, then let go, once it can be");
+                w1.Stop();
+
+                Backups.Take(wdir);
+                File.WriteAllBytes(cfile, new byte[] { 1, 2, 3, 4, 5, 6, 7 });                  // the chunk file is damaged
+                var w2 = new ServerWorld(wdir, 5);
+                Load(w2, 0, 0);
+                Check(w2.Get(3, ty + 1, 3) == Blocks.Stone, "a damaged chunk comes back from the newest backup, with what was built there");
+                Check(File.Exists(cfile + ".bad") && new FileInfo(cfile).Length > 100, "the damaged file is kept aside and the good copy put back");
+                w2.Stop();
+                foreach (var b in Directory.GetDirectories(Path.Combine(wdir, "backups"))) Directory.Delete(b, true);
+                File.WriteAllBytes(cfile, new byte[] { 9, 9, 9 });
+                var w3 = new ServerWorld(wdir, 5);
+                var c3 = Load(w3, 0, 0);
+                Check(c3 != null && w3.Get(3, ty + 1, 3) == 0 && File.Exists(cfile + ".bad") && new FileInfo(cfile + ".bad").Length == 3, "with no backup the land is made fresh, and the damaged file is still kept");
+                w3.Stop();
+                Thread.Sleep(100);
+                try { Directory.Delete(wdir, true); } catch { }
+                if (Directory.Exists(dir) && Directory.GetFileSystemEntries(dir).Length == 0) Directory.Delete(dir);
+            }
+            {
             }
 
             // On a server: the kind travels with the welcome, older games are kept out, and a world keeps its kind.
@@ -520,7 +597,19 @@ namespace Stratum.Server
                     var bbox = b.Wait(Net.Msg.Box); Stack[] inBox = null;
                     if (bbox != null) { bbox.I32(); bbox.I32(); bbox.I32(); inBox = bbox.Stacks(); }
                     Check(inBox != null && inBox[2].Item == "cobble" && inBox[2].Count == 9, "once Ada closes it Bea opens it and finds the cobble");
+                    // Ada can't break the chest out from under Bea while she has it open.
+                    a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
+                    Check(a.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Chest, 2000) != null
+                          && a.Wait(Net.Msg.Give, null, 400) == null, "a chest someone has open can't be broken, and gives nothing");
+                    // Bea takes the 9 she can see, but (say a furnace had been at work) there are really 12: three stay.
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 12)));
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(Stack.None).Slot(new Stack("cobble", 9)));
+                    Stack put = default;
+                    Check(b.Wait(Net.Msg.BoxSet, r => { r.I32(); r.I32(); r.I32(); if (r.U8() != 2) return false; put = r.Slot(); return true; }, 2000) != null && put.Item == "cobble" && put.Count == 3,
+                          $"taking what you saw leaves what arrived since, and your screen is put right ({put.Count} left)");
+                    b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)).Slot(new Stack("cobble", 3)));
                     b.Send(new Packet(Net.Msg.CloseBox));
+                    Thread.Sleep(200);
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
                     var give = a.Wait(Net.Msg.Give);
                     Check(give != null && give.Str() == "cobble" && give.U16() == 9, "breaking the chest gives Ada what was in it");
@@ -588,6 +677,21 @@ namespace Stratum.Server
                     var inv = new Stack[Inventory.Size + 2]; inv[0] = new Stack("cobble", 5); inv[3] = new Stack("torch", 12);
                     inv[Inventory.Size] = new Stack("iron_pickaxe", 1) { Wear = 30 }; inv[Inventory.Size + 1] = new Stack("coal", 4);
                     a.Send(new Packet(Net.Msg.Keep).F32(17).F32(12).F32(3).U8(3).Stacks(inv).Bool(true).I32(px).I32(py).I32(pz).I32(7).I32(3));
+
+                    // Bea logs in again from another computer while still connected: she is where she stands now, with
+                    // what she carries now, not what was last written to disk.
+                    b.Move(b.X + 6.25f, b.Y, b.Z + 2.5f);
+                    var binv = new Stack[Inventory.Size]; binv[1] = new Stack("torch", 21);
+                    b.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(binv).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0));
+                    Thread.Sleep(250);
+                    float wantX = b.X + 6.25f, wantZ = b.Z + 2.5f;
+                    using (var b2 = new Bot(port))
+                    {
+                        b2.Login("Bea", "bea-password");
+                        bool okb = b2.Welcome();
+                        Check(okb && b2.HasPos && Math.Abs(b2.X - wantX) < 0.01f && Math.Abs(b2.Z - wantZ) < 0.01f, $"logging in again while still connected puts her where she was standing ({b2.X:0.00} {b2.Z:0.00}, has place {b2.HasPos})");
+                        Check(okb && b2.Slots[1].Item == "torch" && b2.Slots[1].Count == 21, "with what she was carrying");
+                    }
 
                     using (var c = new Bot(port)) { c.Create("ada", "another-pass"); Check(c.Refused()?.Contains("already an account") == true, "nobody can make a second account called ada"); }
                     using (var c = new Bot(port)) { c.Login("Bea", "wrong-password"); Check(c.Refused() == "Wrong password.", "a wrong password is refused"); }
