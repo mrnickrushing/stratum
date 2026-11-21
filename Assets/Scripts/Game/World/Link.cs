@@ -91,7 +91,6 @@ namespace Stratum.Game
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);
-            RetryNoRoom(dt);
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
             foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
@@ -149,18 +148,7 @@ namespace Stratum.Game
             if (!any) return;
             // One satchel is topped up, a full one gets a neighbour, and what finds no room comes back to the pack.
             var rest = Boxes.Stash(_world.Get, (x, y, z) => _world.Set(x, y, z, Blocks.Satchel), Mathf.FloorToInt(at.x), Mathf.FloorToInt(at.y), Mathf.FloorToInt(at.z), stacks);
-            foreach (var s in rest) _noRoom.Add(s);
-        }
-
-        // Things a Drop found no ground for: kept here and tried again, never thrown away.
-        readonly List<Stack> _noRoom = new List<Stack>();
-        float _noRoomTimer;
-        void RetryNoRoom(float dt)
-        {
-            if (_noRoom.Count == 0 || (_noRoomTimer -= dt) > 0) return;
-            _noRoomTimer = 2;
-            var again = _noRoom.ToArray(); _noRoom.Clear();
-            Drop(_player.Feet, again);
+            foreach (var s in rest) Gave?.Invoke(s.Item, s.Count, s.Wear);          // no ground for these: back to the player, who keeps them waiting
         }
 
         public override void SetSign(Vector3Int at, string text)

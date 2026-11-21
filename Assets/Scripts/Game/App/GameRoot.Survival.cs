@@ -53,6 +53,7 @@ namespace Stratum.Game
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
             _act.Toast = s => _hud?.Toast(s);
+            _act.Spill = Give;                 // mined things that don't fit the pack: the ground, or the waiting list
             _hud.Link = link;
             _hud.CloseBoxed = () => link.CloseBox();
             link.BoxOpened = (at, stacks) =>
@@ -80,6 +81,7 @@ namespace Stratum.Game
 
         void TeardownSurvival()
         {
+            _waiting.Clear(); _waitTold = false;          // saved with the player before this; the next world has its own
             if (_creatures != null) Destroy(_creatures.gameObject);
             if (_signs != null) Destroy(_signs.gameObject);
             if (_weatherFx != null) Destroy(_weatherFx.gameObject);
@@ -119,8 +121,50 @@ namespace Stratum.Game
             }
             else left = _player.Inv.Add(item, count);
             if (left < count) Sfx.I?.Play("pickup", 0.4f, 1.1f + UnityEngine.Random.value * 0.3f);
-            if (left > 0) _link?.Drop(_player.Feet, new[] { new Core.Stack(item, left) { Wear = wear } });
+            if (left > 0) Wait(new Core.Stack(item, left) { Wear = wear });
         }
+
+        // ------------------------------------------------------------------ things waiting for room
+        // Whatever fits neither the pack nor the ground (the host hands back what it found no place for) waits
+        // here. It is saved with the player, tried in the pack every couple of seconds, and put on the ground again
+        // only after a pause or once the player has moved on, so a full pack on crowded ground can't bounce the
+        // same things back and forth.
+        readonly List<Core.Stack> _waiting = new List<Core.Stack>();
+        float _waitPack, _waitDrop; Vector3 _waitDropAt; bool _waitTold;
+
+        void Wait(Core.Stack s)
+        {
+            if (s.Empty) return;
+            var joined = Containers.Compact(System.Linq.Enumerable.Concat(_waiting, new[] { s }));
+            _waiting.Clear(); _waiting.AddRange(joined);
+        }
+
+        void TickWaiting(float dt)
+        {
+            if (_waiting.Count == 0 || _player == null || _link == null) { _waitTold = false; return; }
+            if ((_waitPack -= dt) <= 0)
+            {
+                _waitPack = 2;
+                for (int i = _waiting.Count - 1; i >= 0; i--)
+                {
+                    var s = _waiting[i]; int left = s.Count;
+                    if (s.Wear > 0) { for (int k = 0; k < Inventory.Main; k++) if (_player.Inv.Slots[k].Empty) { _player.Inv.Slots[k] = s; left = 0; break; } }
+                    else left = _player.Inv.Add(s.Item, s.Count);
+                    if (left <= 0) _waiting.RemoveAt(i); else { s.Count = left; _waiting[i] = s; }
+                }
+                if (_waiting.Count == 0) return;
+            }
+            _waitDrop -= dt;
+            bool moved = (_player.Feet - _waitDropAt).sqrMagnitude > 9;
+            if (_waitDrop > 0 && !moved) return;
+            // Onto the ground. If there's no room there either, the host hands them back and they wait again.
+            _waitDrop = 10; _waitDropAt = _player.Feet;
+            var all = _waiting.ToArray(); _waiting.Clear();
+            _link.Drop(_player.Feet, all);
+            if (!_waitTold) { _waitTold = true; _hud.Toast("Your pack is full: what didn't fit is in a satchel, or waits until there's room"); }
+        }
+
+        public int WaitingCount => _waiting.Count;
 
         static readonly Dictionary<MobKind, string> Voices = new Dictionary<MobKind, string>
         {

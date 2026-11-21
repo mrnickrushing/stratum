@@ -196,7 +196,17 @@ namespace Stratum.Game
             if (P.Creative) return;
             if (P.Inv.Held.Count <= 1) { P.Inv.Slots[P.Inv.Selected] = new Stack(to, 1); return; }
             P.Inv.UseHeld();
-            if (P.Inv.Add(to, 1) > 0) Toast?.Invoke("No room for the " + Items.Get(to).Name);
+            Gain(to, 1);
+        }
+
+        // Something earned (a mined block, a filled bucket): into the pack, and whatever doesn't fit is handed to
+        // Spill, which puts it on the ground or keeps it waiting. Returns how many didn't fit in the pack.
+        public System.Action<string, int, int> Spill;      // item, count, wear
+        int Gain(string item, int n)
+        {
+            int left = P.Inv.Add(item, n);
+            if (left > 0) { if (Spill != null) Spill(item, left, 0); else Toast?.Invoke("Your pack is full"); }
+            return left;
         }
 
         void Act(float dt)
@@ -417,16 +427,15 @@ namespace Stratum.Game
                 if (!P.Creative) P.AddXp(Mining.XpFor(def, _rng));
                 if (item != null)
                 {
-                    int left = P.Inv.Add(item, n);
+                    int left = Gain(item, n);
                     if (left < n) Sfx.I?.Play("pickup", 0.35f, 1.4f);
-                    if (left > 0) Toast?.Invoke("Your pack is full");
                 }
             }
             else if (def.TierNeeded > 0) Toast?.Invoke("Needs a better pickaxe");
             var bonus = Mining.Bonus(def, _rng);
-            if (bonus != null && P.Inv.Add(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus != null && Gain(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
             var bonus2 = Mining.Bonus2(def, _rng);
-            if (bonus2 != null && P.Inv.Add(bonus2, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus2 != null && Gain(bonus2, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
             Unsupported(p);
             if (held != null && held.Durability > 0 && def.Hardness > 0 && P.Inv.WearHeld())
             {
@@ -640,9 +649,9 @@ namespace Stratum.Game
         {
             if (P.Creative) return;
             var (item, n) = Mining.Drop(d);
-            if (item != null && n > 0) P.Inv.Add(item, n);
+            if (item != null && n > 0) Gain(item, n);
             var b2 = Mining.Bonus2(d, _rng);
-            if (b2 != null) P.Inv.Add(b2, 1);
+            if (b2 != null) Gain(b2, 1);
         }
 
         void Place(Vector3Int at, byte block, byte item)
