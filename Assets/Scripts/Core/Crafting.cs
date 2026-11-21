@@ -66,6 +66,7 @@ namespace Stratum.Core
             ("repeater", new[] { "BAB", "CCC" }),
             ("enchanting_table", new[] { " A ", "BCB", "CCC" }),
             ("anvil", new[] { "AAA", " B ", "BBB" }),
+            ("chute", new[] { "A A", "ABA", " A " }),
         };
 
         // Gives every recipe that has one its pattern (Items calls this once its recipes are listed). A pattern

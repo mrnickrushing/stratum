@@ -160,6 +160,7 @@ namespace Stratum.Game
             ApplyAudio();
             ConfigurePipeline();
             ApplyDisplaySettings();
+            UIKit.ApplyScale();
             int vd = Settings.ViewDistance;
             if (Online) vd = Mathf.Min(vd, _maxView);          // the server's limit holds whatever setting was just changed
             if (_world != null) _world.ViewDistance = _state == State.Title ? Mathf.Min(vd, 10) : vd;
@@ -276,6 +277,7 @@ namespace Stratum.Game
                 if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { ToTitle(); yield break; }
                 yield return null;
             }
+            Perf.Reset(); Perf.EntrySeconds = _loadTime;
             if (!meta.hasPlayer) PlaceOnGround();
             meta.hasPlayer = true;
             meta.lastPlayed = DateTime.UtcNow.Ticks;
@@ -324,6 +326,7 @@ namespace Stratum.Game
             if (Online && _state != State.Loading) PumpNet();
             if (_looseBack.Count > 0 && _state == State.Playing) ReturnLoose();
             if (_state == State.Playing) TickWaiting(Time.deltaTime);
+            if (_state == State.Playing) Perf.Frame(Time.unscaledDeltaTime);
             if (_world != null && _hud != null && _state == State.Playing) while (_world.Notices.TryDequeue(out var note)) { _hud.AddChat("", note); _hud.Toast("Part of this world was damaged. See the chat."); }
             switch (_state)
             {
@@ -386,14 +389,19 @@ namespace Stratum.Game
                     else Pause();
                     return;
                 }
-                if (_hud.CanChat && !_hud.InventoryOpen && _hud.ChatClosedFrame != Time.frameCount && (kb.tKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame)) { _hud.OpenChat(); return; }
+                if (_hud.CanChat && !_hud.InventoryOpen && _hud.ChatClosedFrame != Time.frameCount && (Keys.Pressed(Act.Chat) || kb.enterKey.wasPressedThisFrame)) { _hud.OpenChat(); return; }
                 if (_hud.CanChat && !_hud.InventoryOpen && kb.slashKey.wasPressedThisFrame) { _hud.OpenChat("/"); return; }
-                if (kb.eKey.wasPressedThisFrame || kb.tabKey.wasPressedThisFrame)
+                if ((Keys.Pressed(Act.Backpack) || kb.tabKey.wasPressedThisFrame) && !_hud.Typing)
                 {
                     if (_hud.InventoryOpen) CloseInventory(); else OpenInventory(null);
                 }
                 if (kb.f1Key.wasPressedThisFrame) { _hudHidden = !_hudHidden; _hud.Hidden = _hudHidden; }
                 if (kb.f3Key.wasPressedThisFrame) _hud.ShowDebug = !_hud.ShowDebug;
+                if (kb.f4Key.wasPressedThisFrame)
+                {
+                    try { string f = Perf.WriteReport($"Chunks loaded {_world.LoadedChunks}, jobs waiting {_world.PendingJobs}{(Online ? ", on a server" : ", single player")}"); _hud.AddChat("", "Performance report saved: " + f); _hud.Toast("Performance report saved (see the chat for where)"); }
+                    catch (Exception e) { _hud.Toast("Couldn't save the report: " + e.Message); }
+                }
             }
             // Clicking back into the window grabs the mouse again.
             if (!_hud.InventoryOpen && Cursor.lockState != CursorLockMode.Locked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) SetCursor(true);

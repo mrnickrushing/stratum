@@ -19,6 +19,8 @@ namespace Stratum.Game
         public static float VoiceVolume { get => PlayerPrefs.GetFloat("st_voicevol", 1f); set => PlayerPrefs.SetFloat("st_voicevol", Mathf.Clamp(value, 0, 2)); }
         public static string MicDevice { get => PlayerPrefs.GetString("st_micdev", ""); set => PlayerPrefs.SetString("st_micdev", value ?? ""); }   // "" = the system's default
         public static float MicGain { get => PlayerPrefs.GetFloat("st_micgain", 1f); set => PlayerPrefs.SetFloat("st_micgain", Mathf.Clamp(value, 0.25f, 4)); }
+        public static float UiScale { get => PlayerPrefs.GetFloat("st_uiscale", 1f); set => PlayerPrefs.SetFloat("st_uiscale", Mathf.Clamp(value, 0.8f, 1.3f)); }   // menus and HUD size
+        public static bool Subtitles { get => PlayerPrefs.GetInt("st_subs", 0) == 1; set => PlayerPrefs.SetInt("st_subs", value ? 1 : 0); }
         public static bool ViewBob { get => PlayerPrefs.GetInt("st_bob", 1) == 1; set => PlayerPrefs.SetInt("st_bob", value ? 1 : 0); }
     }
 }

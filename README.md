@@ -155,6 +155,22 @@ the result, plus two hidden slots (`_burn`, `_cook`) for the fire and the progre
 - *CI*: `.github/workflows/server.yml` builds the server and runs the self-test on every push and pull request.
 - *Linux installer*: checks the download against `/download/sums` and keeps the old copy until the new one is in place.
 
+**0.9:**
+- *Chutes* (`Core/Chutes.cs`): a container block that takes one thing at a time from the chest or furnace above it and
+  drops it into the one below (smeltable things into a furnace's top slot, fuel into its fuel slot; under a furnace it
+  takes what is done). Chutes carry a hidden `_chute` mark and are stepped every 0.4 s in single player and on the
+  server. The block is added last so older worlds' block numbers don't move.
+- *Controls* (`App/Keys.cs`, `UI/Menus.Controls.cs`): the movement and everyday keys can be changed; UI size (80 to
+  130%, every canvas follows `UIKit.ApplyScale`); sound captions (`Hud.Caption`, with which side the sound came from).
+- *Backpack*: the creative palette has a search box; holding the left button with a stack and sweeping over slots
+  shares it out (`Hud.Comfort.cs`).
+- *Performance* (`App/Perf.cs`): F3 shows the average, the slowest 1% and the worst frame; F4 writes
+  `performance-<time>.txt` to the game's data folder with the computer, settings, frame figures, world-entry time and
+  memory.
+- *First night* self-test: from empty hands to an iron pickaxe using the mining, crafting-grid and furnace rules.
+- A chunk job that throws is retried instead of staying queued; a leaving player's chests and edits are written
+  with their pack.
+
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
 (its ping answers with each world's name, mode, difficulty and who's in it) and shows them beside the login; the pick
 is sent with Hello and remembered (`mp_world`). Each world keeps its own land, creatures, chests and players' things,

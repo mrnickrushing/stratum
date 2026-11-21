@@ -39,8 +39,8 @@ namespace Stratum.Game
                     int cell = r * 3 + c;
                     var v = SlotView.Make(_gridArea, C);
                     v.GetComponent<RectTransform>().Place(0, 1, c * (C + G), top - r * (C + G), C, C);
-                    v.Click = b => { CursorClick(ref _grid[cell], b); _gridDirty = true; };
-                    v.Hover = on => Tip(on ? _grid[cell] : Stack.None);
+                    v.Click = b => { if (ClickIsDrag) return; CursorClick(ref _grid[cell], b); _gridDirty = true; };
+                    v.Hover = on => { Tip(on ? _grid[cell] : Stack.None); DragOver(on, 1000 + cell, () => _grid[cell], st => { _grid[cell] = st; _gridDirty = true; }); };
                     _gridSlots.Add((v, cell));
                 }
             float mid = -36 - (3 * C + 2 * G) / 2;

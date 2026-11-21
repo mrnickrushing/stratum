@@ -144,6 +144,17 @@ namespace Stratum.Game
                 case Tex.JadeOre: Ore(p, Hex(0x3cc47a), Hex(0x1e8a4e), false); return 4f;
                 case Tex.JadeBlock: Metal(p, Hex(0x4ad08a), Hex(0x1a7a46)); return 3f;
                 case Tex.EnchantSide: EnchantSide(p); return 3f;
+                case Tex.ChuteSide: Metal(p, Hex(0x5a5d66), Hex(0x33353c)); Frame(p, Hex(0x24252a), 2); return 3f;
+                case Tex.ChuteTop:
+                    // A dark iron rim round an open mouth.
+                    Metal(p, Hex(0x666972), Hex(0x3a3c44)); Frame(p, Hex(0x24252a), 2);
+                    for (int y = 12; y < 52; y++)
+                        for (int x = 12; x < 52; x++)
+                        {
+                            int edge = Mathf.Min(Mathf.Min(x - 12, 51 - x), Mathf.Min(y - 12, 51 - y));
+                            p.C[Paint.I(x, y)] = edge < 2 ? Hex(0x1c1d21) : Color.Lerp(Hex(0x0c0c0e), Hex(0x18191d), Mathf.Clamp01(edge / 18f));
+                        }
+                    return 3f;
                 case Tex.AnvilTop: Metal(p, Hex(0x4a4c52), Hex(0x2c2d32)); return 3f;
                 case Tex.AnvilSide: Metal(p, Hex(0x3e4046), Hex(0x24252a)); Frame(p, Hex(0x1e1f23), 2); return 3f;
                 case Tex.FarmlandDry: Farmland(p, false); return 2.5f;

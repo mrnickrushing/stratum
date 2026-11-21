@@ -26,6 +26,7 @@ namespace Stratum.Core
         DoorLower, DoorUpper, Trapdoor, Ladder, IronBars,
         EnchantTop, EnchantSide, AnvilTop, AnvilSide, JadeOre, JadeBlock, Rail, RailCurve, BoosterRail, SparkOre, WireOff, WireOn, Lever, SparkTorchOn, SparkTorchOff, LampOff, LampOn, RepeaterOff, RepeaterOn, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
+        ChuteTop, ChuteSide,
         Count
     }
 
@@ -107,7 +108,7 @@ namespace Stratum.Core
             CopperBlock, IronBlock, GoldBlock, ClayBricks, SlateTiles,
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
-            EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
+            Chute, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
         public const int WheatStages = 4;
         public static readonly byte[] WaterAt = new byte[8], LavaAt = new byte[4];   // by level (0 = the source)
@@ -479,6 +480,12 @@ namespace Stratum.Core
                 d.Top = Tex.AnvilTop; d.Side = d.Bottom = Tex.AnvilSide;
                 d.Boxes = new[] { Box.Px(2, 0, 2, 14, 4, 14), Box.Px(4, 4, 5, 12, 10, 11), Box.Px(0, 10, 3, 16, 16, 13) };
             });
+
+            // ---------------------------------------------------------------- 0.9: a chute (last, so older worlds' block numbers stay as they are)
+            b = Add("chute", "Chute", Tex.ChuteTop, Tex.ChuteSide, Tex.ChuteSide);
+            b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 3; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; b.Sound = Sound.Metal; b.Container = true;
+            b.Boxes = new[] { Box.Px(0, 10, 0, 16, 16, 16), Box.Px(4, 4, 4, 12, 10, 12), Box.Px(6, 0, 6, 10, 4, 10) };
+            Chute = b.Id;
 
             Palette.Remove(Water);
         }

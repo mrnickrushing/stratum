@@ -310,6 +310,7 @@ namespace Stratum.Game
         void Update()
         {
             SettingsUpdate();
+            ControlsUpdate();
             if (_join == null || !_join.activeSelf || _joining) return;
             if (_findAt >= 0 && Time.unscaledTime >= _findAt)
             {

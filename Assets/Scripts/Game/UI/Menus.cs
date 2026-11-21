@@ -62,7 +62,7 @@ namespace Stratum.Game
             _root = (RectTransform)_canvas.transform;
             _shade = UIKit.Panel(_root, "Shade", new Color(0, 0, 0, 0.45f), UIKit.White); _shade.rectTransform.Fill();
 
-            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin(); BuildBackups(); BuildExtras();
+            BuildMain(); BuildWorlds(); BuildNew(); BuildSettings(); BuildPause(); BuildDeath(); BuildLoading(); BuildJoin(); BuildBackups(); BuildExtras(); BuildControls();
             HideAll();
         }
 
@@ -103,7 +103,7 @@ namespace Stratum.Game
             }
             var foot = UIKit.Label(_main.transform, $"v{Application.version}   ·   Rushing Technologies", 22, new Color(1, 1, 1, 0.6f), TextAnchor.LowerLeft).Shadowed(2);
             foot.rectTransform.Place(0, 0, 40, 30, 800, 40);
-            var keys = UIKit.Label(_main.transform, "WASD move · Space jump · Shift sprint · Ctrl sneak · E backpack · Esc pause", 22, new Color(1, 1, 1, 0.6f), TextAnchor.LowerRight).Shadowed(2);
+            var keys = UIKit.Label(_main.transform, "Keys can be changed in Settings › Controls  ·  Esc pause", 22, new Color(1, 1, 1, 0.6f), TextAnchor.LowerRight).Shadowed(2);
             keys.rectTransform.Place(1, 0, -40, 30, 1100, 40);
         }
 
@@ -349,7 +349,9 @@ namespace Stratum.Game
             Toggle("Show FPS", () => Settings.ShowFps ? "On" : "Off", () => Settings.ShowFps = !Settings.ShowFps);
             Toggle("Voice chat", () => new[] { "Off", "Hold V", "Open mic" }[Settings.VoiceMode], () => Settings.VoiceMode = (Settings.VoiceMode + 1) % 3);
             var done = UIKit.Button(card.transform, "Done", () => { PlayerPrefs.Save(); _settingsBack?.Invoke(); }, 30, true);
-            ((RectTransform)done.transform).Place(0.5f, 0, 0, 36, 340, 72);
+            ((RectTransform)done.transform).Place(0.5f, 0, 180, 36, 340, 72);
+            var ctl = UIKit.Button(card.transform, "Controls, size, captions", ShowControls, 26);
+            ((RectTransform)ctl.transform).Place(0.5f, 0, -180, 36, 340, 72);
         }
 
         public Action ChangeWorld;                 // online, on a server with several worlds
@@ -438,7 +440,7 @@ namespace Stratum.Game
 
         public void HideAll()
         {
-            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups, _extras }) g.SetActive(false);
+            foreach (var g in new[] { _main, _worlds, _new, _settings, _pause, _death, _loading, _join, _backups, _extras, _controls }) g.SetActive(false);
             _shade.gameObject.SetActive(false);
         }
 
@@ -477,7 +479,9 @@ namespace Stratum.Game
         public bool OnMainOrSub => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _join.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowMain;
         public void Back()
         {
-            if (_settings.activeSelf) { PlayerPrefs.Save(); _settingsBack?.Invoke(); }
+            if (_controls.activeSelf) { if (_binding >= 0) { _binding = -1; RefreshControls(); } else ShowSettings(_settingsBack); }
+            else if (_extras.activeSelf || _backups.activeSelf) { if (_backups.activeSelf) ShowWorlds(); else ShowMain(); }
+            else if (_settings.activeSelf) { PlayerPrefs.Save(); _settingsBack?.Invoke(); }
             else if (_new.activeSelf) ShowWorlds();
             else if (_worlds.activeSelf) ShowMain();
             else if (_join.activeSelf) { if (_joining) CancelJoin?.Invoke(); _joining = false; ShowMain(); }

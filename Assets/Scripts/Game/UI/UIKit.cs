@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -60,6 +61,14 @@ namespace Stratum.Game
             return Sprite.Create(t, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100, 0, SpriteMeshType.FullRect, new Vector4(r, r, r, r));
         }
 
+        // Every canvas follows the UI size setting (a bigger number draws everything bigger).
+        static readonly List<CanvasScaler> _scalers = new List<CanvasScaler>();
+        public static void ApplyScale()
+        {
+            _scalers.RemoveAll(s => s == null);
+            foreach (var s in _scalers) s.referenceResolution = new Vector2(1920, 1080) / Settings.UiScale;
+        }
+
         public static Canvas Root(string name, int order)
         {
             var go = new GameObject(name);
@@ -68,7 +77,8 @@ namespace Stratum.Game
             c.sortingOrder = order;
             var s = go.AddComponent<CanvasScaler>();
             s.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            s.referenceResolution = new Vector2(1920, 1080);
+            s.referenceResolution = new Vector2(1920, 1080) / Settings.UiScale;
+            _scalers.Add(s);
             s.matchWidthOrHeight = 0.5f;
             go.AddComponent<GraphicRaycaster>();
             return c;

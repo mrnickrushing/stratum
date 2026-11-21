@@ -221,6 +221,7 @@ namespace Stratum.Core
             R("map", 1, "workbench", ("paper", 8), ("compass", 1));
             R("enchanting_table", 1, "workbench", ("book", 1), ("sunstone_shard", 2), ("obsidian", 4));
             R("anvil", 1, "workbench", ("iron_block", 3), ("iron_ingot", 4));
+            R("chute", 1, "workbench", ("iron_ingot", 5), ("chest", 1));
             // Farming.
             R("bread", 1, "workbench", ("wheat", 3));
             R("hay_bale", 1, "workbench", ("wheat", 9));
