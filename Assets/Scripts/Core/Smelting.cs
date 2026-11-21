@@ -9,6 +9,8 @@ namespace Stratum.Core
     public static class Smelting
     {
         public const int In = 0, Fuel = 1, Out = 2, Burn = 3, Cook = 4, Slots = 5;
+        public const int Mark = 5;                       // "_furnace": this container is a furnace (so a loaded one can start by itself)
+        public const string MarkItem = "_furnace";
         public const int CookTicks = 80;                 // eight seconds a piece
         public const string BurnItem = "_burn", CookItem = "_cook";
 
@@ -63,6 +65,9 @@ namespace Stratum.Core
             int cook = a[Cook].Item == CookItem ? a[Cook].Count : 0;
             int burn0 = burn, cook0 = cook;
             bool can = CanWork(a, out var output, out int count, out int need);
+            // Progress belongs to the thing it was made on: something else put in starts from nothing.
+            int tag = can ? Tag(a[In].Item) : 0, tag0 = a[Cook].Item == CookItem ? a[Cook].Wear : 0;
+            if (cook > 0 && tag0 != tag) cook = 0;
             if (burn == 0 && can && !a[Fuel].Empty)
             {
                 int t = FuelTicks(a[Fuel].Item);
@@ -90,8 +95,16 @@ namespace Stratum.Core
             }
             else cook = Math.Max(0, cook - 2);        // the fire is out: what was half done cools off
             if (burn != burn0) { a[Burn] = burn > 0 ? new Stack(BurnItem, burn) { Wear = full } : Stack.None; changed |= 1 << Burn; }
-            if (cook != cook0) { a[Cook] = cook > 0 ? new Stack(CookItem, cook) : Stack.None; changed |= 1 << Cook; }
+            if (cook != cook0 || cook > 0 && tag0 != tag) { a[Cook] = cook > 0 ? new Stack(CookItem, cook) { Wear = tag } : Stack.None; changed |= 1 << Cook; }
             return changed;
+        }
+
+        // A short number for an item's name (never 0), kept with the progress so it can't pass to another recipe.
+        static int Tag(string item)
+        {
+            uint h = 2166136261;
+            foreach (char ch in item) h = (h ^ ch) * 16777619;
+            return (int)(h % 65535) + 1;
         }
 
         // A hidden slot's marker: never handed to a player.
@@ -110,14 +123,26 @@ namespace Stratum.Core
 
         public Furnaces(Containers boxes) { _boxes = boxes; }
 
-        public void Wake(int x, int y, int z) => _active.Add(Containers.Key(x, y, z));
+        public void Wake(int x, int y, int z)
+        {
+            var a = _boxes.At(x, y, z);
+            if (a.Length > Smelting.Mark && a[Smelting.Mark].Item != Smelting.MarkItem) { a[Smelting.Mark] = new Stack(Smelting.MarkItem, 1); _boxes.Dirty = true; }
+            _active.Add(Containers.Key(x, y, z));
+        }
 
         // After loading: every furnace that was burning or part-way through carries on.
         public void WakeSaved()
         {
             foreach (var kv in _boxes.All)
-                if (kv.Value.Length >= Smelting.Slots && (kv.Value[Smelting.Burn].Item == Smelting.BurnItem || kv.Value[Smelting.Cook].Item == Smelting.CookItem))
-                    _active.Add(kv.Key);
+            {
+                var a = kv.Value;
+                if (a.Length < Smelting.Slots) continue;
+                bool going = a[Smelting.Burn].Item == Smelting.BurnItem || a[Smelting.Cook].Item == Smelting.CookItem;
+                // Loaded and fuelled but not yet lit when it was saved: it starts now. Only containers known to be
+                // furnaces, or a chest with ore above coal would start smelting.
+                bool ready = a.Length > Smelting.Mark && a[Smelting.Mark].Item == Smelting.MarkItem && Smelting.Busy(a);
+                if (going || ready) _active.Add(kv.Key);
+            }
         }
 
         public void Tick(float dt)

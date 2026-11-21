@@ -329,6 +329,10 @@ namespace Stratum.Game
                     int x = r.I32(), y = r.I32(), z = r.I32(); byte id = r.U8(); int by = r.I32();
                     if (by == _myId) break;                    // our own edit coming back: already here
                     _world.ApplyRemote(x, y, z, id);
+                    // The chest or furnace on screen has just been broken or replaced: what the screen shows is no
+                    // longer there to take.
+                    if (_hud != null && _hud.BoxOpen && _hud.BoxAt == new Vector3Int(x, y, z) && !Blocks.Get(id).Container)
+                    { _hud.ForgetBox(); CloseInventory(); _hud.Toast("That was taken away"); }
                     break;
                 }
                 case Net.Msg.Joined:
@@ -416,13 +420,17 @@ namespace Stratum.Game
                 case Net.Msg.Box:
                 {
                     var at = new Vector3Int(r.I32(), r.I32(), r.I32());
-                    _link?.BoxOpened?.Invoke(at, r.Stacks());
+                    var all = r.Stacks();
+                    (_link as RemoteLink)?.Saw(at, all);
+                    _link?.BoxOpened?.Invoke(at, all);
                     break;
                 }
                 case Net.Msg.BoxSet:
                 {
                     var at = new Vector3Int(r.I32(), r.I32(), r.I32()); int slot = r.U8();
-                    _link?.BoxChanged?.Invoke(at, slot, r.Slot());
+                    var now = r.Slot();
+                    (_link as RemoteLink)?.Saw(at, slot, now);
+                    _link?.BoxChanged?.Invoke(at, slot, now);
                     break;
                 }
                 case Net.Msg.Sleepers:

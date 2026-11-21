@@ -142,10 +142,45 @@ namespace Stratum.Game
                         c.Ready = true;
                         return;
                     }
-                    catch (Exception e) { Debug.LogWarning("chunk " + path + " unreadable, regenerating: " + e.Message); }
+                    catch (Exception e)
+                    {
+                        // Keep the damaged file and look for this chunk in the world's backups before making new land.
+                        try { File.Copy(path, path + ".bad", true); } catch { }
+                        Array.Clear(c.Blocks, 0, c.Blocks.Length);
+                        string from = RecoverChunk(c, path);
+                        if (from != null)
+                        {
+                            Debug.LogWarning($"chunk {c.X},{c.Z} was unreadable ({e.Message}); restored from the backup of {from}");
+                            Gen.TintOnly(c); c.Modified = true; c.Ready = true;
+                            return;
+                        }
+                        Debug.LogWarning($"chunk {c.X},{c.Z} is unreadable and no backup has it ({e.Message}). Fresh land is used; the damaged file is kept as {path}.bad");
+                        Array.Clear(c.Blocks, 0, c.Blocks.Length);
+                    }
                 }
             }
             Gen.Generate(c);
+        }
+
+        // The newest backup of this world that holds a readable copy of the chunk (see WorldStore.Backup).
+        string RecoverChunk(Chunk c, string path)
+        {
+            try
+            {
+                string world = Path.GetFileName(SaveDir.TrimEnd(Path.DirectorySeparatorChar));
+                string root = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(SaveDir).TrimEnd(Path.DirectorySeparatorChar))), "backups", world);
+                if (!Directory.Exists(root)) return null;
+                var stamps = Directory.GetDirectories(root); Array.Sort(stamps, StringComparer.Ordinal); Array.Reverse(stamps);
+                foreach (var stamp in stamps)
+                {
+                    string cand = Path.Combine(stamp, "chunks", Path.GetFileName(path));
+                    if (!File.Exists(cand)) continue;
+                    try { using (var f = File.OpenRead(cand)) c.Read(f); return Path.GetFileName(stamp); }
+                    catch { Array.Clear(c.Blocks, 0, c.Blocks.Length); }
+                }
+            }
+            catch { }
+            return null;
         }
 
         void FromServer(Chunk c, byte[] data)

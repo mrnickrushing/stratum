@@ -100,9 +100,12 @@ namespace Stratum.Core
 
         public Packet Stacks(Stack[] slots)
         {
-            _w.Write((byte)slots.Length);
-            foreach (var s in slots)
+            // The count travels in one byte: never more than 255, or the reader would lose its place.
+            int n = Math.Min(slots.Length, 255);
+            _w.Write((byte)n);
+            for (int i = 0; i < n; i++)
             {
+                var s = slots[i];
                 Str(s.Empty ? "" : s.Item);
                 _w.Write((ushort)(s.Empty ? 0 : Math.Min(s.Count, 0xFFFF)));
                 _w.Write((ushort)Math.Clamp(s.Wear, 0, 0xFFFF));

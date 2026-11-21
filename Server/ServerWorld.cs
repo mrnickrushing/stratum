@@ -91,7 +91,21 @@ namespace Stratum.Server
                     if (File.Exists(path))
                     {
                         try { using var f = File.OpenRead(path); c.Read(f); loaded = true; }
-                        catch (Exception e) { Log.Warn($"chunk {c.X},{c.Z} unreadable, making it again: {e.Message}"); }
+                        catch (Exception e)
+                        {
+                            // What players built there must not be quietly replaced by fresh land: keep the damaged
+                            // file, and look for the chunk in the server's backups, newest first.
+                            try { File.Copy(path, path + ".bad", true); } catch { }
+                            c = new Chunk(c.X, c.Z);
+                            string from = Backups.Recover(path, cand => { var t = new Chunk(c.X, c.Z); using var bf = File.OpenRead(cand); t.Read(bf); c = t; });
+                            if (from != null)
+                            {
+                                loaded = true;
+                                Log.Warn($"chunk {c.X},{c.Z} was unreadable ({e.Message}); restored from {from}");
+                                try { var tmp = path + ".tmp"; using (var wf = File.Create(tmp)) c.Write(wf); File.Move(tmp, path, true); } catch { }
+                            }
+                            else Log.Warn($"chunk {c.X},{c.Z} is unreadable and no backup has it: {e.Message}. Fresh land is used; the damaged file is kept as {path}.bad");
+                        }
                     }
                     if (!loaded) Gen.Generate(c);
                     c.Ready = true;
@@ -161,15 +175,21 @@ namespace Stratum.Server
         // Saves changed chunks; drops chunks no one is near.
         public void Maintain(Func<int, int, bool> needed, bool unload)
         {
-            foreach (long k in _dirty) if (_chunks.TryGetValue(k, out var c)) SaveChunk(c);
+            // A chunk that couldn't be written stays on the list (and in memory) until it can.
+            _failed.Clear();
+            foreach (long k in _dirty) if (_chunks.TryGetValue(k, out var c) && !SaveChunk(c)) _failed.Add(k);
             _dirty.Clear();
+            foreach (long k in _failed) _dirty.Add(k);
             if (!unload) return;
             var gone = new List<long>();
-            foreach (var kv in _chunks) if (!needed(kv.Value.X, kv.Value.Z)) gone.Add(kv.Key);
+            foreach (var kv in _chunks) if (!needed(kv.Value.X, kv.Value.Z) && !_dirty.Contains(kv.Key)) gone.Add(kv.Key);
             foreach (long k in gone) { _chunks.Remove(k); _packed.Remove(k); }
         }
 
-        void SaveChunk(Chunk c)
+        readonly List<long> _failed = new List<long>();
+        public int Unsaved => _dirty.Count;
+
+        bool SaveChunk(Chunk c)
         {
             try
             {
@@ -177,8 +197,9 @@ namespace Stratum.Server
                 var tmp = path + ".tmp";
                 using (var f = File.Create(tmp)) c.Write(f);
                 File.Move(tmp, path, true);
+                return true;
             }
-            catch (Exception e) { Log.Warn($"could not save chunk {c.X},{c.Z}: {e.Message}"); }
+            catch (Exception e) { Log.Warn($"could not save chunk {c.X},{c.Z} (will try again): {e.Message}"); return false; }
         }
 
         public void SaveMeta()

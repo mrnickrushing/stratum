@@ -359,6 +359,8 @@ namespace Stratum.Game
         }
 
         public bool BoxOpen => InventoryOpen && (_station == "chest" || _station == "smelt");
+        // The container on screen is gone: nothing more may be taken from what was shown.
+        public void ForgetBox() { if (_box != null) for (int i = 0; i < _box.Length; i++) _box[i] = Stack.None; }
         public Vector3Int BoxAt => _boxAt;
 
         public void OpenInventory(string station)

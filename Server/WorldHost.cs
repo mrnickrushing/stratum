@@ -280,7 +280,13 @@ namespace Stratum.Server
 
             // The same account coming back (a dropped connection, or another computer) replaces the old session.
             foreach (var o in _players.Values.ToList())
-                if (o.Joined && o != p && o.Key == key) o.Conn.Close("logged in again elsewhere");
+                if (o.Joined && o != p && o.Key == key)
+                {
+                    // Their place and their things as they are right now are written before the new session reads
+                    // them: closing alone would save too late, and the newcomer would get what was on disk.
+                    Leave(o.Conn, "logged in again elsewhere");
+                    o.Conn.Close("logged in again elsewhere");
+                }
 
             p.Name = name; p.Key = key;
             p.Rec = PlayerRecord.Load(_cfg.Dir, key) ?? new PlayerRecord();
@@ -407,10 +413,12 @@ namespace Stratum.Server
                        : cur != old ? $"it was {Blocks.Get(cur).Name}, not {Blocks.Get(old).Name}"
                        : !_cfg.Creative && Blocks.Get(cur).Hardness < 0 && !(Blocks.Get(cur).Fluid != 0 && Blocks.Get(cur).Level == 0 && id == 0) ? "unbreakable"
                        : id != 0 && cur != 0 && !Blocks.Get(cur).Replaceable ? "something is in the way"
+                       : Blocks.Get(cur).Container && !Blocks.Get(id).Container && InUse(p, x, y, z, out string user) ? $"{user} has it open"
                        : null;
             if (why != null)
             {
                 p.Conn.Send(BlockPacket(x, y, z, cur, 0));                       // put them right
+                if (why.EndsWith("has it open")) p.Conn.Send(SaidPacket("", why.Replace("has it open", "is using that. Wait for them to close it.")));
                 if (p.Refused++ < 20) Log.Info($"refused {p.Name}'s edit at {x} {y} {z}: {why}");
                 return;
             }
@@ -421,6 +429,14 @@ namespace Stratum.Server
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
                 foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty && !Smelting.Hidden(st.Item)) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
+        }
+
+        // Whether someone else has the container at this place open.
+        bool InUse(Player p, int x, int y, int z, out string who)
+        {
+            foreach (var o in _players.Values)
+                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) { who = o.Name; return true; }
+            who = null; return false;
         }
 
         void Chat(Player p, Reader r)
@@ -536,9 +552,7 @@ namespace Stratum.Server
             int x = r.I32(), y = r.I32(), z = r.I32();
             if (!InReach(p, x, y, z) || !Blocks.Get(World.Get(x, y, z)).Container) return;
             // One pair of hands in a chest at a time: two people moving the same stack at once could copy or lose it.
-            foreach (var o in _players.Values)
-                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
-                { p.Conn.Send(SaidPacket("", $"{o.Name} is using that. Wait for them to close it.")); return; }
+            if (InUse(p, x, y, z, out string user)) { p.Conn.Send(SaidPacket("", $"{user} is using that. Wait for them to close it.")); return; }
                         p.HasBox = true; p.BX = x; p.BY = y; p.BZ = z;
             p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
         }
@@ -546,13 +560,18 @@ namespace Stratum.Server
         void BoxSlot(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
+            bool hasSeen = r.More; var seen = hasSeen ? r.Slot() : default;       // 0.7.2: what the player saw in the slot before changing it
             if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
             if (!Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
             if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;              // the fire and the progress are the furnace's own
+            // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
+            var want = st;
+            if (hasSeen) st = Containers.Reconcile(_boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], seen, want);
             _boxes.Set(x, y, z, slot, st);
             if (furnace) _furnaces.Wake(x, y, z);
+            if (!Containers.Same(st, want)) p.Conn.Send(new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st));     // put their screen right
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
             foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
         }
@@ -567,11 +586,14 @@ namespace Stratum.Server
             if (!here && !safe) { if (p.Y < 1 && p.HasSafe) { x = p.SX; y = p.SY; z = p.SZ; } else { x = p.X; y = p.Y; z = p.Z; } }
             bool any = false; foreach (var s in st) if (!s.Empty) any = true;
             if (!any) return;
+            if (st.Length > Containers.MaxSlots) Array.Resize(ref st, Containers.MaxSlots);
             int ix = (int)Math.Floor(x), iz = (int)Math.Floor(z);
             if (!World.IsLoaded(ix, iz)) return;
             // Into a satchel already there if there's room, else a new one.
             var (sx, sy, sz) = Containers.SpotFor(World.Get, ix, (int)Math.Floor(y), iz);
-            _boxes.Put(sx, sy, sz, Merge(_boxes.Has(sx, sy, sz) ? _boxes.Remove(sx, sy, sz) : Array.Empty<Stack>(), st));
+            var into = Merge(_boxes.Has(sx, sy, sz) ? _boxes.Remove(sx, sy, sz) : Array.Empty<Stack>(), st);
+            if (into.Length > Containers.MaxSlots) into = Merge(Array.Empty<Stack>(), st);        // never a container too big to send
+            _boxes.Put(sx, sy, sz, into);
             World.SetRaw(sx, sy, sz, Blocks.Satchel);
             Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");

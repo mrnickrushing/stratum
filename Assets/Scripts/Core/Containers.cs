@@ -54,6 +54,24 @@ namespace Stratum.Core
             return a;
         }
 
+        public static bool Same(Stack a, Stack b) => a.Empty ? b.Empty : !b.Empty && a.Item == b.Item && a.Count == b.Count && a.Wear == b.Wear;
+
+        // A player changed a slot from what they saw (`seen`) to `want`, but the slot really holds `now` (a furnace
+        // finished a piece, or used one, in between). What they did is applied as a difference, "took three" or
+        // "added five", to what is really there, so nothing made meanwhile is wiped out and nothing is counted twice.
+        public static Stack Reconcile(Stack now, Stack seen, Stack want)
+        {
+            if (Same(now, seen)) return want;
+            if (!seen.Empty && !want.Empty && seen.Item != want.Item) return want;      // swapped for something else: theirs stands
+            string item = want.Empty ? seen.Item : want.Item;
+            if (item == null) return now;
+            int delta = (want.Empty ? 0 : want.Count) - (seen.Empty ? 0 : seen.Count);
+            if (now.Empty) return delta > 0 ? new Stack(item, delta) { Wear = want.Wear } : Stack.None;
+            if (now.Item != item || now.Wear != 0 || want.Wear != 0) return want;
+            int n = Math.Clamp(now.Count + delta, 0, Items.Get(item)?.MaxStack ?? 64);
+            return n > 0 ? new Stack(item, n) : Stack.None;
+        }
+
         public bool Has(int x, int y, int z) => _boxes.ContainsKey(Key(x, y, z));
         public bool TryGet(long key, out Stack[] slots) => _boxes.TryGetValue(key, out slots);
         public IEnumerable<KeyValuePair<long, Stack[]>> All => _boxes;
