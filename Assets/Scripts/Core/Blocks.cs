@@ -9,7 +9,7 @@ namespace Stratum.Core
     public enum Connect : byte { None, Fence, Wall, Pane, Wire }
 
     // Texture layers used by block faces. BlockTextures (Game) paints one layer per entry, in this order.
-    public enum Tex : byte
+    public enum Tex : ushort
     {
         Stone, Slate, Basalt, Bedrock, Dirt, GrassTop, GrassSide, Sand, Gravel, SandstoneSide, SandstoneTop,
         Snow, SnowSide, Ice, Water, Clay,
@@ -28,6 +28,8 @@ namespace Stratum.Core
         FarmlandDry, FarmlandWet, Wheat0, Wheat1, Wheat2, Wheat3, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayTop, HaySide,
         ChuteTop, ChuteSide,
         Plaster, TimberFrame, RoofTiles, PolishedStone, DarkPlanks, WhitePlanks, Bookshelf, BarrelTop, BarrelSide, Hearth, Lantern, PottedPlant, Lattice,
+        // 0.11: colours, doors and furniture
+        WoolOrange, WoolLime, WoolCyan, WoolLightBlue, WoolPurple, WoolMagenta, WoolPink, WoolLightGrey, PlasterTint0, PlasterTint1, PlasterTint2, PlasterTint3, PlasterTint4, PlasterTint5, PlasterTint6, PlasterTint7, PlasterTint8, PlasterTint9, PlasterTint10, PlasterTint11, PlasterTint12, PlasterTint13, PlasterTint14, PlasterTint15, Tiles0, Tiles1, Tiles2, Tiles3, Tiles4, Tiles5, Tiles6, Tiles7, Tiles8, Tiles9, Tiles10, Tiles11, Tiles12, Tiles13, Tiles14, Tiles15, PaintedPlanks0, PaintedPlanks1, PaintedPlanks2, PaintedPlanks3, PaintedPlanks4, PaintedPlanks5, DoorBirchLower, DoorBirchUpper, DoorPineLower, DoorPineUpper, DoorDarkLower, DoorDarkUpper, CabinetFront, StoveFront, FridgeFront, TvFront, PianoFront, Picture0, Picture1, Picture2, ClockFace, MirrorGlass, Porcelain, Candle, LampShade, CrateSide, StoveTop, PottedYellow, PottedBlue,
         Count
     }
 
@@ -67,6 +69,8 @@ namespace Stratum.Core
         public ushort Level;               // fluids: 0 a source, then 1, 2... further from it
         public ushort Pair;                // slabs: the whole block two of them make; doors: unused
         public bool Opens;               // doors, trapdoors, gates: right-click opens and closes
+        public bool Door;                // a door: two blocks tall, 16 numbers (facing * 4 + open * 2 + upper)
+        public bool OnWall;              // hangs on the side of a block (4 numbers, by which wall), like a ladder
         public string Bonus2;            // a second thing it sometimes drops
         public float Bonus2Chance;
         public ushort Grows;               // 1 wheat, 2 sapling, 3 sugar cane: grows by itself over time
@@ -95,7 +99,7 @@ namespace Stratum.Core
         public Box Turn(int times) { var b = this; for (int i = 0; i < (times & 3); i++) b = b.Turn(); return b; }
     }
 
-    public static class Blocks
+    public static partial class Blocks
     {
         public const ushort Air = 0;
         public const int Max = 4096;                 // block numbers go up to here (two bytes on disk and on the wire)
@@ -295,7 +299,7 @@ namespace Stratum.Core
             OakDoor = Facings("oak_door", "Oak Door", 16, (d, i) =>
             {
                 bool open = (i / 2) % 2 == 1, upper = i % 2 == 1;
-                d.Variant = i % 4; d.Opens = true;
+                d.Variant = i % 4; d.Opens = true; d.Door = true;
                 d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Hardness = 3; d.Tool = Tool.Axe; d.Sound = Sound.Wood;
                 d.Side = upper ? Tex.DoorUpper : Tex.DoorLower; d.Top = d.Bottom = Tex.OakPlanks; d.FlatIcon = true;
                 d.Boxes = new[] { open ? Box.Px(0, 0, 0, 3, 16, 16) : Box.Px(0, 0, 0, 16, 16, 3) };
@@ -516,6 +520,8 @@ namespace Stratum.Core
             b.Hardness = 0.3f; b.Sound = Sound.Glass; b.Boxes = ConnectBoxes(Connect.Pane, 0);
             b = Add("stone_pillar", "Stone Pillar", Tex.PolishedStone); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 1.5f; b.Sound = Sound.Stone; b.Tool = Tool.Pickaxe;
             b.Boxes = new[] { Box.Px(2, 0, 2, 14, 2, 14), Box.Px(4, 2, 4, 12, 14, 12), Box.Px(2, 14, 2, 14, 16, 14) };
+
+            Building();
 
             Palette.Remove(Water);
         }

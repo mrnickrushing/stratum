@@ -400,10 +400,10 @@ namespace Stratum.Game
             if (id == 0 || def.Hardness < 0 && !P.Creative) return;
             if (!World.Set(p.x, p.y, p.z, 0)) return;
             // A door goes as a whole.
-            if (def.BaseId == Blocks.OakDoor)
+            if (def.Door)
             {
                 var other = (def.Variant & 1) == 1 ? p + Vector3Int.down : p + Vector3Int.up;
-                if (Blocks.Get(World.Get(other.x, other.y, other.z)).BaseId == Blocks.OakDoor) World.Set(other.x, other.y, other.z, 0);
+                if (Blocks.Get(World.Get(other.x, other.y, other.z)).Door) World.Set(other.x, other.y, other.z, 0);
             }
             // A bed goes as a whole.
             if (def.BaseId == Blocks.Bed)
@@ -458,7 +458,7 @@ namespace Stratum.Game
                 if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }
-                if (tdef.BaseId == Blocks.Chest || target == Blocks.Chute || target == Blocks.Barrel) { OpenBox?.Invoke(Target); return; }
+                if (tdef.Container && target != Blocks.Satchel) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }
@@ -552,14 +552,14 @@ namespace Stratum.Game
                 Placed(id);
                 return;
             }
-            if (id == Blocks.OakDoor)
+            if (def.Door)
             {
                 var up = at + Vector3Int.up;
                 ushort uc = World.Get(up.x, up.y, up.z);
                 if (uc != 0 && !Blocks.Get(uc).Replaceable || P.Overlaps(at.x, at.y, at.z) || P.Overlaps(up.x, up.y, up.z)) { Toast?.Invoke("No room for a door here"); return; }
                 if (!Blocks.Get(below).Solid) return;
-                if (!World.Set(at.x, at.y, at.z, (ushort)(Blocks.OakDoor + f * 4))) return;
-                World.Set(up.x, up.y, up.z, (ushort)(Blocks.OakDoor + f * 4 + 1));
+                if (!World.Set(at.x, at.y, at.z, (ushort)(id + f * 4))) return;
+                World.Set(up.x, up.y, up.z, (ushort)(id + f * 4 + 1));
                 Placed(id);
                 return;
             }
@@ -571,6 +571,12 @@ namespace Stratum.Game
             }
             else if (Blocks.Stairs.Contains(id) || def.BaseId == Blocks.FenceGate) place = (ushort)(id + (def.BaseId == Blocks.FenceGate ? f * 2 : f));
             else if (id == Blocks.Trapdoor) place = (ushort)(Blocks.Trapdoor + f * 2);
+            else if (def.OnWall)
+            {
+                // Pictures, mirrors, clocks and shelves hang on the side of something solid.
+                if (TargetNormal.y != 0 || !Blocks.Get(target).Solid) return;
+                place = (ushort)(id + DirOf(-TargetNormal));
+            }
             else if (id == Blocks.Ladder)
             {
                 // On the side of something solid.
@@ -635,9 +641,9 @@ namespace Stratum.Game
                 var up = p + Vector3Int.up;
                 ushort id = World.Get(up.x, up.y, up.z);
                 var d = Blocks.Get(id);
-                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.BaseId == Blocks.OakDoor && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id);
+                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id);
                 if (id == 0 || !needs) return;
-                if (d.BaseId == Blocks.OakDoor) World.Set(up.x, up.y + 1, up.z, 0);
+                if (d.Door) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);
                 GiveDrop(d);
                 if (id != Blocks.SugarCane) return;
@@ -672,13 +678,13 @@ namespace Stratum.Game
         void Toggle(Vector3Int p, BlockDef d)
         {
             ushort id = World.Get(p.x, p.y, p.z);
-            if (d.BaseId == Blocks.OakDoor)
+            if (d.Door)
             {
                 bool upper = (d.Variant & 1) == 1;
                 var other = upper ? p + Vector3Int.down : p + Vector3Int.up;
                 World.Set(p.x, p.y, p.z, Blocks.Flip(id, 2));
                 ushort oid = World.Get(other.x, other.y, other.z);
-                if (Blocks.Get(oid).BaseId == Blocks.OakDoor) World.Set(other.x, other.y, other.z, Blocks.Flip(oid, 2));
+                if (Blocks.Get(oid).Door) World.Set(other.x, other.y, other.z, Blocks.Flip(oid, 2));
                 Sfx.I?.Play((d.Variant & 2) == 0 ? "door_open" : "door_close", 0.7f);
             }
             else

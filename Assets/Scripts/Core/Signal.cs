@@ -325,7 +325,7 @@ namespace Stratum.Core
                     {
                         // Doors count power on either half; they swing when it comes or goes.
                         bool p = Powered(c, x, y, z);
-                        bool door = def.BaseId == Blocks.OakDoor;
+                        bool door = def.Door;
                         if (door)
                         {
                             var other = (def.Variant & 1) == 1 ? (x, y - 1, z) : (x, y + 1, z);
@@ -342,7 +342,7 @@ namespace Stratum.Core
                         {
                             var other = (def.Variant & 1) == 1 ? (x, y - 1, z) : (x, y + 1, z);
                             ushort oid = _get(other.Item1, other.Item2, other.Item3);
-                            if (Blocks.Get(oid).BaseId == Blocks.OakDoor && ((Blocks.Get(oid).Variant & 2) != 0) != p)
+                            if (Blocks.Get(oid).Door && ((Blocks.Get(oid).Variant & 2) != 0) != p)
                             {
                                 _set(other.Item1, other.Item2, other.Item3, Blocks.Flip(oid, 2));
                                 if (p) _was.Add(other); else _was.Remove(other);

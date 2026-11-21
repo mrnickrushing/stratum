@@ -240,6 +240,59 @@ namespace Stratum.Core
             R("flower_pot", 1, "workbench", ("clay_bricks", 3), ("red_flower", 1));
             R("lattice_window", 8, "workbench", ("glass", 4), ("stick", 2));
             R("stone_pillar", 2, "workbench", ("stone", 3));
+            // The 0.11 building set. A colour comes from wool of that colour.
+            R("orange_wool", 1, null, ("white_wool", 1), ("red_flower", 1), ("yellow_flower", 1));
+            R("lime_wool", 1, null, ("white_wool", 1), ("cactus", 1), ("yellow_flower", 1));
+            R("cyan_wool", 1, null, ("white_wool", 1), ("cactus", 1), ("blue_flower", 1));
+            R("light_blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1), ("bone_meal", 1));
+            R("purple_wool", 1, null, ("white_wool", 1), ("red_flower", 1), ("blue_flower", 1));
+            R("magenta_wool", 1, null, ("purple_wool", 1), ("red_flower", 1));
+            R("pink_wool", 1, null, ("white_wool", 1), ("red_flower", 1), ("bone_meal", 1));
+            R("light_grey_wool", 1, null, ("grey_wool", 1), ("bone_meal", 1));
+            foreach (var (key, _, _) in Blocks.Dyes)
+            {
+                if (key != "red" && key != "blue") R("carpet_" + key, 3, "workbench", (key + "_wool", 2));
+                if (key != "white") R("plaster_" + key, 4, "workbench", ("plaster", 4), (key + "_wool", 1));
+                R("tiles_" + key, 4, "workbench", ("polished_stone", 4), (key + "_wool", 1));
+            }
+            foreach (var c in Blocks.PaintedPlanks) R(c + "_planks", 4, "workbench", ("@planks", 4), (c + "_wool", 1));
+            foreach (var m in Blocks.SlabMaterials) R(m.Split('|')[0] + "_slab", 6, "workbench", (m.Split('|')[1], 3));
+            foreach (var m in Blocks.StairMaterials) R(m.Split('|')[0] + "_stairs", 4, "workbench", (m.Split('|')[1], 6));
+            foreach (var m in Blocks.WallMaterials) R(m.Split('|')[0] + "_wall", 6, "workbench", (m.Split('|')[1], 6));
+            foreach (var w in Blocks.Woods)
+            {
+                R(w + "_fence", 3, "workbench", (w + "_planks", 4), ("stick", 2));
+                R(w + "_door", 3, "workbench", (w + "_planks", 6));
+            }
+            R("picket_fence", 3, "workbench", ("white_planks", 4), ("stick", 2));
+            R("hedge", 4, "workbench", ("oak_leaves", 4));
+            R("chair", 1, "workbench", ("@planks", 2), ("stick", 3));
+            R("bench", 1, "workbench", ("@planks", 3), ("stick", 4));
+            foreach (var c in Blocks.SofaColours) R("sofa_" + c, 1, "workbench", (c + "_wool", 4), ("@planks", 2));
+            R("cabinet", 1, "workbench", ("@planks", 6), ("stick", 2));
+            R("wardrobe", 1, "workbench", ("@planks", 6), ("white_wool", 2));
+            R("crate", 1, "workbench", ("@planks", 4), ("stick", 4));
+            R("counter", 1, "workbench", ("@planks", 4), ("polished_stone", 2));
+            R("shelf", 2, "workbench", ("@planks", 3), ("stick", 1));
+            R("stove", 1, "workbench", ("iron_ingot", 6), ("coal", 2));
+            R("fridge", 1, "workbench", ("iron_ingot", 6), ("glass", 1));
+            R("screen", 1, "workbench", ("iron_ingot", 2), ("glass", 2), ("spark", 1));
+            R("piano", 1, "workbench", ("@planks", 6), ("thread", 3));
+            R("bathtub", 1, "workbench", ("clay", 6));
+            R("toilet", 1, "workbench", ("clay", 4));
+            R("sink", 1, "workbench", ("clay", 3), ("iron_ingot", 1));
+            R("mailbox", 1, "workbench", ("iron_ingot", 3), ("stick", 1));
+            R("painting_sunset", 1, "workbench", ("stick", 4), ("white_wool", 1), ("red_flower", 1));
+            R("painting_lake", 1, "workbench", ("stick", 4), ("white_wool", 1), ("blue_flower", 1));
+            R("painting_forest", 1, "workbench", ("stick", 4), ("white_wool", 1), ("tall_grass", 1));
+            R("mirror", 1, "workbench", ("glass", 3), ("stick", 2));
+            R("wall_clock", 1, "workbench", ("gold_ingot", 2), ("@planks", 2));
+            R("floor_lamp", 1, "workbench", ("torch", 1), ("stick", 2), ("white_wool", 1));
+            R("candle", 2, "workbench", ("thread", 1), ("bone_meal", 2));
+            R("chandelier", 1, "workbench", ("gold_ingot", 3), ("torch", 4));
+            R("lamp_post", 1, "workbench", ("iron_ingot", 3), ("torch", 1));
+            R("flower_pot_yellow", 1, "workbench", ("clay_bricks", 3), ("yellow_flower", 1));
+            R("flower_pot_blue", 1, "workbench", ("clay_bricks", 3), ("blue_flower", 1));
             // Farming.
             R("bread", 1, "workbench", ("wheat", 3));
             R("hay_bale", 1, "workbench", ("wheat", 9));

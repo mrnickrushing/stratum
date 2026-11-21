@@ -455,6 +455,19 @@ namespace Stratum.Server
                     Check(through > 3 && through < near, $"and through a doorway the light carries on ({through})");
                 }
 
+                {
+                    string missing = "";
+                    foreach (var rc in Items.Recipes)
+                    {
+                        if (Items.Get(rc.Out) == null) missing += " " + rc.Out;
+                        foreach (var (item, _) in rc.In) if (item[0] != '@' && Items.Get(item) == null) missing += " " + item;
+                    }
+                    Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
+                    int unmade = 0; string which = "";
+                    foreach (var id in Blocks.Palette)
+                        if (id >= Blocks.ByKey["orange_wool"] && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                    Check(unmade == 0, "every block of the 0.11 building set can be crafted" + which);
+                }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
                 {
                     int shaped = 0, wrong = 0; string firstWrong = "";

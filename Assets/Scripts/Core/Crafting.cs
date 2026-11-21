@@ -38,13 +38,13 @@ namespace Stratum.Core
             ("hay_bale", new[] { "AAA", "AAA", "AAA" }),
             ("*_slab", new[] { "AAA" }),
             ("*_stairs", new[] { "A  ", "AA ", "AAA" }),
-            ("oak_door", new[] { "AA", "AA", "AA" }),
+            ("*_door", new[] { "AA", "AA", "AA" }),
             ("trapdoor", new[] { "AAA", "AAA" }),
-            ("cobble_wall", new[] { "AAA", "AAA" }),
+            ("*_wall", new[] { "AAA", "AAA" }),
             ("glass_pane", new[] { "AAA", "AAA" }),
             ("iron_bars", new[] { "AAA", "AAA" }),
             ("ladder", new[] { "A A", "AAA", "A A" }),
-            ("oak_fence", new[] { "ABA", "ABA" }),
+            ("*_fence", new[] { "ABA", "ABA" }),
             ("oak_fence_gate", new[] { "ABA", "ABA" }),
             ("sign", new[] { "AAA", "AAA", " B " }),
             ("bucket", new[] { "A A", " A " }),
@@ -116,7 +116,7 @@ namespace Stratum.Core
                 }
             if (filled == 0) return null;
             int h = r1 - r0 + 1, w = c1 - c0 + 1;
-            Recipe loose = null;
+            Recipe loose = null, wild = null;
             foreach (var r in Items.Recipes)
             {
                 if (r.Station == "furnace" || r.Station == "workbench" && n < 3) continue;
@@ -133,13 +133,16 @@ namespace Stratum.Core
                                 var s = grid[(r0 + y) * 3 + c0 + x];
                                 ok = ch == ' ' ? s.Empty : !s.Empty && Items.Matches(r.In[ch - 'A'].item, s.Item);
                             }
-                        if (ok) return r;
+                        // A recipe that names its wood (a birch door) comes before one that takes any planks.
+                        if (ok) { if (!Wild(r)) return r; wild ??= r; break; }
                     }
                 }
                 else if (loose == null && Loose(r, grid, n, filled)) loose = r;
             }
-            return loose;
+            return wild ?? loose;
         }
+
+        static bool Wild(Recipe r) { foreach (var (item, _) in r.In) if (item[0] == '@') return true; return false; }
 
         [ThreadStatic] static List<string> _have;
         [ThreadStatic] static List<bool> _used;
