@@ -152,8 +152,7 @@ the result, plus two hidden slots (`_burn`, `_cook`) for the fire and the progre
   world/player/accounts files, containers); the server also looks in `<data>/backups`. A world whose manifest can't
   be found anywhere is not started over.
 - *Monster light* spreads through open space like the light that is drawn (`MobSim.BlockLight`).
-- *CI*: `Tools/ci/server.yml` is a GitHub Actions workflow that builds the server and runs the self-test on every push
-  and pull request. Copy it to `.github/workflows/` to switch it on (that needs a login with the `workflow` scope).
+- *CI*: `.github/workflows/server.yml` builds the server and runs the self-test on every push and pull request.
 - *Linux installer*: checks the download against `/download/sums` and keeps the old copy until the new one is in place.
 
 **Worlds:** a server can run several worlds at once (`STRATUM_WORLDS`). The Multiplayer screen asks the server for them
