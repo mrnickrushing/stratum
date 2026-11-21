@@ -359,6 +359,20 @@ namespace Stratum.Game
         }
 
         public bool BoxOpen => InventoryOpen && (_station == "chest" || _station == "smelt");
+        // The server says `count` of this weren't there to take: out of the cursor first, then the pack.
+        public void TakeBack(string item, int count)
+        {
+            if (!_cursor.Empty && _cursor.Item == item)
+            {
+                int k = Mathf.Min(count, _cursor.Count); _cursor.Count -= k; count -= k;
+                if (_cursor.Count <= 0) _cursor = Stack.None;
+            }
+            for (int i = 0; i < _grid.Length && count > 0; i++)
+                if (!_grid[i].Empty && _grid[i].Item == item) { int k = Mathf.Min(count, _grid[i].Count); _grid[i].Count -= k; count -= k; if (_grid[i].Count <= 0) _grid[i] = Stack.None; _gridDirty = true; }
+            if (count > 0) P.Inv.Take(item, Mathf.Min(count, P.Inv.Count(item)));
+            _tagFor = "";
+        }
+
         // The container on screen is gone: nothing more may be taken from what was shown.
         public void ForgetBox() { if (_box != null) for (int i = 0; i < _box.Length; i++) _box[i] = Stack.None; }
         public Vector3Int BoxAt => _boxAt;

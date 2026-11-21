@@ -247,6 +247,7 @@ namespace Stratum.Server
             });
         }
 
+        public const int KnowsTransfers = 4;    // 0.7.2: says what it saw in a slot before changing it (needed for furnaces)
         long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
@@ -268,7 +269,7 @@ namespace Stratum.Server
             long order = ++_order;
             foreach (var w in Worlds) if (w != host) w.Drop(res.Key, order);
             _pending.Remove(p.Conn.Id);
-            host.Adopt(p.Conn, res, mode, version, outfit, order);
+            host.Adopt(p.Conn, res, mode, version, outfit, order, features);
         }
     }
 }

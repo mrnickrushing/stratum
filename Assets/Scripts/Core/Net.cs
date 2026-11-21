@@ -26,6 +26,7 @@ namespace Stratum.Core
             // server -> client
             Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73, Heard = 74,
             Mobs = 75, Hurt = 76, Give = 77, Box = 78, BoxSet = 79, Sleepers = 80, MobSound = 81, Sign = 82, Mounted = 83, Arrived = 84,
+            TakeBack = 85,       // 0.7.3: things the player took that weren't there any more (item, count)
         }
 
         // Player flags in Move/Moved.

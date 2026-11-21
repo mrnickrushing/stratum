@@ -44,7 +44,7 @@ namespace Stratum.Server
         public void Send(Packet p) { var b = p.Bytes(); _s.Write(b, 0, b.Length); }
 
         public int Outfit;
-        public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes;     // 0: act like a 0.3 client
+        public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes | GameServer.KnowsTransfers;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
         {
@@ -323,6 +323,40 @@ namespace Stratum.Server
                 Check(R(new Stack("iron_ore", 9), new Stack("iron_ore", 10), new Stack("iron_ore", 20)).Count == 19, "adding ten ore to a stack the furnace used one of gives nineteen");
                 Check(R(new Stack("iron_ingot", 3), new Stack("iron_ingot", 3), Stack.None).Empty, "and an up-to-date view is taken as it is");
 
+                // The player's side of it: what they must hand back or be given so nothing is made or lost.
+                var owed = new List<(string item, int n, int wear)>();
+                var left = Containers.Reconcile(Stack.None, new Stack("iron_ore", 2), Stack.None, owed);
+                Check(left.Empty && owed.Count == 1 && owed[0].item == "iron_ore" && owed[0].n == -2, "taking two ore the furnace had already used: both are taken back");
+                owed.Clear(); left = Containers.Reconcile(new Stack("iron_ore", 1), new Stack("iron_ore", 2), Stack.None, owed);
+                Check(left.Empty && owed.Count == 1 && owed[0].n == -1, "taking two when one was left: one is taken back");
+                owed.Clear(); left = Containers.Reconcile(new Stack("coal", 60), new Stack("coal", 50), new Stack("coal", 60), owed);
+                Check(left.Count == 64 && owed.Count == 1 && owed[0].n == 6, "adding ten where only four fit: six are given back");
+                owed.Clear(); left = Containers.Reconcile(new Stack("iron_ingot", 2), new Stack("iron_ingot", 1), Stack.None, owed);
+                Check(left.Count == 1 && owed.Count == 0, "taking the one ingot you saw: nothing is owed either way");
+                owed.Clear(); left = Containers.Reconcile(new Stack("iron_ore", 1), new Stack("iron_ore", 3), new Stack("gold_ore", 2), owed);
+                Check(left.Item == "gold_ore" && owed.Count == 1 && owed[0].item == "iron_ore" && owed[0].n == -2, "swapping three ore for gold when one was left: two ore are taken back");
+
+                // Satchels: a full one is never emptied to make room. The newcomers go beside it, or back to the player.
+                {
+                    var land = new Dictionary<(int, int, int), byte>();
+                    byte Land(int x, int y, int z) => land.TryGetValue((x, y, z), out var id) ? id : (y == 11 && z == 0 && (x == 0 || x == 1) ? (byte)0 : Blocks.Stone);   // two free cells in solid rock
+                    var sb = new Containers();
+                    var full = new Stack[Containers.MaxSlots]; for (int i = 0; i < full.Length; i++) full[i] = new Stack("cobble", 64);
+                    sb.Put(0, 11, 0, full); land[(0, 11, 0)] = Blocks.Satchel;
+                    var over = sb.Stash(Land, (x, y, z) => land[(x, y, z)] = Blocks.Satchel, 0, 11, 0, new[] { new Stack("torch", 1) });
+                    int cob = 0; foreach (var s in sb.At(0, 11, 0)) if (s.Item == "cobble") cob += s.Count;
+                    Check(over.Count == 0 && cob == Containers.MaxSlots * 64 && land.ContainsKey((1, 11, 0)) && sb.At(1, 11, 0)[0].Item == "torch",
+                          $"a torch dropped on a full satchel goes into a new one beside it ({cob / 64} stacks still in the first)");
+                    var lots = new Stack[250]; for (int i = 0; i < lots.Length; i++) lots[i] = new Stack("slate", 64);
+                    over = sb.Stash(Land, (x, y, z) => land[(x, y, z)] = Blocks.Satchel, 0, 11, 0, lots);
+                    int inSecond = 0; foreach (var s in sb.At(1, 11, 0)) if (!s.Empty) inSecond++;
+                    Check(inSecond == Containers.MaxSlots && over.Count == 250 - (Containers.MaxSlots - 1) && sb.At(0, 11, 0).Length == Containers.MaxSlots,
+                          $"with nowhere left, what doesn't fit is handed back, not dropped ({inSecond} in the second satchel, {over.Count} returned)");
+                    var merged = sb.Stash(Land, (x, y, z) => { }, 0, 11, 0, new Stack[0]);
+                    var two = Containers.Compact(new[] { new Stack("coal", 40), new Stack("coal", 40), new Stack("iron_pickaxe", 1) { Wear = 5 }, new Stack("iron_pickaxe", 1) { Wear = 5 } });
+                    Check(two.Count == 4 && two[0].Count == 64 && two[1].Count == 16 && two[2].Wear == 5, "stacks of the same thing join up; worn tools stay separate");
+                }
+
                 // A list of stacks too long for its one-byte count is cut, not garbled.
                 var many = new Stack[300]; for (int i = 0; i < many.Length; i++) many[i] = new Stack("cobble", 1 + i % 60);
                 var rd = new Reader(new Packet(Net.Msg.Box).Stacks(many).I32(777).Bytes().AsSpan(4).ToArray());      // without the length in front
@@ -546,7 +580,7 @@ namespace Stratum.Server
                 using (var a = new Bot(port))
                 using (var b = new Bot(port))
                 {
-                    a.Create("Ada", pwA);
+                    a.Create("Ada", pwA, world: "");      // a current game: it says which world (the first) and what it can do
                     Check(a.Welcome() && a.Seed == 20261119 && !a.HasPos && a.Name == "Ada" && a.Token.Length == 64, "Ada makes an account, joins, gets the seed and a remember-me token");
                     tokenA = a.Token;
                     b.Outfit = 3;
@@ -609,6 +643,7 @@ namespace Stratum.Server
                           $"taking what you saw leaves what arrived since, and your screen is put right ({put.Count} left)");
                     b.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(2).Slot(new Stack("cobble", 9)).Slot(new Stack("cobble", 3)));
                     b.Send(new Packet(Net.Msg.CloseBox));
+                    Check(b.Wait(Net.Msg.TakeBack, null, 300) == null && b.Wait(Net.Msg.Give, null, 300) == null, "and nothing is owed either way when what was there covers it");
                     Thread.Sleep(200);
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Chest));
                     var give = a.Wait(Net.Msg.Give);
@@ -622,13 +657,33 @@ namespace Stratum.Server
                     b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U8() == Blocks.Furnace);
                     a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
                     Check(a.Wait(Net.Msg.Box) != null, "Ada opens a furnace");
-                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(new Stack("iron_ore", 2)));
-                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.Fuel).Slot(new Stack("coal", 1)));
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(new Stack("iron_ore", 2)).Slot(Stack.None));
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.Fuel).Slot(new Stack("coal", 1)).Slot(Stack.None));
                     a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.Burn).Slot(new Stack("_burn", 9999)));      // she can't light it by hand
                     Stack fire = default;
                     Check(a.Wait(Net.Msg.BoxSet, r => { r.I32(); r.I32(); r.I32(); if (r.U8() != Smelting.Burn) return false; fire = r.Slot(); return true; }, 3000) != null
                           && fire.Count > 0 && fire.Count < Smelting.CookTicks * 8 && fire.Wear == Smelting.CookTicks * 8, $"the coal lights and burns down ({fire.Count} of {fire.Wear})");
                     Check(a.Wait(Net.Msg.BoxSet, r => { r.I32(); r.I32(); r.I32(); return r.U8() == Smelting.Cook && r.Slot().Count > 0; }, 3000) != null, "and the ore starts to smelt");
+                    // She takes "five" ore out, having seen five, but only two were ever there: three come back out of her hands.
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(Stack.None).Slot(new Stack("iron_ore", 5)));
+                    var tb = a.Wait(Net.Msg.TakeBack, null, 2000); string tbItem = tb?.Str(); int tbN = tb?.U16() ?? 0;
+                    Check(tbItem == "iron_ore" && tbN == 3, $"taking ore the furnace no longer has is put right: the extra is taken back ({tbN} {tbItem})");
+                    a.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(new Stack("iron_ore", 2)).Slot(Stack.None));
+                    // A game from before 0.7.2 can't say what it saw, so it may not use a furnace at all.
+                    a.Send(new Packet(Net.Msg.CloseBox)); Thread.Sleep(200);
+                    using (var old = new Bot(port) { Features = GameServer.KnowsKinds | GameServer.KnowsTypes })
+                    {
+                        old.Create("Olda", "olda-password", world: "");
+                        bool inOld = old.Welcome();
+                        old.Move(a.X, a.Y, a.Z); Thread.Sleep(200);
+                        old.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                        Check(inOld && old.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().StartsWith("Furnaces need the newest Stratum"), 2000) != null, "an older game is told furnaces need the update, and can't open one");
+                        old.Send(new Packet(Net.Msg.BoxSlot).I32(px).I32(py + 1).I32(pz).U8(Smelting.In).Slot(Stack.None));
+                    }
+                    Thread.Sleep(200);
+                    a.Send(new Packet(Net.Msg.OpenBox).I32(px).I32(py + 1).I32(pz));
+                    var fb = a.Wait(Net.Msg.Box); Stack[] fin = null; if (fb != null) { fb.I32(); fb.I32(); fb.I32(); fin = fb.Stacks(); }
+                    Check(fin != null && fin[Smelting.In].Item == "iron_ore", "and its attempt to empty the furnace did nothing");
                     a.Send(new Packet(Net.Msg.CloseBox));
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U8(0).U8(Blocks.Furnace));
                     var back1 = a.Wait(Net.Msg.Give); string gotItem = back1?.Str();
@@ -636,7 +691,7 @@ namespace Stratum.Server
                     Check(gotItem == "iron_ore" && back2 == null, "breaking it gives back the ore, and nothing of the fire");
 
                     // A whole pack (40 slots and the XP) in one satchel: every stack can be reached.
-                    var pack = new Stack[41]; for (int i = 0; i < pack.Length; i++) pack[i] = new Stack(i % 2 == 0 ? "cobble" : "torch", i + 1);
+                    var pack = new Stack[41]; for (int i = 0; i < pack.Length; i++) pack[i] = new Stack(i % 2 == 0 ? "cobble" : "torch", 64);
                     b.Move(b.X + 3, b.Y, b.Z); System.Threading.Thread.Sleep(150);
                     b.Send(new Packet(Net.Msg.Drop).F32(b.X + 3).F32(b.Y).F32(b.Z).Stacks(pack));
                     int tx = 0, ty = 0, tz = 0;
@@ -644,13 +699,13 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
                     var sbox = b.Wait(Net.Msg.Box); Stack[] held = null;
                     if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
-                    Check(held != null && held.Length >= 41 && held[40].Count == 41, $"a satchel holds a full pack of 41 stacks ({held?.Length} slots)");
+                    Check(held != null && held.Length >= 41 && held[40].Count == 64, $"a satchel holds a full pack of 41 stacks ({held?.Length} slots)");
                     b.Send(new Packet(Net.Msg.BoxSlot).I32(tx).I32(ty).I32(tz).U8(40).Slot(Stack.None));
                     b.Send(new Packet(Net.Msg.CloseBox));
                     b.Send(new Packet(Net.Msg.OpenBox).I32(tx).I32(ty).I32(tz));
                     sbox = b.Wait(Net.Msg.Box); held = null;
                     if (sbox != null) { sbox.I32(); sbox.I32(); sbox.I32(); held = sbox.Stacks(); }
-                    Check(held != null && held.Length > 40 && held[40].Empty && held[39].Count == 40, "and the last stack can be taken out of it");
+                    Check(held != null && held.Length > 40 && held[40].Empty && held[39].Count == 64, "and the last stack can be taken out of it");
                     b.Send(new Packet(Net.Msg.CloseBox));
 
                     var tone = new float[Voice.FrameSamples];

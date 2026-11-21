@@ -20,6 +20,7 @@ namespace Stratum.Server
         {
             public Connection Conn;
             public string Name, Key;
+            public int Features;                         // what this player's game knows how to do (GameServer.Knows...)
             public long Order;                           // which login this session came from (GameServer numbers them)
             public byte Outfit;                          // what other players see them wearing (the game's Extras page)
             public PlayerRecord Rec;
@@ -46,7 +47,7 @@ namespace Stratum.Server
         public readonly ServerWorld World;
         readonly ConcurrentQueue<(Connection c, byte[] f)> _inbox = new ConcurrentQueue<(Connection, byte[])>();
         readonly ConcurrentQueue<(Connection c, string why)> _closed = new ConcurrentQueue<(Connection, string)>();
-        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit, long order)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string, int, long)>();
+        readonly ConcurrentQueue<(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit, long order, int features)> _arrivals = new ConcurrentQueue<(Connection, Accounts.Result, Accounts.Mode, string, int, long, int)>();
         readonly GameServer _hub;
         public readonly WorldDef Def;
         readonly ConcurrentQueue<Action> _later = new ConcurrentQueue<Action>();   // work finished off the loop
@@ -54,6 +55,7 @@ namespace Stratum.Server
         readonly List<(float, float, float)> _bodies = new List<(float, float, float)>();
         readonly Containers _boxes = new Containers();
         Furnaces _furnaces;
+        readonly List<(string item, int n, int wear)> _owed = new List<(string, int, int)>();
         readonly List<Seen> _seen = new List<Seen>();
         int _lastSleepers = -1;
         readonly List<(float, float)> _near = new List<(float, float)>();
@@ -127,10 +129,10 @@ namespace Stratum.Server
         }
 
         // A logged-in player chose this world.
-        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit = 0, long order = 0)
+        public void Adopt(Connection c, Accounts.Result res, Accounts.Mode mode, string version, int outfit = 0, long order = 0, int features = 0)
         {
             c.Route((cn, f) => _inbox.Enqueue((cn, f)), (cn, why) => _closed.Enqueue((cn, why)));
-            _arrivals.Enqueue((c, res, mode, version, outfit, order));
+            _arrivals.Enqueue((c, res, mode, version, outfit, order, features));
         }
 
         // The same account is coming in to another world: end its session here.
@@ -162,7 +164,7 @@ namespace Stratum.Server
                 last = now;
                 try
                 {
-                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c, Outfit = (byte)Math.Clamp(a.outfit, 0, 255), Order = a.order }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
+                    while (_arrivals.TryDequeue(out var a)) { var np = new Player { Conn = a.c, Outfit = (byte)Math.Clamp(a.outfit, 0, 255), Order = a.order, Features = a.features }; _players[a.c.Id] = np; Admit(np, a.res, a.mode, a.version); }
                     while (_inbox.TryDequeue(out var m)) Handle(m.c, m.f);
                     while (_closed.TryDequeue(out var cl)) Leave(cl.c, cl.why);
                     while (_later.TryDequeue(out var a)) a();
@@ -171,6 +173,7 @@ namespace Stratum.Server
                     World.Collect(made);
                     foreach (var ch in made) Serve(ch);
 
+                    while (World.Notices.TryDequeue(out var note)) Broadcast(SaidPacket("", note));
                     World.Water.Tick(dt);
                     _weather.Tick(dt);
                     _furnaces.Tick(dt);
@@ -553,6 +556,8 @@ namespace Stratum.Server
             if (!InReach(p, x, y, z) || !Blocks.Get(World.Get(x, y, z)).Container) return;
             // One pair of hands in a chest at a time: two people moving the same stack at once could copy or lose it.
             if (InUse(p, x, y, z, out string user)) { p.Conn.Send(SaidPacket("", $"{user} is using that. Wait for them to close it.")); return; }
+            if (Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace && (p.Features & GameServer.KnowsTransfers) == 0)
+            { p.Conn.Send(SaidPacket("", "Furnaces need the newest Stratum. Get it at stratum.rushingtechnologies.com")); return; }
                         p.HasBox = true; p.BX = x; p.BY = y; p.BZ = z;
             p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
         }
@@ -568,10 +573,20 @@ namespace Stratum.Server
             if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;              // the fire and the progress are the furnace's own
             // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
             var want = st;
-            if (hasSeen) st = Containers.Reconcile(_boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], seen, want);
+            if (furnace && !hasSeen) return;       // a furnace changes under the player's hands: only games that say what they saw may use one
+            _owed.Clear();
+            if (hasSeen) st = Containers.Reconcile(_boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], seen, want, _owed);
             _boxes.Set(x, y, z, slot, st);
             if (furnace) _furnaces.Wake(x, y, z);
             if (!Containers.Same(st, want)) p.Conn.Send(new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st));     // put their screen right
+            // And their pack: the game counted what it saw as taken. What wasn't there comes back out of their
+            // hands, and what didn't fit goes back into them, so nothing is made or lost.
+            foreach (var (item, n, wear) in _owed)
+            {
+                if (Smelting.Hidden(item)) continue;
+                if (n > 0) p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(n).U16(wear));
+                else p.Conn.Send(new Packet(Net.Msg.TakeBack).Str(item).U16(-n));
+            }
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
             foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
         }
@@ -586,16 +601,19 @@ namespace Stratum.Server
             if (!here && !safe) { if (p.Y < 1 && p.HasSafe) { x = p.SX; y = p.SY; z = p.SZ; } else { x = p.X; y = p.Y; z = p.Z; } }
             bool any = false; foreach (var s in st) if (!s.Empty) any = true;
             if (!any) return;
-            if (st.Length > Containers.MaxSlots) Array.Resize(ref st, Containers.MaxSlots);
             int ix = (int)Math.Floor(x), iz = (int)Math.Floor(z);
             if (!World.IsLoaded(ix, iz)) return;
-            // Into a satchel already there if there's room, else a new one.
-            var (sx, sy, sz) = Containers.SpotFor(World.Get, ix, (int)Math.Floor(y), iz);
-            var into = Merge(_boxes.Has(sx, sy, sz) ? _boxes.Remove(sx, sy, sz) : Array.Empty<Stack>(), st);
-            if (into.Length > Containers.MaxSlots) into = Merge(Array.Empty<Stack>(), st);        // never a container too big to send
-            _boxes.Put(sx, sy, sz, into);
-            World.SetRaw(sx, sy, sz, Blocks.Satchel);
-            Broadcast(BlockPacket(sx, sy, sz, Blocks.Satchel, 0));
+            // Into satchels at and around the spot: one already there is topped up, a full one gets a neighbour,
+            // and anything that finds no room at all goes back to the player. Nothing is thrown away.
+            int sx = 0, sy = 0, sz = 0, made = 0;
+            var rest = _boxes.Stash(World.Get, (ax, ay, az) =>
+            {
+                World.SetRaw(ax, ay, az, Blocks.Satchel);
+                Broadcast(BlockPacket(ax, ay, az, Blocks.Satchel, 0));
+                if (made++ == 0) { sx = ax; sy = ay; sz = az; }
+            }, ix, (int)Math.Floor(y), iz, st);
+            foreach (var s in rest) p.Conn.Send(new Packet(Net.Msg.Give).Str(s.Item).U16(s.Count).U16(s.Wear));
+            if (rest.Count > 0) p.Conn.Send(SaidPacket("", "There was no room on the ground here: some things stayed with you."));
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
         }
 

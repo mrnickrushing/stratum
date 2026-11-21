@@ -100,7 +100,7 @@ namespace Stratum.Game
             }
             if (net.Connected == false) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "Couldn't connect."); yield break; }
             _menus.SetJoinStatus(mode == Menus.ModeCreate ? "Making your account..." : "Logging in...", false);
-            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(3).U8((byte)Extras.Outfit));    // 1: knows the world kinds
+            net.Send(new Packet(Net.Msg.Hello).I32(Net.Protocol).U8(mode).Str(user).Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(7).U8((byte)Extras.Outfit));    // 1: knows the world kinds
 
             Reader welcome = null; t = 0;
             while (welcome == null)
@@ -415,6 +415,13 @@ namespace Stratum.Game
                 {
                     string item = r.Str(); int count = r.U16(), wear = r.U16();
                     _link?.Gave?.Invoke(item, count, wear);
+                    break;
+                }
+                case Net.Msg.TakeBack:
+                {
+                    // Something taken from a furnace had already been used up by it: it comes back out of our hands.
+                    string item = r.Str(); int count = r.U16();
+                    _hud?.TakeBack(item, count);
                     break;
                 }
                 case Net.Msg.Box:
