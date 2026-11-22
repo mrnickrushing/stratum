@@ -106,10 +106,10 @@ namespace Stratum.Core
             ToolSet("stone", "Stone", 2, 130, 3.5f);
             ToolSet("copper", "Copper", 3, 220, 5f);
             ToolSet("iron", "Iron", 4, 400, 7f);
+            ToolSet("gold", "Golden", 4, 700, 8f);           // between iron and starstone, like golden armour
             ToolSet("star", "Starstone", 5, 1200, 9f);
-            ToolSet("gold", "Golden", 1, 40, 11f);           // soft: quick while it lasts
             Add(new ItemDef { Id = "starstone", Name = "Starstone" });
-            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("star", "Starstone", 5, 1200, 8f), ("gold", "Golden", 1, 40, 4f) })
+            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("gold", "Golden", 4, 700, 7.5f), ("star", "Starstone", 5, 1200, 8f) })
             {
                 Add(new ItemDef { Id = mat + "_sword", Name = name + " Sword", MaxStack = 1, Tool = Tool.Sword, Tier = tier, Durability = dur, Speed = 1.5f, Damage = dmg });
                 // Tools hit a little harder than a fist too.
@@ -138,7 +138,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bone_meal", Name = "Bone Meal" });
             Add(new ItemDef { Id = "paper", Name = "Paper" });
             Add(new ItemDef { Id = "book", Name = "Book" });
-            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("star", "Starstone", 5, 1200), ("gold", "Golden", 1, 40) })
+            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("gold", "Golden", 4, 700), ("star", "Starstone", 5, 1200) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });

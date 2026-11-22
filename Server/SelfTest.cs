@@ -1334,6 +1334,23 @@ namespace Stratum.Server
                     last = pts; lastWear = wear;
                 }
                 Check(rising && last == 20, "armour gets better and lasts longer set by set: hide, copper, iron, golden, starstone");
+                float lastSpeed = 0, lastHit = 0; int lastUses = 0; bool better = true;
+                foreach (var mat in new[] { "wood", "stone", "copper", "iron", "gold", "star" })
+                {
+                    var pick = Items.Get(mat + "_pickaxe"); var sword = Items.Get(mat + "_sword");
+                    if (pick.Speed <= lastSpeed || pick.Durability <= lastUses || sword.Damage <= lastHit) better = false;
+                    lastSpeed = pick.Speed; lastUses = pick.Durability; lastHit = sword.Damage;
+                }
+                Check(better && Mining.Drops(Blocks.Get(Blocks.StarOre), Items.Get("gold_pickaxe")), "tools get faster, last longer and hit harder level by level: wood, stone, copper, iron, golden, starstone");
+                {
+                    // A creature shut away far from anyone moves on by night, so it doesn't count against the open ground.
+                    var far = new MobSim(new Patch().Get, 3) { Spawning = false, Time01 = 0.9f };
+                    far.Spawn(MobKind.Ghoul, 60.5f, 11, 0.5f); var close = far.Spawn(MobKind.Ghoul, 12.5f, 11, 0.5f);
+                    var one = new List<Seen> { new Seen { Id = 1, X = 0.5f, Y = 11, Z = 0.5f, Alive = true, Creative = true, Key = "p", Held = "" } };
+                    for (int i = 0; i < 20 * 240; i++) far.Tick(0.05f, one);
+                    int ghouls = 0; foreach (var m in far.All) if (m.Kind == MobKind.Ghoul && m.Dead <= 0) ghouls++;
+                    Check(ghouls == 1, $"a ghoul far from anyone moves on within a few minutes of night; one near by stays ({ghouls} left)");
+                }
             }
             {
                 var ask = Items.Ask("Oak Planks 20", out int askN, out string askSay);

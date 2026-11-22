@@ -231,6 +231,8 @@ namespace Stratum.Server
             foreach (var o in _players.Values.ToList()) if (o.Joined && o.Key == key && o.Order < before) o.Conn.Close("went to another world");
         });
 
+        public void Announce(string text) => World.Notices.Enqueue(text);
+
         // Saves everything and stops; returns when done.
         public void Stop()
         {
@@ -300,8 +302,11 @@ namespace Stratum.Server
                     if (p.Joined) SavePlayer(p);
                 }
                 catch (Exception e) { Log.Warn($"could not save {p.Name} on the way out: {e.Message}"); }
-                p.Conn.Close("server stopping");
+                // Told why, so their game says so and not just that the connection was lost.
+                try { p.Conn.Send(new Packet(Net.Msg.Refuse).Str("The server restarted for an update. Give it a minute, then log in again.")); } catch { }
+                p.Conn.CloseAfterSending("server stopping");
             }
+            if (_players.Count > 0) Thread.Sleep(700);          // long enough for that word to reach them
             try { SaveAll(true); } catch (Exception e) { Log.Warn("last save failed: " + e); }
             try { World.Stop(); } catch (Exception e) { Log.Warn("closing the world failed: " + e); }
             Log.Info("world saved, server stopped");

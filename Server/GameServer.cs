@@ -172,6 +172,9 @@ namespace Stratum.Server
             }
         }
 
+        // A line in everyone's chat, in every world.
+        public void Announce(string text) { foreach (var w in Worlds) w.Announce(text); }
+
         // Saves every world and stops; returns when done.
         public void Stop()
         {
