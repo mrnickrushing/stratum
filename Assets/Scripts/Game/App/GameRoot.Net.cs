@@ -129,10 +129,10 @@ namespace Stratum.Game
                 byte[] sealedLogin;
                 try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
                 catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
-                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(63).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             }
             else   // a server from before 0.8 has no key to seal to
-                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(63).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             net.Send(hello);
 
             Reader welcome = null; t = 0;
@@ -166,7 +166,7 @@ namespace Stratum.Game
             _menus.SetLoading(0, "Joining " + host);
             _net = net;
             _serverAddr = address;
-            _myId = welcome.I32();
+            _myId = welcome.I32(); _givesSeen = 0;
             int seed = welcome.I32();
             _serverName = welcome.Str();
             string motd = welcome.Str();
@@ -323,11 +323,13 @@ namespace Stratum.Game
             _net.Send(new Packet(Net.Msg.Move).F32(f.x).F32(f.y).F32(f.z).F32(_player.Yaw).F32(_player.Pitch).U8(flags).Str((held.Empty ? "" : held.Item) + (_player.Inv.HasShield ? "~s" : "")));
         }
 
+        int _givesSeen;             // things the server has handed over this visit: sent back with the pack, so it knows they arrived
+
         void SendKeep()
         {
             if (_net == null || _player == null) return;
             _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(SaveSlots())
-                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints).Str(Notes()));
+                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints).Str(Notes()).I32(_givesSeen));
         }
 
         // Reads what the server sent and keeps it up to date with us. Runs every frame while connected.
@@ -369,7 +371,7 @@ namespace Stratum.Game
                     int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(); int by = r.I32();
                     if (by == _myId) break;                    // our own edit coming back: already here
                     _world.ApplyRemote(x, y, z, id);
-                    if (by == 0) _act?.Corrected(new Vector3Int(x, y, z), id);
+                    if (by == 0 || by == -1) _act?.Corrected(new Vector3Int(x, y, z), id, by == -1);
                     // The chest or furnace on screen has just been broken or replaced: what the screen shows is no
                     // longer there to take.
                     if (_hud != null && _hud.BoxOpen && _hud.BoxAt == new Vector3Int(x, y, z) && !Blocks.Get(id).Container)
@@ -470,6 +472,8 @@ namespace Stratum.Game
                 {
                     string item = r.Str(); int count = r.U16(), wear = r.U16();
                     _link?.Gave?.Invoke(item, count, wear);
+                    _givesSeen++;
+                    _keepTimer = Mathf.Min(_keepTimer, 0.4f);       // tell the server soon that it's in the pack
                     break;
                 }
                 case Net.Msg.TakeBack:

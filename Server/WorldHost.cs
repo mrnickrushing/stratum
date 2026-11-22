@@ -44,6 +44,10 @@ namespace Stratum.Server
             public readonly (int x, int y, int z, long at)[] Broke = new (int, int, int, long)[8]; public int BrokeAt;   // blocks they just broke (what falls out of them is theirs to drop)
             public bool SeesDrops => (Features & GameServer.KnowsDrops) != 0;
             public long NextPortal;                      // when they may next ask for a portal to be found or built
+            public int Given;                            // how many things have been handed over in this visit
+            public readonly List<(int n, Stack s)> Owed = new List<(int, Stack)>();    // handed over, not yet seen in a backpack update
+            public MobKind? Boarded; public long BoardedAt;      // what they just got on, until their own game says so
+            public bool Away; public long AwayAt; public float AX, AY, AZ;   // mid-journey (a portal, a teleport): where they set out from
             public bool HasSafe; public float SX, SY, SZ;  // where they last stood on something (a satchel after a fall into the sky goes there)
             public bool Alive => (Flags & Net.Dead) == 0;
             public bool Asleep => (Flags & Net.Asleep) != 0;
@@ -70,7 +74,7 @@ namespace Stratum.Server
         Chutes _chutes;
         readonly List<(string item, int n, int wear)> _owed = new List<(string, int, int)>();
         readonly List<Seen> _seen = new List<Seen>();
-        int _lastSleepers = -1;
+        int _lastSleepers = -1, _lastAwake = -1;
         readonly List<(float, float)> _near = new List<(float, float)>();
         WeatherSim _weather;
         string MobFile => System.IO.Path.Combine(_cfg.Dir, "creatures.bin");
@@ -273,7 +277,7 @@ namespace Stratum.Server
 
                     if (now >= nextMoves) { nextMoves = now + 0.1; SendMoves(); }
                     if (now >= nextClock) { nextClock = now + 5; Broadcast(ClockPacket()); KickSilent(); }
-                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.Tosses = 0; p.VoiceFrames = 0; p.Strikes = 0; p.Shots = 0; } CheckSleep(); }
+                    if (now >= nextSecond) { nextSecond = now + 1; CheckSleep(); foreach (var p in _players.Values) { p.Edits = 0; p.Tosses = 0; p.VoiceFrames = 0; p.Strikes = 0; p.Shots = 0; } CheckSleep(); }
                     if (now >= nextSave) { nextSave = now + 60; SaveAll(false); }
                     if (now >= nextUnload) { nextUnload = now + 30; World.Maintain(Needed, true); }
                     if (now >= nextStats) { nextStats = now + 300; Log.Info($"{_onlineCount} online, {World.Loaded} chunks loaded, {_mobs.All.Count} creatures, day {World.Meta.day}"); }
@@ -316,7 +320,7 @@ namespace Stratum.Server
             try { _mobs.SaveFile(MobFile); } catch (Exception e) { Log.Warn("could not save creatures: " + e.Message); }
             try { _drops.SaveFile(DropFile); } catch (Exception e) { Log.Warn("could not save what lies on the ground: " + e.Message); }
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
-            foreach (var p in _players.Values) if (p.Joined) SavePlayer(p);
+            foreach (var p in _players.Values) if (p.Joined) SavePlayer(p, true);
         }
 
         void KickSilent()
@@ -437,7 +441,7 @@ namespace Stratum.Server
             if (p.Joined) LeaveMount(p);
             foreach (long k in p.Waiting) if (_waiters.TryGetValue(k, out var l)) l.Remove(p);
             if (!p.Joined) return;
-            SavePlayer(p);
+            SavePlayer(p, true);
             // Their chests and their building are written in the same breath as their pack, so a crash right after
             // can't leave an item both in the pack on disk and in the chest on disk (or in neither).
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
@@ -450,10 +454,22 @@ namespace Stratum.Server
             Log.Info($"{p.Name} left ({why}), {_onlineCount} online");
         }
 
-        void SavePlayer(Player p)
+        void SavePlayer(Player p, bool leaving = false)
         {
             p.Rec.hasPos = true;
             p.Rec.x = p.X; p.Rec.y = p.Y; p.Rec.z = p.Z; p.Rec.yaw = p.Yaw; p.Rec.pitch = p.Pitch;
+            // Lost mid-journey (waiting high over the far side of a portal): they come back where they set out.
+            if (p.Away) { p.Rec.x = p.AX; p.Rec.y = p.AY; p.Rec.z = p.AZ; }
+            if (p.Owed.Count > 0 && leaving)
+            {
+                // Handed over but never seen in their pack: kept with it, past the pack's own slots, where a game
+                // that joins puts such things back in the pack.
+                var all = new List<Stack>(p.Rec.Stacks());
+                foreach (var o in p.Owed) if (all.Count < Inventory.Size + Net.MaxExtraStacks) all.Add(o.s);
+                p.Rec.SetStacks(all.ToArray());
+                Log.Info($"{p.Name} left with {p.Owed.Count} thing(s) still on the way to their pack; kept for them");
+                p.Owed.Clear();
+            }
             p.Rec.lastSeen = DateTime.UtcNow.Ticks;
             p.Rec.Save(_cfg.Dir, p.Key);
         }
@@ -472,7 +488,10 @@ namespace Stratum.Server
             float x = r.F32(), y = r.F32(), z = r.F32(), yaw = r.F32(), pitch = r.F32();
             byte flags = r.U8(); string held = r.Str();
             if (Math.Abs(x) > 3e7 || y < -64 || y > 512 || Math.Abs(z) > 3e7) return;
+            // A leap (a portal, /tp, /home): until they next stand on something, where they came from is where they are.
+            if (!p.Away && (Math.Abs(x - p.X) > 48 || Math.Abs(z - p.Z) > 48)) { p.Away = true; p.AwayAt = Environment.TickCount64; p.AX = p.X; p.AY = p.Y; p.AZ = p.Z; }
             p.X = x; p.Y = y; p.Z = z; p.Yaw = yaw; p.Pitch = Math.Clamp(pitch, -90, 90); p.Flags = flags;
+            if ((flags & (Net.InBoat | Net.InCart)) != 0) p.Boarded = null;        // their game knows they're riding now
             // A "~s" on the end says there's a shield in the other hand (passed on, and no part of what is held).
             p.Shield = held.EndsWith("~s"); if (p.Shield) held = held.Substring(0, held.Length - 2);
             p.Held = held.Length > 40 ? "" : held;
@@ -480,8 +499,10 @@ namespace Stratum.Server
             if (y > 1 && y < Chunk.Height)
             {
                 int bx = (int)Math.Floor(x), bz = (int)Math.Floor(z), by = (int)Math.Floor(y - 0.2f);
-                if (World.IsLoaded(bx, bz) && Blocks.Get(World.Get(bx, by, bz)).Solid) { p.HasSafe = true; p.SX = x; p.SY = y; p.SZ = z; }
+                if (World.IsLoaded(bx, bz) && Blocks.Get(World.Get(bx, by, bz)).Solid) { p.HasSafe = true; p.SX = x; p.SY = y; p.SZ = z; p.Away = false; }
             }
+            // Flying, swimming or riding there for half a minute is being there too (a builder who flew off after /tp).
+            if (p.Away && (flags & (Net.Flying | Net.InWater | Net.InBoat | Net.InCart)) != 0 && Environment.TickCount64 - p.AwayAt > 30000) p.Away = false;
         }
 
         void WantChunks(Player p, Reader r)
@@ -516,7 +537,7 @@ namespace Stratum.Server
         {
             int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(), old = (ushort)r.U16();
             if (!World.IsLoaded(x, z) || (uint)y >= Chunk.Height) return;
-            if (++p.Edits > 40) { p.Conn.Send(BlockPacket(x, y, z, World.Get(x, y, z), 0)); return; }      // too fast: show them it didn't happen
+            if (++p.Edits > 40) { p.Conn.Send(BlockPacket(x, y, z, World.Get(x, y, z), (p.Features & GameServer.KnowsRefusals) != 0 ? Refused : 0)); return; }      // too fast: show them it didn't happen
             ushort cur = World.Get(x, y, z);
             // Edits must be in reach, of a real block, by a known rule, and agree on what was there.
             float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
@@ -529,7 +550,9 @@ namespace Stratum.Server
                        : null;
             if (why != null)
             {
-                p.Conn.Send(BlockPacket(x, y, z, cur, 0));                       // put them right
+                // Put them right. A game that knows a refusal from a change hands back what the edit cost, even when
+                // what's there is the very thing it tried to place (two people building in the same spot).
+                p.Conn.Send(BlockPacket(x, y, z, cur, (p.Features & GameServer.KnowsRefusals) != 0 ? Refused : 0));
                 if (why.EndsWith("has it open")) p.Conn.Send(SaidPacket("", why.Replace("has it open", "is using that. Wait for them to close it.")));
                 if (p.Refused++ < 20) Log.Info($"refused {p.Name}'s edit at {x} {y} {z}: {why}");
                 return;
@@ -551,7 +574,7 @@ namespace Stratum.Server
                     if (st.Empty || Smelting.Hidden(st.Item)) continue;
                     // A broken chest spills on the ground (a satchel hands its things straight back to its owner's pack).
                     if (p.SeesDrops && cur != Blocks.Satchel) _drops.Scatter(st.Item, st.Count, st.Wear, x + 0.5f, y + 0.4f, z + 0.5f);
-                    else p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
+                    else Give(p, st.Item, st.Count, st.Wear);
                 }
         }
 
@@ -621,7 +644,7 @@ namespace Stratum.Server
                 {
                     var d = Items.Ask(text.Substring(5), out int n, out string say);
                     if (d == null) { p.Conn.Send(SaidPacket("", say)); return; }
-                    for (int left = n; left > 0; left -= d.MaxStack) p.Conn.Send(new Packet(Net.Msg.Give).Str(d.Id).U16(Math.Min(left, d.MaxStack)).U16(0));
+                    for (int left = n; left > 0; left -= d.MaxStack) Give(p, d.Id, Math.Min(left, d.MaxStack), 0);
                     Log.Info($"{p.Name} gave themselves {n} {d.Id}");
                     p.Conn.Send(SaidPacket("", $"Given {n} {d.Name}."));
                     return;
@@ -649,6 +672,8 @@ namespace Stratum.Server
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
             if (r.More) { string notes = r.Str(); if (notes.Length <= 4000) p.Rec.notes = notes; }      // 0.17: goals reached and statistics
+            // 0.16.3: how many handed-over things this pack already counts. An older game doesn't say, and is trusted.
+            if (r.More) { int seen = r.I32(); p.Owed.RemoveAll(o => o.n <= seen); } else p.Owed.Clear();
         }
 
         // ------------------------------------------------------------------ creatures
@@ -714,12 +739,20 @@ namespace Stratum.Server
             foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 32 * 32) o.Conn.Send(f);
         }
 
+        // Something is handed to a player. Until a backpack update says their game has it, the server remembers it
+        // is theirs: a connection lost in between must not lose it (their pack is only sent every few seconds).
+        void Give(Player p, string item, int count, int wear)
+        {
+            p.Owed.Add((++p.Given, new Stack { Item = item, Count = count, Wear = wear }));
+            p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(count).U16(wear));
+        }
+
         void TakeDrop(Player p, Reader r)
         {
             int id = r.I32();
             if (!p.Alive) return;
             if (_drops.Take(id, p.X, p.Y, p.Z) is (string item, int count, int wear))
-                p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(count).U16(wear));
+                Give(p, item, count, wear);
         }
 
         // Each player hears what lies within sight of them, five times a second.
@@ -767,6 +800,13 @@ namespace Stratum.Server
         void LeaveMount(Player p)
         {
             bool boat = (p.Flags & Net.InBoat) != 0, cart = (p.Flags & Net.InCart) != 0;
+            // Got on moments ago and their game hadn't yet said so: it still mustn't vanish with them.
+            if (!boat && !cart && p.Boarded != null && Environment.TickCount64 - p.BoardedAt < 8000)
+            {
+                var k = p.Boarded.Value; p.Boarded = null;
+                _mobs.Park(k, p.X, p.Y, p.Z, p.Yaw, k == MobKind.Camel ? p.Key : "");
+                return;
+            }
             if (boat && cart) _mobs.Park(MobKind.Camel, p.X, p.Y, p.Z, p.Yaw, p.Key);
             else if (boat) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
             else if (cart) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
@@ -800,7 +840,7 @@ namespace Stratum.Server
         void Give(Player p, string item, int n)
         {
             if (Items.Get(item) == null || n <= 0) return;
-            p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(n).U16(0));
+            Give(p, item, n, 0);
         }
 
         // ------------------------------------------------------------------ chests, satchels and beds
@@ -875,7 +915,7 @@ namespace Stratum.Server
             foreach (var (item, n, wear) in _owed)
             {
                 if (Smelting.Hidden(item)) continue;
-                if (n > 0) p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(n).U16(wear));
+                if (n > 0) Give(p, item, n, wear);
                 else p.Conn.Send(new Packet(Net.Msg.TakeBack).Str(item).U16(-n));
             }
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
@@ -903,7 +943,7 @@ namespace Stratum.Server
                 Broadcast(BlockPacket(ax, ay, az, Blocks.Satchel, 0));
                 if (made++ == 0) { sx = ax; sy = ay; sz = az; }
             }, ix, (int)Math.Floor(y), iz, st);
-            foreach (var s in rest) p.Conn.Send(new Packet(Net.Msg.Give).Str(s.Item).U16(s.Count).U16(s.Wear));
+            foreach (var s in rest) Give(p, s.Item, s.Count, s.Wear);
             Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
         }
 
@@ -913,6 +953,7 @@ namespace Stratum.Server
             if (!p.Alive) return;
             var k = _mobs.Mount(id, p.X, p.Y, p.Z, out float x, out float y, out float z, out float yaw);
             if (k == null) return;
+            p.Boarded = k; p.BoardedAt = Environment.TickCount64;       // it's gone from the world: theirs until they say they ride it
             p.Conn.Send(new Packet(Net.Msg.Mounted).U8((byte)k.Value).F32(x).F32(y).F32(z).F32(yaw));
         }
 
@@ -922,6 +963,7 @@ namespace Stratum.Server
             if ((int)k >= (int)MobKind.Count || !(MobSim.Def(k).Vehicle || k == MobKind.Camel) || ++p.Edits > 40) return;
             float dx = x - p.X, dy = y - p.Y, dz = z - p.Z;
             if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
+            p.Boarded = null;
             _mobs.Park(k, x, y, z, yaw, p.Key);
         }
 
@@ -977,7 +1019,7 @@ namespace Stratum.Server
         {
             int asleep = 0, total = 0;
             foreach (var p in _players.Values) if (p.Joined && p.Alive) { total++; if (p.Asleep) asleep++; }
-            if (asleep != _lastSleepers) { _lastSleepers = asleep; Broadcast(new Packet(Net.Msg.Sleepers).U8((byte)asleep).U8((byte)total)); }
+            if (asleep != _lastSleepers || total != _lastAwake && asleep > 0) { _lastSleepers = asleep; _lastAwake = total; Broadcast(new Packet(Net.Msg.Sleepers).U8((byte)asleep).U8((byte)total)); }
             if (total == 0 || asleep < total) return;
             double t = World.Meta.time;
             if (t > 0.23 && t < 0.77) return;
@@ -1007,6 +1049,7 @@ namespace Stratum.Server
             }
         }
 
+        public const int Refused = -1;            // BlockPacket's "by": the edit you asked for didn't happen
         static Packet BlockPacket(int x, int y, int z, ushort id, int by) => new Packet(Net.Msg.Block).I32(x).I32(y).I32(z).U16(id).I32(by);
         Packet JoinedPacket(Player p) => new Packet(Net.Msg.Joined).I32(p.Conn.Id).Str(p.Name).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).U8(p.Outfit).Blob(p.Look ?? Array.Empty<byte>());
         Packet ClockPacket() => new Packet(Net.Msg.Clock).F64(World.Meta.time).I32(World.Meta.day).U8((byte)_weather.State);

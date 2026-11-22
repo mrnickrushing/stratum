@@ -185,10 +185,10 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "ember", Name = "Ember Shard" });
             Add(new ItemDef { Id = "colossus_heart", Name = "Heart of Cinder", MaxStack = 16 });
 
-            // Armour: a cap, a coat, leggings and boots of hide, copper or iron.
+            // Armour: a cap, a coat, leggings and boots. Each set is better than the one before: hide, copper, iron, golden, starstone.
             string[] pieces = { "cap", "coat", "leggings", "boots" }, pieceNames = { "Cap", "Coat", "Leggings", "Boots" };
             int[] need = { 5, 8, 7, 4 };
-            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420), ("gold", "Golden", "gold_ingot", new[] { 2, 5, 3, 1 }, 90) })
+            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("gold", "Golden", "gold_ingot", new[] { 3, 7, 5, 2 }, 340), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420) })
                 for (int i = 0; i < 4; i++)
                 {
                     Add(new ItemDef { Id = mat + "_" + pieces[i], Name = name + " " + pieceNames[i], MaxStack = 1, ArmourSlot = i, Armour = pts[i], Durability = dur });
