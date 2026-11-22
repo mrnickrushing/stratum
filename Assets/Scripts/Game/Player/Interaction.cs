@@ -358,6 +358,7 @@ namespace Stratum.Game
                         _swing = 0; return;
                     }
                 }
+                if (pal.Kind == MobKind.Sheep && heldDef != null && heldDef.Id.StartsWith("dye_")) { Link?.UseMob(TargetMob, heldDef.Id); if (!P.Creative) P.Inv.UseHeld(); _swing = 0; return; }
                 if (pal.Kind == MobKind.Camel && friend && heldDef == null && P.Riding == null) { Link?.Mount(TargetMob); _swing = 0; return; }
             }
 
@@ -384,6 +385,18 @@ namespace Stratum.Game
             }
             // A shield in the other hand comes up while the right button is held (with a tool, a sword or nothing in hand).
             P.Blocking = rmb && P.Inv.HasShield && (heldDef == null || heldDef.Tool != Tool.None && heldDef.Tool != Tool.Hoe && heldDef.Tool != Tool.Shears) && !HasMob;
+            // A splash potion is thrown: it bursts where it lands, over everyone within a few steps.
+            if (heldDef != null && heldDef.Id.StartsWith("splash_") && mouse.rightButton.wasPressedThisFrame && !(HasTarget && IsUsable(World.Get(Target.x, Target.y, Target.z))))
+            {
+                var eyeAt = P.Cam.transform.position; var fwd = P.Cam.transform.forward;
+                var burst = HasTarget ? (Vector3)Target + Vector3.one * 0.5f + (Vector3)TargetNormal * 0.6f : eyeAt + fwd * 6;
+                if (HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var hitMob)) burst = hitMob.Pos + Vector3.up * 0.8f;
+                Link?.Splash(burst, heldDef.Effect, heldDef.EffectSecs);
+                if (!P.Creative) P.Inv.UseHeld();
+                Sfx.I?.Play("swish", 0.4f, 1.1f);
+                _swing = 0;
+                return;
+            }
             // Fishing: cast onto water, wait for the float to dip, pull in.
             if (_fishing && (heldDef == null || heldDef.Id != "fishing_rod" || (_bobber.transform.position - P.EyePos).sqrMagnitude > 14 * 14)) Reel(false);
             if (_fishing) FishTick(dt);

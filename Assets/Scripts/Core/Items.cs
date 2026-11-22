@@ -151,6 +151,11 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bottle", Name = "Glass Bottle", MaxStack = 16 });
             foreach (var (key, name, effect, secs, with) in Potions)
                 Add(new ItemDef { Id = "potion_" + key, Name = "Potion of " + name, MaxStack = 16, Drink = true, Leaves = "bottle", Effect = effect, EffectSecs = secs });
+            // Dyes: sixteen colours, for wool and for sheep.
+            foreach (var (key, name, rgb) in Blocks.Dyes) Add(new ItemDef { Id = "dye_" + key, Name = name + " Dye" });
+            // Splash potions: thrown, they burst over everyone near.
+            foreach (var (key, name, effect, secs, with) in Potions)
+                Add(new ItemDef { Id = "splash_" + key, Name = "Splash Potion of " + name, MaxStack = 16, Effect = effect, EffectSecs = secs * 0.75f });
             Add(new ItemDef { Id = "jelly", Name = "Glob Jelly" });
             Add(new ItemDef { Id = "hollow_crown", Name = "Hollow Crown", MaxStack = 1, ArmourSlot = 0, Armour = 3, Durability = 600 });
             Add(new ItemDef { Id = "shade_shard", Name = "Shade Shard" });
@@ -244,6 +249,16 @@ namespace Stratum.Core
             R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
             R("fishing_rod", 1, "workbench", ("stick", 3), ("thread", 2));
             R("bottle", 3, "workbench", ("glass", 3));
+            foreach (var (key, name, effect, secs, with) in Potions) R("splash_" + key, 1, "brewer", ("potion_" + key, 1), ("blast_powder", 1));
+            // Dyes from flowers and the like, and from each other.
+            R("dye_red", 2, null, ("red_flower", 1)); R("dye_yellow", 2, null, ("yellow_flower", 1)); R("dye_blue", 2, null, ("blue_flower", 1));
+            R("dye_green", 2, null, ("cactus", 1)); R("dye_black", 2, null, ("coal", 1)); R("dye_white", 2, null, ("bone_meal", 1)); R("dye_brown", 2, null, ("dirt", 1), ("bone_meal", 1));
+            R("dye_orange", 2, null, ("dye_red", 1), ("dye_yellow", 1)); R("dye_purple", 2, null, ("dye_red", 1), ("dye_blue", 1));
+            R("dye_cyan", 2, null, ("dye_green", 1), ("dye_blue", 1)); R("dye_lime", 2, null, ("dye_green", 1), ("dye_white", 1));
+            R("dye_pink", 2, null, ("dye_red", 1), ("dye_white", 1)); R("dye_light_blue", 2, null, ("dye_blue", 1), ("dye_white", 1));
+            R("dye_grey", 2, null, ("dye_black", 1), ("dye_white", 1)); R("dye_light_grey", 2, null, ("dye_grey", 1), ("dye_white", 1));
+            R("dye_magenta", 2, null, ("dye_purple", 1), ("dye_pink", 1));
+            foreach (var (key, name, rgb) in Blocks.Dyes) if (key != "white") R(key + "_wool", 1, null, ("white_wool", 1), ("dye_" + key, 1));
             R("gate_stone", 1, "workbench", ("obsidian", 4), ("shade_shard", 4), ("starstone", 1));
             R("brewing_stand", 1, "workbench", ("cobble", 3), ("ember", 1));
             foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));

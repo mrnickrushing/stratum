@@ -45,6 +45,28 @@ namespace Stratum.Game
         // Returns true if this file drew the item.
         static bool Later(Canvas c, string id)
         {
+            if (id.StartsWith("dye_"))
+            {
+                // A little dish heaped with powder of the colour.
+                int di = Blocks.DyeIndex(id.Substring(4));
+                if (di < 0) return false;
+                uint rgb = Blocks.Dyes[di].rgb;
+                Color col = new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1);
+                c.Disc(V(48, 34), 34, (dx, dy) => Color.Lerp(Hex(0x8a6a4a), Hex(0x5a422c), Mathf.Clamp01(dy * 0.6f + 0.5f)), 14);
+                c.Disc(V(48, 46), 26, (dx, dy) => Color.Lerp(Shade(col, 0.75f), Color.Lerp(col, Color.white, 0.2f), Mathf.Clamp01(dx * 0.4f + dy * 0.6f + 0.5f)), 16);
+                return true;
+            }
+            if (id.StartsWith("splash_"))
+            {
+                // The same colours as the potions, in a round flask with a wide lip.
+                Color[] cols = { Hex(0x7fd8f0), Hex(0x8ee05a), Hex(0xb8322a), Hex(0xf06a9a), Hex(0xf22a4a), Hex(0xf59a2a), Hex(0x3a6ae0), Hex(0x3a3a9a), Hex(0xe8e8f4), Hex(0xf2d24a) };
+                int pi = System.Array.FindIndex(Items.Potions, p => "splash_" + p.key == id);
+                if (pi < 0) return false;
+                Bottle(c, cols[pi], true);
+                c.Poly(new[] { V(32, 78), V(64, 78), V(60, 86), V(36, 86) }, (x, y) => Hex(0xd8d2c0));
+                c.Line(V(30, 64), V(66, 64), 3, (t, ss) => Hex(0xf2e9c8));
+                return true;
+            }
             switch (id)
             {
                 case "blast_powder":

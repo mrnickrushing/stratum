@@ -186,12 +186,23 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ enchanting
 
-        Dictionary<char, int> Offer(int k, ItemDef d) => Enchants.Roll(d, OfferNeeds[k], _enchSeed + k * 7919 + d.Id.GetHashCode());
+        // Bookshelves within a few steps lend the table strength: each is worth a level, up to fifteen.
+        int Shelves()
+        {
+            var f = P.Feet; int x = Mathf.FloorToInt(f.x), y = Mathf.FloorToInt(f.y), z = Mathf.FloorToInt(f.z), n = 0;
+            ushort shelf = Blocks.Id("bookshelf");
+            for (int dy = -1; dy <= 3; dy++) for (int dz = -4; dz <= 4; dz++) for (int dx = -4; dx <= 4; dx++) if (World.Get(x + dx, y + dy, z + dz) == shelf) n++;
+            return Mathf.Min(15, n);
+        }
+
+        Dictionary<char, int> Offer(int k, ItemDef d) => Enchants.Roll(d, OfferNeeds[k] + _shelves, _enchSeed + k * 7919 + d.Id.GetHashCode());
+        int _shelves;
 
         void ShowOffers()
         {
             var d = Items.Get(_work[0].Item);
-            _workInfo.text = $"Your level: <b>{P.XpLevel}</b>\nPut in something to enchant and sunstone shards to pay with.";
+            _shelves = Shelves();
+            _workInfo.text = $"Your level: <b>{P.XpLevel}</b>\nPut in something to enchant and sunstone shards to pay with.\n" + (_shelves > 0 ? $"Bookshelves nearby: {_shelves} of 15 (stronger enchantments)" : "Bookshelves nearby make the enchantments stronger.");
             for (int k = 0; k < _offers.Count; k++)
             {
                 var t = _offers[k].GetComponentInChildren<Text>();

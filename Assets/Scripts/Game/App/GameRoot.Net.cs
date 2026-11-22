@@ -440,6 +440,9 @@ namespace Stratum.Game
                 case Net.Msg.Boom:
                     _link?.Boomed?.Invoke(new Vector3(r.F32(), r.F32(), r.F32()), r.F32());
                     break;
+                case Net.Msg.Splashed:
+                    _link?.Splashed?.Invoke(new Vector3(r.F32(), r.F32(), r.F32()), r.Str(), r.F32());
+                    break;
                 case Net.Msg.Drops:
                     (_link as RemoteLink)?.ReceivedDrops(r);
                     break;

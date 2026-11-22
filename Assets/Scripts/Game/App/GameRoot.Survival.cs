@@ -94,6 +94,12 @@ namespace Stratum.Game
                 _hud.Sleeping(true, total > 1 ? $"Sleeping...  {asleep}/{total} players in bed" : "Sleeping...");
             };
             link.MobSound = MobSfx;
+            link.Splashed = (at, effect, secs) =>
+            {
+                Sfx.I?.PlayAt("splash", at, 0.7f, 1.5f);
+                _act.Puff(at, 1.2f);
+                if ((at - (_player.Feet + Vector3.up * 0.9f)).sqrMagnitude < 4 * 4 && _player.Health > 0) _player.TakePotion(effect, secs);
+            };
             link.Boomed = (at, power) =>
             {
                 Sfx.I?.PlayAt("thunder", at, 1f, 1.5f + UnityEngine.Random.value * 0.3f);
@@ -568,6 +574,7 @@ namespace Stratum.Game
             int n = r.U16();
             for (int i = 0; i < n; i++) Drops.Add(new DropState { Id = r.I32(), Item = r.Str(), Count = r.U16(), Pos = new Vector3(r.F32(), r.F32(), r.F32()) });
         }
+        public override void Splash(Vector3 at, string effect, float secs) => Send(new Packet(Net.Msg.Splash).F32(at.x).F32(at.y).F32(at.z).Str(effect).F32(secs));
         public override void Fertilize(Vector3Int at) => Send(new Packet(Net.Msg.Fertilize).I32(at.x).I32(at.y).I32(at.z));
         public override void Mount(int mob) => Send(new Packet(Net.Msg.Mount).I32(mob));
         public override void Park(MobKind kind, Vector3 at, float yaw) => Send(new Packet(Net.Msg.Park).U8((byte)kind).F32(at.x).F32(at.y).F32(at.z).F32(yaw));

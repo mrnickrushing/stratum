@@ -54,6 +54,10 @@ namespace Stratum.Core
         public const byte MBaby = 1, MLove = 2, MRest = 32, MTame = 64, MSit = 128;       // MRest: bred a little while ago, not hungry yet
         public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2) | (BreedCool > 0 ? MRest : 0) | (Tame ? MTame : 0) | (Sit ? MSit : 0));
         public static int JobOf(byte more) => (more >> 2) & 7;
+        // A sheep's colour (which of Blocks.Dyes) rides in its job and its sit flag, neither of which a sheep has a use for.
+        public int Fleece { get => Job | (Sit ? 8 : 0); set { Job = (byte)(value & 7); Sit = (value & 8) != 0; } }
+        public static int FleeceOf(byte more) => JobOf(more) | ((more & MSit) != 0 ? 8 : 0);
+        public static string WoolOf(int fleece) => Blocks.Dyes[Math.Clamp(fleece, 0, Blocks.Dyes.Length - 1)].key + "_wool";
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
 
@@ -344,11 +348,18 @@ namespace Stratum.Core
                 if ((who ?? "") == m.OwnerKey) m.Sit = !m.Sit;
                 return null;
             }
+            if (m.Kind == MobKind.Sheep && item != null && item.StartsWith("dye_"))
+            {
+                // Dyed: its wool grows that colour from now on.
+                int c = Blocks.DyeIndex(item.Substring(4));
+                if (c >= 0) { m.Fleece = c; m.Kept = true; Sound?.Invoke(m, "say"); }
+                return null;
+            }
             if (item == "shears" && m.Kind == MobKind.Sheep && !m.Sheared)
             {
                 m.Sheared = true; m.Regrow = 240 + Rand() * 240;
                 Sound?.Invoke(m, "say");
-                return ("white_wool", 1 + _r.Next(3));
+                return (Mob.WoolOf(m.Fleece), 1 + _r.Next(3));
             }
             return null;
         }
@@ -378,7 +389,7 @@ namespace Stratum.Core
                 int n = min + _r.Next(max - min + 1);
                 if (n > 0) l.Add((item, n));
             }
-            if (m.Kind == MobKind.Sheep && !m.Sheared) l.Add(("white_wool", 1));
+            if (m.Kind == MobKind.Sheep && !m.Sheared) l.Add((Mob.WoolOf(m.Fleece), 1));
             if (m.Def.Xp > 0) l.Add(("xp", m.Def.Xp + _r.Next(m.Def.Xp + 1)));
             return l;
         }

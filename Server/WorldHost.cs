@@ -345,6 +345,7 @@ namespace Stratum.Server
                     case Net.Msg.Park: Park(p, r); break;
                     case Net.Msg.Portal: Portal(p, r); break;
                     case Net.Msg.Toss: Toss(p, r); break;
+                    case Net.Msg.Splash: Splash(p, r); break;
                     case Net.Msg.TakeDrop: TakeDrop(p, r); break;
                     case Net.Msg.Ping: c.Send(_hub.Pong(r.F64())); break;
                 }
@@ -678,6 +679,17 @@ namespace Stratum.Server
                 _drops.Scatter(item, count, wear, x, y, z);
             }
             else _drops.Toss(item, count, wear, x, y, z, vx, vy, vz, 1.2f);
+        }
+
+        // A splash potion burst: everyone near hears of it (their own games decide whether it reached them).
+        void Splash(Player p, Reader r)
+        {
+            float x = r.F32(), y = r.F32(), z = r.F32(); string effect = r.Str(); float secs = Math.Clamp(r.F32(), 0, 300);
+            if (++p.Tosses > 40 || !p.Alive || effect.Length > 16 || float.IsNaN(x + y + z)) return;
+            float dx = x - p.X, dy = y - (p.Y + 1), dz = z - p.Z;
+            if (dx * dx + dy * dy + dz * dz > 12 * 12) return;
+            var f = new Packet(Net.Msg.Splashed).F32(x).F32(y).F32(z).Str(effect).F32(secs).Bytes();
+            foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 32 * 32) o.Conn.Send(f);
         }
 
         void TakeDrop(Player p, Reader r)

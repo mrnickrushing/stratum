@@ -43,6 +43,8 @@ namespace Stratum.Game
         public Action<MobKind, string, Vector3> MobSound;
         public Action<string> Said;
         public Action<Vector3, float> Boomed;                   // a blast: where, how strong
+        public Action<Vector3, string, float> Splashed;         // a splash potion burst: where, what it does, for how long
+        public virtual void Splash(Vector3 at, string effect, float secs) => Splashed?.Invoke(at, effect, secs);
     }
 
     // Single player: the creatures live on this computer, and chests are kept in the world's folder.

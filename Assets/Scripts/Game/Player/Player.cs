@@ -500,8 +500,13 @@ namespace Stratum.Game
             Food = Mathf.Min(20, Food + food.Food);
             Saturation = Mathf.Min(Food, Saturation + food.Saturation);
             if (food.Id == "milk_bucket") System.Array.Clear(FxLeft, 0, FxLeft.Length);       // milk washes every potion out
-            if (food.Effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
-            else if (food.Effect != null && System.Enum.TryParse<Fx>(food.Effect, out var fx)) AddFx(fx, food.EffectSecs);
+            TakePotion(food.Effect, food.EffectSecs);
+        }
+
+        public void TakePotion(string effect, float secs)
+        {
+            if (effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
+            else if (effect != null && System.Enum.TryParse<Fx>(effect, out var fx)) AddFx(fx, secs);
         }
 
         // What a potion (or a bite) leaves working in the body, and for how long.

@@ -274,11 +274,13 @@ namespace Stratum.Game
         void Paint(View v, float flash, float fire)
         {
             var m = v.M;
-            bool villager = v.S.Kind == MobKind.Villager;
+            bool villager = v.S.Kind == MobKind.Villager, sheep = v.S.Kind == MobKind.Sheep;
+            Color fleece = default;
+            if (sheep) { uint rgb = Blocks.Dyes[Mathf.Clamp(Mob.FleeceOf(v.S.More), 0, Blocks.Dyes.Length - 1)].rgb; fleece = new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1); }
             var robe = villager ? JobRobe[Mathf.Clamp(Mob.JobOf(v.S.More), 0, JobRobe.Length - 1)] : default;
             for (int i = 0; i < m.Parts.Count; i++)
             {
-                _mpb.SetColor(BaseColor, villager && m.Colors[i] == RobeBase ? robe : m.Colors[i]);
+                _mpb.SetColor(BaseColor, villager && m.Colors[i] == RobeBase ? robe : sheep && m.Colors[i] == WoolBase ? fleece : m.Colors[i]);
                 _mpb.SetVector(LightId, new Vector4(v.Light.x, v.Light.y, 0, 0));
                 _mpb.SetColor(FlashId, fire > 0 && v.Hurt <= 0 ? new Color(1, 0.45f, 0.1f, flash) : new Color(0.9f, 0.08f, 0.05f, flash));
                 _mpb.SetFloat(GlowId, m.Glows[i]);
@@ -645,14 +647,16 @@ namespace Stratum.Game
             B(m, m.Head, 0.22f, 0.29f, 0.12f, 0.16f, 0.08f, 0.14f, dark);
         }
 
+        static readonly Color WoolBase = new Color(0.921f, 0.910f, 0.878f, 1);       // the parts of a sheep that take its dye
+
         void Sheep(Model m)
         {
-            Color wool = Hex(0xebe8e0), face = Hex(0xcbb796), legs = Hex(0x9c8a72);
+            Color wool = WoolBase, face = Hex(0xcbb796), legs = Hex(0x9c8a72);
             Legs4(m, 0.25f, 0.56f, 0.38f, 0.17f, 0.56f, legs, Hex(0x3a3028));
             m.Body = Pivot(m.Root, new Vector3(0, 0.56f, 0));
             m.Wool = new GameObject("Wool"); m.Wool.transform.SetParent(m.Body, false);
             B(m, m.Wool.transform, 0, 0.38f, 0, 0.92f, 0.78f, 1.22f, wool);
-            B(m, m.Wool.transform, 0, 0.8f, 0.05f, 0.7f, 0.08f, 0.9f, Hex(0xf4f2ec));
+            B(m, m.Wool.transform, 0, 0.8f, 0.05f, 0.7f, 0.08f, 0.9f, wool);
             m.Shorn = new GameObject("Shorn"); m.Shorn.transform.SetParent(m.Body, false);
             B(m, m.Shorn.transform, 0, 0.36f, 0, 0.74f, 0.6f, 1.04f, Hex(0xdcc6a8));
             m.Head = Pivot(m.Root, new Vector3(0, 1.08f, 0.6f));
