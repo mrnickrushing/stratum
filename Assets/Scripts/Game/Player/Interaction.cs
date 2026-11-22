@@ -376,6 +376,12 @@ namespace Stratum.Game
                 return;
             }
 
+            // A chest cart is opened like a chest.
+            if (rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var hold) && hold.Kind == MobKind.ChestCart)
+            {
+                Link?.OpenCart(TargetMob); _swing = 0;
+                return;
+            }
             // Into a boat or cart (right-click it), or putting one down.
             if (rmb && mouse.rightButton.wasPressedThisFrame && HasMob && P.Riding == null && Creatures != null && Creatures.TryGet(TargetMob, out var ride)
                 && MobSim.Def(ride.Kind).Vehicle)
@@ -421,11 +427,11 @@ namespace Stratum.Game
                     return;
                 }
             }
-            if (heldDef != null && heldDef.Id == "minecart" && mouse.rightButton.wasPressedThisFrame && HasTarget && Rails.Is(World.Get(Target.x, Target.y, Target.z)))
+            if (heldDef != null && (heldDef.Id == "minecart" || heldDef.Id == "chest_cart") && mouse.rightButton.wasPressedThisFrame && HasTarget && Rails.Is(World.Get(Target.x, Target.y, Target.z)))
             {
                 var (a, _, up) = Rails.Ends(World.Get(Target.x, Target.y, Target.z));
                 float yaw = a * 90;
-                Link?.Park(MobKind.Cart, new Vector3(Target.x + 0.5f, Target.y + (up >= 0 ? 0.5f : 1 / 16f), Target.z + 0.5f), yaw);
+                Link?.Park(heldDef.Id == "chest_cart" ? MobKind.ChestCart : MobKind.Cart, new Vector3(Target.x + 0.5f, Target.y + (up >= 0 ? 0.5f : 1 / 16f), Target.z + 0.5f), yaw);
                 if (!P.Creative) P.Inv.UseHeld();
                 Sfx.I?.Block("place", Blocks.Rail, 0.8f); _swing = 0;
                 return;
@@ -803,6 +809,8 @@ namespace Stratum.Game
                 else if (TargetNormal.y == 0) place = (ushort)(Blocks.WallSign + DirOf(-TargetNormal));
                 else return;
             }
+            else if (id == Blocks.Chute && TargetNormal.y == 0 && target != 0 && Blocks.Get(target).Container && at == Target + TargetNormal)
+                place = (ushort)(Blocks.SideChute + DirOf(-TargetNormal));       // against the side of a chest: it feeds in sideways
             else if (def.Machine || def.Watcher)
             {
                 // Pistons and dispensers face whoever puts them down; an observer looks the way they look.

@@ -69,13 +69,27 @@ namespace Stratum.Core
         }
 
         void Remove(Drop d) { All.Remove(d); _byId.Remove(d.Id); }
+
+        // What lies on a chute is drawn into it (take says how many it had room for).
+        public void Feed(Func<int, int, int, string, int, int, int> take)
+        {
+            for (int i = All.Count - 1; i >= 0; i--)
+            {
+                var d = All[i];
+                if (!d.Rest || d.Wait > 0) continue;
+                int got = take((int)Math.Floor(d.X), (int)Math.Floor(d.Y - 0.3f), (int)Math.Floor(d.Z), d.Item, d.Count, d.Wear);
+                if (got <= 0) continue;
+                d.Count -= got;
+                if (d.Count <= 0) Remove(d);
+            }
+        }
         public void Clear() { All.Clear(); _byId.Clear(); }
 
         bool Solid(float x, float y, float z)
         {
             if (y < 0 || y >= Chunk.Height) return false;
             var b = Blocks.Get(_get((int)Math.Floor(x), (int)Math.Floor(y), (int)Math.Floor(z)));
-            return b.Solid && b.Shape == Shape.Cube;
+            return b.Solid;            // chests, chutes, slabs and the like hold things up too (they lie on top of the block's space)
         }
 
         public void Tick(float dt)

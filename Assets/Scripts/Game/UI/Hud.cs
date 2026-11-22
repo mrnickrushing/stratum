@@ -481,7 +481,7 @@ namespace Stratum.Game
             if (chest)
             {
                 const float CS = 62, CG = 5;
-                bool chute = World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Chute;
+                bool chute = Chutes.Is(World.Get(_boxAt.x, _boxAt.y, _boxAt.z));
                 int slots = chute ? Chutes.Slots : Mathf.Max(Containers.ChestSlots, _box.Length);        // a satchel can hold a whole pack and more
                 _boxUsable = slots;
                 _boxGrid.sizeDelta = new Vector2(600, (slots + 8) / 9 * (CS + CG) + 40);
@@ -655,7 +655,7 @@ namespace Stratum.Game
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : _station == "brewer" ? "Brewing Stand" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (_boxAt.x >= Mob.HoldX ? "Chest Cart" : Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name) : furnace && _station == "furnace" ? "Furnace" : _station == "brewer" ? "Brewing Stand" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "brewer" && brewer))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))

@@ -170,6 +170,7 @@ namespace Stratum.Core
             Food("fried_egg", "Fried Egg", 4, 4);
             Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
             Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
+            Add(new ItemDef { Id = "chest_cart", Name = "Chest Cart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
             Add(new ItemDef { Id = "clock", Name = "Clock", MaxStack = 1 });
             Add(new ItemDef { Id = "map", Name = "Map", MaxStack = 1 });
@@ -242,6 +243,7 @@ namespace Stratum.Core
             R("bucket", 1, "workbench", ("iron_ingot", 3));
             R("boat", 1, "workbench", ("oak_planks", 5));
             R("minecart", 1, "workbench", ("iron_ingot", 5));
+            R("chest_cart", 1, "workbench", ("minecart", 1), ("chest", 1));
             R("rail", 16, "workbench", ("iron_ingot", 6), ("stick", 1));
             R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("spark", 1));
             R("spark_torch", 1, null, ("spark", 1), ("stick", 1));

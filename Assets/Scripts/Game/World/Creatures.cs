@@ -346,6 +346,7 @@ namespace Stratum.Game
                 case MobKind.Shade: Shade(m); break;
                 case MobKind.Snapper: Snapper(m); break;
                 case MobKind.King: King(m); break;
+                case MobKind.ChestCart: Cart(m); B(m, m.Body, 0, 0.86f, 0, 0.84f, 0.7f, 0.9f, Hex(0x9a6c3c)); B(m, m.Body, 0, 0.98f, 0, 0.88f, 0.1f, 0.94f, Hex(0x3a3c42)); B(m, m.Body, 0, 0.9f, 0.46f, 0.14f, 0.18f, 0.03f, Hex(0xd8b04a), 0, false); break;
             }
             return m;
         }

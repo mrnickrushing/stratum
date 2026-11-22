@@ -160,6 +160,15 @@ namespace Stratum.Core
                 if (i == 0) NoteBlock = b.Id; else { b.BaseId = NoteBlock; b.DropItem = "note_block"; b.Creative = false; Palette.Remove(b.Id); }
             }
 
+            // A chute put against the side of a container feeds into it sideways instead of straight down.
+            SideChute = Facings("chute_side", "Chute", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Hardness = 3; d.Tool = Tool.Pickaxe; d.TierNeeded = 1; d.Sound = Sound.Metal; d.Container = true;
+                d.Top = Tex.ChuteTop; d.Side = d.Bottom = Tex.ChuteSide; d.DropItem = "chute";
+                d.Boxes = new[] { Box.Px(0, 10, 0, 16, 16, 16), Box.Px(4, 4, 4, 12, 10, 12), Box.Px(6, 4, 12, 10, 8, 16) };
+            });
+            Defs[SideChute].Creative = false; Palette.Remove(SideChute);
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

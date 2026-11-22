@@ -39,6 +39,7 @@ namespace Stratum.Server
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public int BoxMob;                           // or the chest cart (its creature number)
             public int Tosses;                           // this second
             public readonly (int x, int y, int z, long at)[] Broke = new (int, int, int, long)[8]; public int BrokeAt;   // blocks they just broke (what falls out of them is theirs to drop)
             public bool SeesDrops => (Features & GameServer.KnowsDrops) != 0;
@@ -52,7 +53,7 @@ namespace Stratum.Server
         Decay _leaves;
         Fire _fire;
         Blasts _blasts;
-        float _bolt = 30;
+        float _bolt = 30, _feed;
         readonly Random _dice = new Random();
         readonly ServerConfig _cfg;
         public readonly ServerWorld World;
@@ -178,6 +179,12 @@ namespace Stratum.Server
                     if (item == "xp") { if (p != null) Give(p, item, n); }
                     else if (p != null && !p.SeesDrops) Give(p, item, n);
                     else _drops.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
+                }
+                // A broken chest cart spills what it carried.
+                if (m.Kind == MobKind.ChestCart && _boxes.Has(Mob.HoldX + m.Hold, 0, 0))
+                {
+                    foreach (var o in _players.Values) if (o.HasBox && o.BX == Mob.HoldX + m.Hold) o.HasBox = false;
+                    foreach (var st in _boxes.Remove(Mob.HoldX + m.Hold, 0, 0)) if (!st.Empty) _drops.Scatter(st.Item, st.Count, st.Wear, m.X, m.Y + 0.5f, m.Z);
                 }
                 if (p == null) return;
                 if (m.Def.Boss) Broadcast(SaidPacket("", $"{p.Name} defeated the {m.Def.Name}!"));
@@ -353,6 +360,7 @@ namespace Stratum.Server
                     case Net.Msg.Portal: Portal(p, r); break;
                     case Net.Msg.Toss: Toss(p, r); break;
                     case Net.Msg.Splash: Splash(p, r); break;
+                    case Net.Msg.OpenCart: OpenCart(p, r); break;
                     case Net.Msg.TakeDrop: TakeDrop(p, r); break;
                     case Net.Msg.Ping: c.Send(_hub.Pong(r.F64())); break;
                 }
@@ -525,7 +533,7 @@ namespace Stratum.Server
             if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z);
             if (id == 0 || Blocks.Get(id).BaseId != Blocks.Get(cur).BaseId) { p.Broke[p.BrokeAt] = (x, y, z, Environment.TickCount64); p.BrokeAt = (p.BrokeAt + 1) % p.Broke.Length; }
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
-            if (id == Blocks.Chute) _chutes.Add(x, y, z);
+            if (Chutes.Is(id)) _chutes.Add(x, y, z);
             World.Water.Wake(x, y, z);
             World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
@@ -647,6 +655,7 @@ namespace Stratum.Server
             _mobs.Time01 = (float)World.Meta.time;
             _mobs.Tick(dt, _seen);
             _drops.Tick(dt);
+            if ((_feed -= dt) <= 0) { _feed = 0.4f; _drops.Feed(_chutes.Take); }
             _leaves.Tick(dt);
             _fire.Tick(dt);
             _blasts.Tick(dt);
@@ -815,17 +824,37 @@ namespace Stratum.Server
             p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
         }
 
+        // A chest cart's store lives at a place of its own (Mob.HoldX + its number); it is within reach while the cart is.
+        bool CartNear(Player p) => _mobs.TryGet(p.BoxMob, out var m) && m.Kind == MobKind.ChestCart && m.Dead <= 0 && (m.X - p.X) * (m.X - p.X) + (m.Y - p.Y) * (m.Y - p.Y) + (m.Z - p.Z) * (m.Z - p.Z) < 8 * 8;
+        bool BoxReach(Player p, int x, int y, int z) => x >= Mob.HoldX ? CartNear(p) : InReach(p, x, y, z);
+
+        void OpenCart(Player p, Reader r)
+        {
+            int id = r.I32();
+            if (!p.Alive || !_mobs.TryGet(id, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
+            if ((m.X - p.X) * (m.X - p.X) + (m.Y - p.Y) * (m.Y - p.Y) + (m.Z - p.Z) * (m.Z - p.Z) > 7 * 7) return;
+            int x = Mob.HoldX + m.Hold;
+            foreach (var o in _players.Values)
+                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == 0 && o.BZ == 0)
+                {
+                    if (!CartNear(o)) { o.HasBox = false; continue; }
+                    p.Conn.Send(SaidPacket("", $"{o.Name} is using that. Wait for them to close it.")); return;
+                }
+            p.HasBox = true; p.BX = x; p.BY = 0; p.BZ = 0; p.BoxMob = id;
+            p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(0).I32(0).Stacks(_boxes.At(x, 0, 0)));
+        }
+
         void BoxSlot(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
             bool hasSeen = r.More; var seen = hasSeen ? r.Slot() : default;       // 0.7.2: what the player saw in the slot before changing it
             if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
-            if (!InReach(p, x, y, z)) { p.HasBox = false; return; }
-            if (!Blocks.Get(World.Get(x, y, z)).Container) return;
+            if (!BoxReach(p, x, y, z)) { p.HasBox = false; return; }
+            if (x < Mob.HoldX && !Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
             if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;
-            if (World.Get(x, y, z) == Blocks.Chute && slot >= Chutes.Slots) return;                     // a chute has five slots              // the fire and the progress are the furnace's own
+            if (Chutes.Is(World.Get(x, y, z)) && slot >= Chutes.Slots) return;                     // a chute has five slots              // the fire and the progress are the furnace's own
             // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
             var want = st;
             if (furnace && !hasSeen) return;       // a furnace changes under the player's hands: only games that say what they saw may use one

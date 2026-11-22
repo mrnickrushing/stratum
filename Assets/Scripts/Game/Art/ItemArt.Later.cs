@@ -108,6 +108,13 @@ namespace Stratum.Game
                     c.Poly(new[] { V(48, 90), V(40, 8), V(30, 48) }, (x, y) => Hex(0x120a24));
                     c.Disc(V(52, 46), 5, (dx, dy) => new Color(0.85f, 0.7f, 1f, 0.9f), 9);
                     return true;
+                case "chest_cart":
+                    c.Poly(new[] { V(12, 22), V(84, 22), V(78, 48), V(18, 48) }, (x, y) => Color.Lerp(Hex(0x4a4c54), Hex(0x8a8e96), (y - 22) / 26f));
+                    c.Disc(V(28, 18), 8, (dx, dy) => Hex(0x2a2c30)); c.Disc(V(68, 18), 8, (dx, dy) => Hex(0x2a2c30));
+                    c.Poly(new[] { V(24, 48), V(72, 48), V(72, 80), V(24, 80) }, (x, y) => Color.Lerp(Hex(0x8a5a30), Hex(0xb07c44), Mathf.PerlinNoise(x * 0.4f, y * 0.06f)));
+                    c.Poly(new[] { V(24, 62), V(72, 62), V(72, 66), V(24, 66) }, (x, y) => Hex(0x3a3c42));
+                    c.Poly(new[] { V(44, 56), V(52, 56), V(52, 68), V(44, 68) }, (x, y) => Hex(0xd8b04a));
+                    return true;
                 case "starstone":
                     // A cut stone: pale blue facets round a bright table.
                     c.Poly(new[] { V(48, 88), V(80, 62), V(72, 22), V(48, 8), V(24, 22), V(16, 62) }, (x, y) => Color.Lerp(Hex(0x2f9ab8), Hex(0xa8f6f8), Mathf.Clamp01((x * 0.4f + y * 0.9f - 20) / 100f)));

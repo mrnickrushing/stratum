@@ -16,6 +16,7 @@ namespace Stratum.Game
         public abstract void Toss(Stack s, Vector3 from, Vector3 velocity);    // thrown from the pack
         public abstract void Spill(Vector3 at, Stack s);                       // fallen out of a block just broken
         public abstract void TakeDrop(int id);                                 // picked up: it arrives through Gave
+        public abstract void OpenCart(int mob);                                // a chest cart's store: it comes back through BoxOpened
 
         public abstract void Strike(int mob, float damage);
         public abstract void Shoot(Vector3 from, Vector3 velocity, float damage);
@@ -61,7 +62,7 @@ namespace Stratum.Game
         public readonly Decay Leaves;
         public readonly Fire Flames;
         public readonly Blasts Blasts;
-        float _bolt = 20;
+        float _bolt = 20, _feed;
         readonly System.Random _dice = new System.Random();
         public readonly Containers Boxes = new Containers();
         public Furnaces Furnaces;
@@ -98,6 +99,9 @@ namespace Stratum.Game
                 foreach (var (item, n) in Sim.Loot(m))
                     if (item == "xp") { if (killer > 0) Gave?.Invoke(item, n, 0); }
                     else Ground.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
+                // A broken chest cart spills what it carried.
+                if (m.Kind == MobKind.ChestCart && Boxes.Has(Mob.HoldX + m.Hold, 0, 0))
+                    foreach (var s in Boxes.Remove(Mob.HoldX + m.Hold, 0, 0)) if (!s.Empty) Ground.Scatter(s.Item, s.Count, s.Wear, m.X, m.Y + 0.5f, m.Z);
             };
             Sim.Sound += (m, what) => MobSound?.Invoke(m.Kind, what, new Vector3(m.X, m.Y, m.Z));
             // Breaking a chest or opening a satchel hands over what was in it.
@@ -136,7 +140,7 @@ namespace Stratum.Game
                 if (id == Blocks.Fire) Flames.Found(x, y, z);
                 if (id == Blocks.KegLit) Blasts.Prime(x, y, z);
                 if (id == 0 && Decay.IsLog(Blocks.Get(old))) Leaves.LogBroken(x, y, z);
-                if (id == Blocks.Chute) Chutes?.Add(x, y, z);
+                if (Core.Chutes.Is(id)) Chutes?.Add(x, y, z);
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
                 // A broken chest spills on the ground (a satchel hands its things straight back to the pack).
@@ -155,6 +159,7 @@ namespace Stratum.Game
             Weather.Tick(dt);
             Furnaces.Tick(dt);
             Chutes.Tick(dt);
+            if ((_feed -= dt) <= 0) { _feed = 0.4f; Ground.Feed(Chutes.Take); }
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
             foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && (!m.Def.Vehicle || m.Kind != MobKind.Boat)) _bodies.Add((m.X, m.Y, m.Z));      // carts count: they set off detector rails
@@ -216,6 +221,14 @@ namespace Stratum.Game
             if (Ground.Take(id, f.x, f.y, f.z) is (string item, int count, int wear)) Gave?.Invoke(item, count, wear);
         }
 
+        public override void OpenCart(int mob)
+        {
+            if (!Sim.TryGet(mob, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
+            var at = new Vector3Int(Mob.HoldX + m.Hold, 0, 0);
+            _open = true; _box = at;
+            BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
+        }
+
         public override void OpenBox(Vector3Int at)
         {
             // A dusty chest fills itself the first time it's opened, and is an ordinary chest from then on.
@@ -234,7 +247,7 @@ namespace Stratum.Game
             if (!_open || at != _box) return;
             bool furnace = Blocks.Get(_world.Get(at.x, at.y, at.z)).BaseId == Blocks.Furnace;
             if (furnace && slot > Smelting.Out) return;
-            if (_world.Get(at.x, at.y, at.z) == Blocks.Chute && slot >= Chutes.Slots) return;
+            if (Core.Chutes.Is(_world.Get(at.x, at.y, at.z)) && slot >= Chutes.Slots) return;
             Boxes.Set(at.x, at.y, at.z, slot, s);
             if (furnace) Furnaces.Wake(at.x, at.y, at.z);
             _world.Signal?.Wake(at.x, at.y, at.z);          // a comparator beside it looks again

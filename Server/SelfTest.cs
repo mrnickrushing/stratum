@@ -1418,6 +1418,38 @@ namespace Stratum.Server
                 Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor && notes == 1, "at sunset it goes off again");
             }
 
+            // Chutes: one draws in what lies on it; a side chute feeds the chest it points at.
+            {
+                var cw = new Patch();
+                cw.Set(0, 11, 0, Blocks.Chute); cw.Set(0, 10, 0, Blocks.Chest);
+                cw.Set(5, 11, 0, (ushort)(Blocks.SideChute + 1)); cw.Set(6, 11, 0, Blocks.Chest); cw.Set(5, 12, 0, Blocks.Chest);
+                var boxes = new Containers(); var chutes = new Chutes(boxes, cw.Get, (x, z) => true);
+                chutes.Add(0, 11, 0); chutes.Add(5, 11, 0);
+                var lying = new DropSim(cw.Get);
+                lying.Toss("cobble", 6, 0, 0.5f, 13, 0.5f, 0, 0, 0, 0);
+                boxes.Set(5, 12, 0, 3, new Stack("coal", 4));
+                for (int i = 0; i < 20 * 12; i++) { lying.Tick(0.05f); if (i % 8 == 0) lying.Feed(chutes.Take); chutes.Tick(0.05f); }
+                int under = 0; foreach (var st in boxes.At(0, 10, 0)) if (st.Item == "cobble") under += st.Count;
+                int side = 0; foreach (var st in boxes.At(6, 11, 0)) if (st.Item == "coal") side += st.Count;
+                Check(lying.All.Count == 0 && under == 6, $"what lies on a chute is drawn in and passed to the chest below ({under} of 6, {lying.All.Count} left lying)");
+                Check(side == 4, $"a side chute takes from the chest above it and feeds the chest it points at ({side} of 4)");
+
+                // An empty cart on a powered booster with a block behind it rolls off down the line and stops at the end.
+                var rw = new Patch();
+                rw.Set(-1, 11, 0, Blocks.Stone); rw.Set(0, 11, 0, (ushort)(Blocks.BoosterRail + 1)); rw.Set(0, 11, 1, (ushort)(Blocks.Lever + 1));
+                for (int x = 1; x <= 9; x++) rw.Set(x, 11, 0, (ushort)(Blocks.Rail + 1));
+                var rs = new MobSim(rw.Get, 2) { Spawning = false };
+                var cart = rs.Park(MobKind.Cart, 0.5f, 11.06f, 0.5f, 90);
+                var nobody = new List<Seen>();
+                for (int i = 0; i < 20 * 12; i++) rs.Tick(0.05f, nobody);
+                Check(cart.X > 9.4f && cart.X < 10.05f && cart.Roll == 0, $"an empty cart on a powered booster rolls down the line and stops at its end (x {cart.X:0.0})");
+                var still = rs.Park(MobKind.Cart, 4.5f, 11.06f, 0.5f, 90);
+                for (int i = 0; i < 20 * 3; i++) rs.Tick(0.05f, nobody);
+                Check(Math.Abs(still.X - 4.5f) < 0.01f, "a cart on plain level rail stays where it was put");
+                var cc = rs.Park(MobKind.ChestCart, 2.5f, 11.06f, 0.5f, 90);
+                Check(cc.Hold > 0 && rs.Mount(cc.Id, 2.5f, 11, 0.5f, out _, out _, out _, out _) == null, "a chest cart has a store of its own and can't be ridden");
+            }
+
             // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.
             var bw = new Patch(); int booms = 0, broke = 0;
             var blasts = new Blasts(bw.Get, bw.Set) { Boom = (x, y, z, p) => booms++, Broke = (x, y, z, d) => broke++ };

@@ -131,7 +131,7 @@ namespace Stratum.Core
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
-            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone, SnowLayer, Vine, DetectorRail, DaylightSensor, NoteBlock;
+            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone, SnowLayer, Vine, DetectorRail, DaylightSensor, NoteBlock, SideChute;
         public static readonly ushort[] Repeaters = new ushort[4];      // by delay: 0.1 s, 0.2 s, 0.3 s, 0.4 s
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
