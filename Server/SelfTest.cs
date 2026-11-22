@@ -884,6 +884,19 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
+                    // Operators: Ada made the first account, so she is one; Bea isn't until Ada says so.
+                    b.Send(new Packet(Net.Msg.Chat).Str("/give torch 4"));
+                    Check(b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().StartsWith("Only this server's operators"), 2000) != null, "Bea, who isn't an operator, can't /give");
+                    a.Send(new Packet(Net.Msg.Chat).Str("/give torch 4"));
+                    Check(a.Wait(Net.Msg.Give, r => r.Str() == "torch" && r.U16() == 4, 2000) != null, "Ada made the first account, so she can");
+                    a.Send(new Packet(Net.Msg.Chat).Str("/op Bea"));
+                    Check(b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str() == "Ada made Bea an operator.", 2000) != null, "Ada makes Bea an operator");
+                    b.Send(new Packet(Net.Msg.Chat).Str("/give torch 2"));
+                    Check(b.Wait(Net.Msg.Give, r => r.Str() == "torch" && r.U16() == 2, 2000) != null, "and now Bea can /give too");
+                    a.Send(new Packet(Net.Msg.Chat).Str("/deop Bea"));
+                    b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().Contains("operator rights away"), 2000);
+                    a.Send(new Packet(Net.Msg.Chat).Str("/deop Ada"));
+                    Check(a.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str() == "There has to be one operator left.", 2000) != null, "the last operator can't step down");
                     // Things on the ground, for a game that knows about them.
                     using (var d = new Bot(port) { Features = 31 })
                     {

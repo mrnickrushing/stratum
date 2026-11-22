@@ -404,6 +404,7 @@ namespace Stratum.Server
                     o.Conn.Send(JoinedPacket(p));
                 }
             Broadcast(SaidPacket("", mode == Accounts.Mode.Create ? $"{name} joined the game for the first time!" : $"{name} joined the game"));
+            if (mode == Accounts.Mode.Create && _hub.IsOp(name)) p.Conn.Send(SaidPacket("", "You made the first account, so you are this server's operator: /give, /time set, /op <name>."));
             Log.Info($"{name} joined from {p.Conn.Address} ({version}{(mode == Accounts.Mode.Create ? ", new account" : "")}), {_onlineCount} online");
         }
 
@@ -564,10 +565,22 @@ namespace Stratum.Server
                 Broadcast(SaidPacket("", $"{p.Name} changed the weather to {WeatherSim.Name(w)}"));
                 return;
             }
+            if (text == "/ops") { p.Conn.Send(SaidPacket("", "Operators: " + string.Join(", ", _hub.OpNames()))); return; }
+            if (text.StartsWith("/op ") || text.StartsWith("/deop ") || text == "/op" || text == "/deop")
+            {
+                if (!_hub.IsOp(p.Name)) { p.Conn.Send(SaidPacket("", "Only this server's operators can do that.")); return; }
+                bool on = text.StartsWith("/op");
+                string who = text.Substring(on ? 3 : 5).Trim();
+                if (who.Length == 0) { p.Conn.Send(SaidPacket("", "/op <name> makes someone an operator; /deop <name> takes it away; /ops lists them.")); return; }
+                string why = _hub.SetOp(who, on);
+                if (why != null) { p.Conn.Send(SaidPacket("", why)); return; }
+                Broadcast(SaidPacket("", on ? $"{p.Name} made {who} an operator." : $"{p.Name} took {who}'s operator rights away."));
+                return;
+            }
             if (text.StartsWith("/give") || text.StartsWith("/time") || text == "/day" || text == "/night")
             {
                 // For the server's operators (STRATUM_OPS).
-                if (!_cfg.Ops.Contains(p.Name.ToLowerInvariant())) { p.Conn.Send(SaidPacket("", "Only this server's operators can do that.")); return; }
+                if (!_hub.IsOp(p.Name)) { p.Conn.Send(SaidPacket("", "Only this server's operators can do that.")); return; }
                 var a = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 if (a[0] == "/give")
                 {
@@ -586,7 +599,7 @@ namespace Stratum.Server
                 Broadcast(SaidPacket("", $"{p.Name} set the time."));
                 return;
             }
-            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>  (operators: /give  /time set  /day  /night)")); return; }
+            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>  (operators: /give  /time set  /day  /night  /op  /deop  /ops)")); return; }
             Broadcast(SaidPacket(p.Name, text));
             Log.Info($"<{p.Name}> {text}");
         }
