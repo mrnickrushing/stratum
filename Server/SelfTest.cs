@@ -938,7 +938,68 @@ namespace Stratum.Server
                         Check(gotIt == "cobble" && gotN == 4, $"a moment later she picks it up (got {gotN} {gotIt}, it lay at {lx:0.0} {ly:0.0} {lz:0.0}, she stood by {px} {py} {pz})");
                         d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
                         Check(d.Wait(Net.Msg.Give, null, 400) == null, "and only once");
+                        // She is cut off before her game ever sends its pack: the cobble is still hers.
                     }
+                    Thread.Sleep(300);
+                    int Cobble(Bot who) { int n = 0; foreach (var st in who.Slots) if (st.Item == "cobble") n += st.Count; return n; }
+                    (int id, int boats) Boats(Bot who)
+                    {
+                        int found = 0, count = -1;
+                        for (int tries = 0; tries < 3; tries++)
+                            who.Wait(Net.Msg.Mobs, r => { int n = r.U16(); count = 0; for (int i = 0; i < n; i++) { int id = r.I32(); var kind = (MobKind)r.U8(); r.F32(); r.F32(); r.F32(); r.U8(); r.U8(); r.U8(); r.U8(); r.U8(); if (kind == MobKind.Boat) { found = id; count++; } } return true; }, 1500);
+                        return (found, count);
+                    }
+                    using (var d = new Bot(port) { Features = 63 })
+                    {
+                        d.Login("Dot", "dot-password", world: "");
+                        Check(d.Welcome() && Cobble(d) == 4, $"cut off right after picking it up, Dot still has her 4 cobble when she returns (has {Cobble(d)})");
+                        // Her game says the pack holds it (and that it has seen nothing handed over this visit).
+                        var dotPack = new Stack[Inventory.Size]; dotPack[0] = new Stack { Item = "cobble", Count = 4 };
+                        d.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(dotPack).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("").I32(0));
+                        // Two people put stone in the same place: the second is told plainly that hers didn't happen.
+                        d.Move(px + 0.5f, py + 1, pz + 2.5f);
+                        Thread.Sleep(150);
+                        a.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz).U16(Blocks.Stone).U16(0));
+                        Check(d.Wait(Net.Msg.Block, r => r.I32() == px + 2 && r.I32() == py + 2 && r.I32() == pz && r.U16() == Blocks.Stone, 2000) != null, "Ada puts stone down");
+                        d.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz).U16(Blocks.Stone).U16(0));
+                        Check(d.Wait(Net.Msg.Block, r => r.I32() == px + 2 && r.I32() == py + 2 && r.I32() == pz && r.U16() == Blocks.Stone && r.I32() == WorldHost.Refused, 2000) != null,
+                              "Dot, putting stone in the same place, is told it was refused (so her game hands the block back)");
+                        a.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz).U16(0).U16(Blocks.Stone));
+                        // A boat she has only just got into is left behind when she is cut off.
+                        var before = Boats(d);
+                        d.Send(new Packet(Net.Msg.Park).U8((byte)MobKind.Boat).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0));
+                        Thread.Sleep(400);
+                        var with = Boats(d);
+                        d.Send(new Packet(Net.Msg.Mount).I32(with.id));
+                        bool on = d.Wait(Net.Msg.Mounted, null, 2000) != null;
+                        Check(with.boats == before.boats + 1 && on, $"Dot puts a boat down and gets in ({before.boats} boats, then {with.boats})");
+                    }
+                    Thread.Sleep(300);
+                    using (var d = new Bot(port) { Features = 63 })
+                    {
+                        d.Login("Dot", "dot-password", world: "");
+                        bool dotBack = d.Welcome();
+                        Check(dotBack && Cobble(d) == 4, $"and the cobble isn't doubled once her pack has counted it (has {Cobble(d)})");
+                        var after = Boats(d);
+                        Check(after.boats >= 1, $"cut off the moment she got in, her boat is still there ({after.boats})");
+                        // Waiting high over the far side of a portal, then cut off: she returns where she set out.
+                        d.Move(px + 0.5f, py + 1, pz + 2.5f);
+                        Thread.Sleep(150);
+                        d.Move(px + 9000.5f, 140, pz + 0.5f);
+                        Thread.Sleep(150);
+                    }
+                    Thread.Sleep(300);
+                    using (var d = new Bot(port) { Features = 63 })
+                    {
+                        // One of two asleep, and a third arrives: the sleeper's count follows.
+                        a.Send(new Packet(Net.Msg.Sleep).Bool(true));
+                        Check(a.Wait(Net.Msg.Sleepers, r => r.U8() == 1 && r.U8() == 2, 2000) != null, "Ada lies down: 1 of 2 asleep");
+                        d.Login("Dot", "dot-password", world: "");
+                        Check(d.Welcome() && Math.Abs(d.X - (px + 0.5f)) < 1 && Math.Abs(d.Y - (py + 1)) < 1, $"cut off mid-portal, Dot is back where she set out, not in the air (at {d.X:0.0} {d.Y:0.0} {d.Z:0.0})");
+                        Check(a.Wait(Net.Msg.Sleepers, r => r.U8() == 1 && r.U8() == 3, 3000) != null, "Dot arrives: Ada's count becomes 1 of 3");
+                        a.Send(new Packet(Net.Msg.Sleep).Bool(false));
+                    }
+                    Thread.Sleep(300);
                     // A chest: Ada fills a slot, Bea sees it, breaking it hands the things to Ada.
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Chest).U16(0));
                     Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Chest) != null, "Ada places a chest");
@@ -1208,6 +1269,17 @@ namespace Stratum.Server
                 for (int y = sy; y < Chunk.Height && open; y++) if (Blocks.Get(At(sx, y, sz)).Solid) open = false;
                 for (int oz = -1; oz <= 1 && open; oz++) for (int ox = -1; ox <= 1; ox++) if (!Blocks.Get(At(sx + ox, sy - 1, sz + oz)).Solid || Blocks.Get(At(sx + ox, sy, sz + oz)).Solid) open = false;
                 Check(open, $"seed {seed}: the start ({sx} {sy} {sz}) is level ground under open sky");
+            }
+            {
+                int last = 0, lastWear = 0; bool rising = true;
+                foreach (var mat in new[] { "hide", "copper", "iron", "gold", "star" })
+                {
+                    int pts = 0, wear = Items.Get(mat + "_coat").Durability;
+                    foreach (var piece in new[] { "cap", "coat", "leggings", "boots" }) pts += Items.Get(mat + "_" + piece).Armour;
+                    if (pts <= last || wear <= lastWear) rising = false;
+                    last = pts; lastWear = wear;
+                }
+                Check(rising && last == 20, "armour gets better and lasts longer set by set: hide, copper, iron, golden, starstone");
             }
             {
                 var ask = Items.Ask("Oak Planks 20", out int askN, out string askSay);

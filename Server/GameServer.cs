@@ -294,6 +294,7 @@ namespace Stratum.Server
         public const int KnowsTransfers = 4;    // 0.7.2: says what it saw in a slot before changing it (needed for furnaces)
         long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
+        public const int KnowsRefusals = 32;    // 0.16.3: a refused edit is marked as one (by -1), so it can always be undone
         public const int KnowsDrops = 16;       // 0.14: shows things lying on the ground and picks them up
         public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds

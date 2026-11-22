@@ -897,12 +897,14 @@ namespace Stratum.Game
         }
 
         // The server put a block back: if that undoes an edit of ours, hand back what it cost or take what it gave.
-        public void Corrected(Vector3Int at, ushort now)
+        public void Corrected(Vector3Int at, ushort now, bool refused = false)
         {
             int i = _edits.FindLastIndex(e => e.At == at && Time.unscaledTime - e.When <= 6);
             if (i < 0) return;
             var edit = _edits[i]; _edits.RemoveAt(i);
-            if (edit.Set == now || P.Creative) return;
+            // A plain change that leaves what we set isn't an undoing. A refusal always is: someone else may have put
+            // the same thing there a moment before, and ours was never used.
+            if (edit.Set == now && !refused || P.Creative) return;
             foreach (var (item, n) in edit.Got) P.Inv.Take(item, n);
             if (edit.Spent != null) P.Inv.Add(edit.Spent, 1);
         }

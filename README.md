@@ -296,4 +296,10 @@ are kept with the account on a server (`PlayerRecord.notes`).
 panel behind it, the backpack is solid and the shield slot has a row of its own, `/give` takes names and part names
 (`Items.Ask`), and the Windows build was run under Wine (`wine Builds/Windows/Stratum.exe -smoketest <dir>`).
 
+0.16.3: golden armour sits between iron and starstone. Five co-op faults from a two-client review are closed: a thing
+handed over is the player's until a backpack update counts it (`Player.Owed`, the count rides on the end of Keep), a
+connection lost mid-portal returns to the departure point (`Player.Away`), a refused edit is marked (`by` -1, feature
+bit 32) so the block is always handed back, a boat just boarded is left behind (`Player.Boarded`), and the sleep count
+follows joins and leaves. Still open: one inventory message carries at most 255 stacks.
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.
