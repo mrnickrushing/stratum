@@ -341,6 +341,25 @@ namespace Stratum.Game
             }
             if (mouse.leftButton.wasPressedThisFrame && !HasTarget) { _swing = 0; Sfx.I?.Play("swish", 0.3f); }
 
+            // A hound: bones make it a friend; a friend sits or comes when asked, and meat mends it. A camel that has
+            // been fed is climbed onto with an empty hand.
+            if (rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var pal))
+            {
+                bool friend = (pal.More & Mob.MTame) != 0;
+                if (pal.Kind == MobKind.Hound)
+                {
+                    if (!friend && heldDef != null && heldDef.Id == "bone") { Link?.UseMob(TargetMob, "bone"); if (!P.Creative) P.Inv.UseHeld(); _swing = 0; return; }
+                    if (friend)
+                    {
+                        bool meat = heldDef != null && heldDef.Food > 0 && (heldDef.Id.StartsWith("raw_") || heldDef.Id == "steak" || heldDef.Id.StartsWith("roast_"));
+                        if (meat && pal.Health < 0.99f) { Link?.UseMob(TargetMob, heldDef.Id); if (!P.Creative) P.Inv.UseHeld(); }
+                        else Link?.UseMob(TargetMob, "");
+                        _swing = 0; return;
+                    }
+                }
+                if (pal.Kind == MobKind.Camel && friend && heldDef == null && P.Riding == null) { Link?.Mount(TargetMob); _swing = 0; return; }
+            }
+
             // Feeding an animal its food (to breed it, or help a young one grow).
             if (heldDef != null && rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var fed)
                 && MobSim.FoodOf(fed.Kind) == heldDef.Id)

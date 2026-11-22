@@ -138,7 +138,7 @@ namespace Stratum.Game
         public override void Tick(float dt)
         {
             _seen.Clear();
-            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item });
+            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item, Key = "me" });
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);
@@ -192,7 +192,7 @@ namespace Stratum.Game
         public override void Shoot(Vector3 from, Vector3 v, float damage) => Sim.Shoot(1, from.x, from.y, from.z, v.x, v.y, v.z, damage);
         public override void UseMob(int mob, string item)
         {
-            var got = Sim.Use(mob, item, _player.Feet.x, _player.Feet.z);
+            var got = Sim.Use(mob, item, _player.Feet.x, _player.Feet.z, "me");
             if (got is (string it, int n)) Gave?.Invoke(it, n, 0);
         }
 
@@ -251,7 +251,7 @@ namespace Stratum.Game
             var k = Sim.Mount(mob, f.x, f.y, f.z, out float x, out float y, out float z, out float yaw);
             if (k != null) Mounted?.Invoke(k.Value, new Vector3(x, y, z), yaw);
         }
-        public override void Park(MobKind kind, Vector3 at, float yaw) => Sim.Park(kind, at.x, at.y, at.z, yaw);
+        public override void Park(MobKind kind, Vector3 at, float yaw) => Sim.Park(kind, at.x, at.y, at.z, yaw, "me");
 
         public override void Save()
         {

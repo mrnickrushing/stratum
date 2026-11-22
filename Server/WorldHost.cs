@@ -267,8 +267,7 @@ namespace Stratum.Server
                 try
                 {
                     // A boat or cart being ridden is left where it is, as if they had stepped out.
-                    if (p.Joined && (p.Flags & Net.InBoat) != 0) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
-                    if (p.Joined && (p.Flags & Net.InCart) != 0) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
+                    if (p.Joined) LeaveMount(p);
                     if (p.Joined) SavePlayer(p);
                 }
                 catch (Exception e) { Log.Warn($"could not save {p.Name} on the way out: {e.Message}"); }
@@ -410,8 +409,7 @@ namespace Stratum.Server
             if (!_players.TryGetValue(c.Id, out var p)) return;
             _players.Remove(c.Id);
             // Leaving in a boat or cart leaves it where they were.
-            if (p.Joined && (p.Flags & Net.InBoat) != 0) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
-            if (p.Joined && (p.Flags & Net.InCart) != 0) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
+            if (p.Joined) LeaveMount(p);
             foreach (long k in p.Waiting) if (_waiters.TryGetValue(k, out var l)) l.Remove(p);
             if (!p.Joined) return;
             SavePlayer(p);
@@ -586,7 +584,7 @@ namespace Stratum.Server
         {
             _seen.Clear();
             foreach (var p in _players.Values)
-                if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep, Held = p.Held });
+                if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep, Key = p.Key, Held = p.Held });
             _mobs.Time01 = (float)World.Meta.time;
             _mobs.Tick(dt, _seen);
             _drops.Tick(dt);
@@ -680,6 +678,15 @@ namespace Stratum.Server
             }
         }
 
+        // Whatever they were riding is left where they were (both ride flags together mean a camel).
+        void LeaveMount(Player p)
+        {
+            bool boat = (p.Flags & Net.InBoat) != 0, cart = (p.Flags & Net.InCart) != 0;
+            if (boat && cart) _mobs.Park(MobKind.Camel, p.X, p.Y, p.Z, p.Yaw, p.Key);
+            else if (boat) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
+            else if (cart) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
+        }
+
         static bool Near(Mob m, Player p, float r) { float dx = m.X - p.X, dz = m.Z - p.Z; return dx * dx + dz * dz < r * r; }
 
         void Strike(Player p, Reader r)
@@ -701,7 +708,7 @@ namespace Stratum.Server
         void UseMob(Player p, Reader r)
         {
             int id = r.I32(); string item = r.Str();
-            var got = _mobs.Use(id, item, p.X, p.Z);
+            var got = _mobs.Use(id, item, p.X, p.Z, p.Key);
             if (got is (string it, int n)) Give(p, it, n);
         }
 
@@ -799,10 +806,10 @@ namespace Stratum.Server
         void Park(Player p, Reader r)
         {
             var k = (MobKind)r.U8(); float x = r.F32(), y = r.F32(), z = r.F32(), yaw = r.F32();
-            if ((int)k >= (int)MobKind.Count || !MobSim.Def(k).Vehicle || ++p.Edits > 40) return;
+            if ((int)k >= (int)MobKind.Count || !(MobSim.Def(k).Vehicle || k == MobKind.Camel) || ++p.Edits > 40) return;
             float dx = x - p.X, dy = y - p.Y, dz = z - p.Z;
             if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
-            _mobs.Park(k, x, y, z, yaw);
+            _mobs.Park(k, x, y, z, yaw, p.Key);
         }
 
         // Through a portal: the player has arrived near (tx, tz) and waited for the land there; find the portal

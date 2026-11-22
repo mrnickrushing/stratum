@@ -109,7 +109,7 @@ namespace Stratum.Game
             if (_link == null) return;
             _link.Tick(Time.deltaTime);
             _shown.Clear(); _shown.AddRange(_link.Mobs);
-            if (_player.Riding != null) _shown.Add(new MobState { Id = -1, Kind = _player.Riding.Value, Pos = _player.Feet, Yaw = _player.RideYaw, Health = 1 });
+            if (_player.Riding != null) _shown.Add(new MobState { Id = -1, Kind = _player.Riding.Value, Pos = _player.Feet, Yaw = _player.RideYaw, Health = 1, More = Mob.MTame });
             _avatars?.Rides(_shown);
             _creatures.Show(_shown, Time.deltaTime);
             _dropViews.Day = _sky.DayFactor;
@@ -254,7 +254,7 @@ namespace Stratum.Game
         {
             { MobKind.Cow, "moo" }, { MobKind.Pig, "oink" }, { MobKind.Sheep, "baa" }, { MobKind.Chicken, "cluck" },
             { MobKind.Ghoul, "groan" }, { MobKind.BoneArcher, "rattle" }, { MobKind.Crawler, "hiss" },
-            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" },
+            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" },
         };
 
         void MobSfx(MobKind kind, string what, Vector3 at)

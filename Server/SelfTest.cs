@@ -1212,6 +1212,50 @@ namespace Stratum.Server
             for (int i = 0; i < 200; i++) decay.Tick(0.05f);
             int left = 0; for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == Blocks.OakLeaves) left++;
             Check(left == 0 && fell == 49 && t.Get(21, 14, 0) == Blocks.OakLeaves, $"with the whole trunk cut the leaves fall away, and another tree's leaves stay ({left} left, {fell} fell)");
+            // A ghoul finds its way round a wall it can't climb.
+            {
+                var pw = new Patch();
+                for (int z = -4; z <= 4; z++) for (int y = 11; y <= 13; y++) pw.Set(4, y, z, Blocks.Stone);
+                var sim = new MobSim(pw.Get, 5) { Spawning = false, Time01 = 0.9f };
+                var ghoul = sim.Spawn(MobKind.Ghoul, 0.5f, 11, 0.5f);
+                ghoul.Target = 1;                      // it has already seen them (a wall hides them now)
+                var seen = new List<Seen> { new Seen { Id = 1, X = 8.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                bool hit = false; sim.HitPlayer += (id, dmg, fx, fz, from) => hit = true;
+                for (int i = 0; i < 20 * 25 && !hit; i++) sim.Tick(0.05f, seen);
+                Check(hit, $"a ghoul walks round a wall to reach someone (it got to {ghoul.X:0.0}, {ghoul.Z:0.0})");
+
+                // A hound takes a few bones to befriend, then keeps up with its owner, sits when told and stays.
+                var hs = new MobSim(new Patch().Get, 9) { Spawning = false, Time01 = 0.3f };
+                var hound = hs.Spawn(MobKind.Hound, 0.5f, 11, 0.5f);
+                var owner = new List<Seen> { new Seen { Id = 1, X = 1.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                int bones = 0; while (!hound.Tame && bones < 60) { hs.Use(hound.Id, "bone", 1.5f, 0.5f, "kid"); bones++; }
+                Check(hound.Tame && hound.OwnerKey == "kid", $"a hound is befriended with bones ({bones})");
+                owner[0] = new Seen { Id = 1, X = 15.5f, Y = 11, Z = 3.5f, Alive = true, Key = "kid" };
+                for (int i = 0; i < 20 * 15; i++) hs.Tick(0.05f, owner);
+                float hd = (float)Math.Sqrt((hound.X - 15.5f) * (hound.X - 15.5f) + (hound.Z - 3.5f) * (hound.Z - 3.5f));
+                Check(hd < 5, $"it keeps up with its owner ({hd:0.0} away)");
+                Check(!hs.Strike(hound.Id, 1, 5, 15.5f, 11, 3.5f) || hound.Health == hound.Def.Health, "its owner can't hurt it by mistake");
+                hs.Use(hound.Id, "", 15.5f, 3.5f, "kid");
+                owner[0] = new Seen { Id = 1, X = 1.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" };
+                float sx = hound.X, sz = hound.Z;
+                for (int i = 0; i < 20 * 8; i++) hs.Tick(0.05f, owner);
+                Check(hound.Sit && Math.Abs(hound.X - sx) < 1 && Math.Abs(hound.Z - sz) < 1, "told to sit, it stays where it is");
+                // Kept across a save.
+                var ms = new System.IO.MemoryStream();
+                using (var bw2 = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, true)) hs.Write(bw2);
+                var hs2 = new MobSim(new Patch().Get, 9) { Spawning = false };
+                ms.Position = 0; using (var br2 = new System.IO.BinaryReader(ms)) hs2.Read(br2);
+                Check(hs2.All.Count == 1 && hs2.All[0].Tame && hs2.All[0].Sit && hs2.All[0].OwnerKey == "kid", "a friend is still a friend, still sitting, after a save");
+
+                // A fed camel can be ridden, and is left where its rider gets off.
+                var camel = hs.Spawn(MobKind.Camel, 3.5f, 11, 0.5f);
+                Check(hs.Mount(camel.Id, 1.5f, 11, 0.5f, out _, out _, out _, out _) == null, "a wild camel can't be ridden");
+                hs.Use(camel.Id, "wheat", 1.5f, 0.5f, "kid");
+                Check(hs.Mount(camel.Id, 1.5f, 11, 0.5f, out _, out _, out _, out _) == MobKind.Camel, "a fed camel can");
+                var parked = hs.Park(MobKind.Camel, 9.5f, 11, 0.5f, 0, "kid");
+                Check(parked != null && parked.Tame && parked.Kept, "and waits where its rider got off");
+            }
+
             // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.
             var bw = new Patch(); int booms = 0, broke = 0;
             var blasts = new Blasts(bw.Get, bw.Set) { Boom = (x, y, z, p) => booms++, Broke = (x, y, z, d) => broke++ };

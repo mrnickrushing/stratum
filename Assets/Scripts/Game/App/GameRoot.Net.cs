@@ -312,6 +312,7 @@ namespace Stratum.Game
             if (_player.Asleep) flags |= Net.Asleep;
             if (_player.Riding == MobKind.Boat) flags |= Net.InBoat;
             if (_player.Riding == MobKind.Cart) flags |= Net.InCart;
+            if (_player.Riding == MobKind.Camel) flags |= Net.InBoat | Net.InCart;      // both together: on a camel
             bool same = (f - _lastSentPos).sqrMagnitude < 0.0004f && Mathf.Abs(Mathf.DeltaAngle(_player.Yaw, _lastSentYaw)) < 0.5f &&
                         Mathf.Abs(_player.Pitch - _lastSentPitch) < 0.5f && flags == _lastSentFlags;
             if (same && !force) return;

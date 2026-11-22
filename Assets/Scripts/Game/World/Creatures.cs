@@ -23,7 +23,7 @@ namespace Stratum.Game
             public readonly List<Renderer> Parts = new List<Renderer>();
             public readonly List<Color> Colors = new List<Color>();
             public readonly List<float> Glows = new List<float>();
-            public GameObject Wool, Shorn;
+            public GameObject Wool, Shorn, Collar;
             public float Swing = 35, Stride = 1;
         }
 
@@ -32,7 +32,7 @@ namespace Stratum.Game
             public MobState S;
             public Model M;
             public Vector3 Pos;
-            public float Yaw, Pitch, Phase, Speed, Die, Attack, Hurt, Bob, Swell;
+            public float Yaw, Pitch, Phase, Speed, Die, Attack, Hurt, Bob, Swell, Sat;
             public Vector2 Light = new Vector2(1, 0);
             public bool Seen;
             public float LightTimer;
@@ -214,6 +214,15 @@ namespace Stratum.Game
 
             // Young ones are small; ones looking for a mate give off little pink sparks.
             float scale = (s.More & Mob.MBaby) != 0 ? 0.55f : 1;
+            if (m.Collar != null) { bool tame = (s.More & Mob.MTame) != 0; if (m.Collar.activeSelf != tame) m.Collar.SetActive(tame); }
+            // Told to stay: it sits back on its haunches.
+            if (s.Kind == MobKind.Hound && m.Body != null)
+            {
+                bool sit = (s.More & Mob.MSit) != 0;
+                v.Sat = Mathf.MoveTowards(v.Sat, sit ? 1 : 0, dt * 5);
+                m.Body.localRotation = Quaternion.Euler(-28 * v.Sat, 0, 0);
+                m.Body.localPosition = new Vector3(0, 0.42f - 0.12f * v.Sat, -0.06f * v.Sat);
+            }
             if (s.Kind == MobKind.Bloat)
             {
                 // About to burst: it swells and shudders.
@@ -326,6 +335,7 @@ namespace Stratum.Game
                 case MobKind.Goat: Goat(m); break;
                 case MobKind.Camel: Camel(m); break;
                 case MobKind.Bloat: Bloat(m); break;
+                case MobKind.Hound: Hound(m); break;
             }
             return m;
         }
@@ -488,6 +498,27 @@ namespace Stratum.Game
             B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
             Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
             foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
+        }
+
+        // The Hound: a rangy grey dog with a pale muzzle and a brush of a tail; a red collar once it's a friend.
+        void Hound(Model m)
+        {
+            Color coat = Hex(0x6e6a64), pale = Hex(0xcfc8ba), dark = Hex(0x3a3632);
+            Legs4(m, 0.15f, 0.42f, 0.3f, 0.13f, 0.42f, coat, dark);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.42f, 0));
+            B(m, m.Body, 0, 0.17f, 0, 0.4f, 0.36f, 0.86f, coat);
+            B(m, m.Body, 0, 0.06f, 0.1f, 0.34f, 0.16f, 0.5f, pale);                        // chest and belly
+            B(m, m.Body, 0, 0.32f, -0.52f, 0.12f, 0.12f, 0.34f, coat);                     // tail
+            B(m, m.Body, 0, 0.36f, -0.7f, 0.1f, 0.1f, 0.1f, pale);
+            m.Head = Pivot(m.Root, new Vector3(0, 0.72f, 0.42f));
+            B(m, m.Head, 0, 0.04f, 0.12f, 0.36f, 0.32f, 0.32f, coat);
+            B(m, m.Head, 0, -0.04f, 0.36f, 0.2f, 0.16f, 0.2f, pale);                       // muzzle
+            B(m, m.Head, 0, 0.0f, 0.47f, 0.08f, 0.07f, 0.03f, dark, 0, false);              // nose
+            B(m, m.Head, -0.12f, 0.26f, 0.06f, 0.1f, 0.16f, 0.08f, dark);                  // ears
+            B(m, m.Head, 0.12f, 0.26f, 0.06f, 0.1f, 0.16f, 0.08f, dark);
+            Eyes(m, m.Head, 0.1f, 0.1f, 0.285f, 0.06f, Hex(0x2a1c10));
+            var collar = B(m, m.Body, 0, 0.26f, 0.4f, 0.44f, 0.1f, 0.1f, Hex(0xc8281e));
+            m.Collar = collar.gameObject;
         }
 
         // The Bloat: a swollen, warty bog creature on four stubby legs, with pale eyes and seams that glow.

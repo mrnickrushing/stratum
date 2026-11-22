@@ -104,7 +104,7 @@ namespace Stratum.Game
             {
                 bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0;
                 if (!boat && !cart) continue;
-                into.Add(new MobState { Id = -1000 - a.Id, Kind = boat ? MobKind.Boat : MobKind.Cart, Pos = a.Pos, Yaw = a.Yaw, Health = 1 });
+                into.Add(new MobState { Id = -1000 - a.Id, Kind = boat && cart ? MobKind.Camel : boat ? MobKind.Boat : MobKind.Cart, Pos = a.Pos, Yaw = a.Yaw, Health = 1, More = Mob.MTame });
             }
         }
 
@@ -121,7 +121,7 @@ namespace Stratum.Game
 
             bool sneak = (a.Flags & Net.Sneaking) != 0, fly = (a.Flags & Net.Flying) != 0;
             bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0, seated = boat || cart;
-            a.Root.position = a.Pos + Vector3.up * (boat ? -0.25f : cart ? 0.0f : 0);
+            a.Root.position = a.Pos + Vector3.up * (boat && cart ? 1.2f : boat ? -0.25f : cart ? 0.0f : 0);
             // The figure is modelled with its face toward -Z, so it is turned to look the way its player looks.
             a.Root.rotation = Quaternion.Euler(0, a.Yaw + 180, 0);
             a.Body.localRotation = Quaternion.Euler(sneak ? -22 : 0, 0, 0);

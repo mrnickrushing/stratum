@@ -106,7 +106,10 @@ namespace Stratum.Game
             }
             if (move.sqrMagnitude > 1) move.Normalize();
 
-            if (Riding != null)
+            // On a camel: it walks where you steer, faster than on foot, and jumps higher; the sneak key gets off.
+            bool mounted = Riding == MobKind.Camel;
+            if (mounted) { Flying = false; RideYaw = Yaw; if (InputEnabled && kb != null && Keys.Pressed(Act.Sneak)) { GetOut(); mounted = false; } sneakKey = false; }
+            if (Riding != null && !mounted)
             {
                 Sneaking = Sprinting = false; Flying = false;
                 InWater = InLava = OnLadder = false;
@@ -134,7 +137,7 @@ namespace Stratum.Game
             var right = Quaternion.Euler(0, Yaw, 0) * Vector3.right;
             var wish = fwd * move.y + right * move.x;
 
-            Sprinting = sprintKey && move.y > 0.1f && !Sneaking && (Food > 6 || Creative);
+            Sprinting = !mounted && sprintKey && move.y > 0.1f && !Sneaking && (Food > 6 || Creative);
             bool wantSneak = sneakKey && !Flying;
             if (!wantSneak && Sneaking && Blocked(Feet, Tall)) wantSneak = true;   // no standing up under a slab
             Sneaking = wantSneak;
@@ -168,14 +171,14 @@ namespace Stratum.Game
             }
             else
             {
-                float sp = Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk;
+                float sp = mounted ? 7.6f : Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk;
                 var target = wish * sp;
                 float accel = OnGround ? 14 : 3;
                 Velocity.x = Mathf.Lerp(Velocity.x, target.x, 1 - Mathf.Exp(-dt * accel));
                 Velocity.z = Mathf.Lerp(Velocity.z, target.z, 1 - Mathf.Exp(-dt * accel));
                 Velocity.y -= Gravity * dt;
                 if (Velocity.y < -60) Velocity.y = -60;
-                if (jump && OnGround) { Velocity.y = JumpSpeed; Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
+                if (jump && OnGround) { Velocity.y = mounted ? JumpSpeed * 1.3f : JumpSpeed; Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
                 // Ladders: walk into them or jump to climb, sneak to hold on, otherwise slide down slowly.
                 if (OnLadder)
                 {
@@ -360,7 +363,7 @@ namespace Stratum.Game
         void UpdateCamera(float dt, float horiz)
         {
             transform.rotation = Quaternion.Euler(0, Yaw, 0);
-            float eye = Riding == MobKind.Boat ? 1.05f : Riding == MobKind.Cart ? 1.25f : Sneaking ? EyeSneak : Eye;
+            float eye = Riding == MobKind.Boat ? 1.05f : Riding == MobKind.Cart ? 1.25f : Riding == MobKind.Camel ? Eye + 1.3f : Sneaking ? EyeSneak : Eye;
             _eye = Mathf.Lerp(_eye, eye, 1 - Mathf.Exp(-dt * 14));
             float bobAmt = OnGround && !Flying ? Mathf.Clamp01(horiz / Walk) : 0;
             float bx = Mathf.Sin(_bob * Mathf.PI) * 0.035f * bobAmt, by = Mathf.Abs(Mathf.Cos(_bob * Mathf.PI)) * 0.05f * bobAmt;
