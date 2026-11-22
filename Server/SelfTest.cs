@@ -905,6 +905,13 @@ namespace Stratum.Server
                     Check(b.Wait(Net.Msg.Moved, r => { r.I32(); r.F32(); r.F32(); r.F32(); r.F32(); r.F32(); r.U8(); return r.Str() == "iron_sword~s"; }, 3000) != null, "Bea is told Ada carries a shield");
                     a.Send(new Packet(Net.Msg.Splash).F32(px + 0.5f).F32(py + 1).F32(pz + 1.5f).Str("Swift").F32(60));
                     Check(b.Wait(Net.Msg.Splashed, r => { r.F32(); r.F32(); r.F32(); return r.Str() == "Swift" && Math.Abs(r.F32() - 60) < 0.01f; }, 3000) != null, "a splash potion Ada throws bursts for Bea too");
+                    // The clock runs while someone is here.
+                    {
+                        double clock0 = 0, clock1 = 0;
+                        a.Wait(Net.Msg.Clock, r => { clock0 = r.F64(); return true; }, 7000);
+                        a.Wait(Net.Msg.Clock, r => { clock1 = r.F64(); return true; }, 7000);
+                        Check(clock1 != clock0, $"with players in the world its clock runs ({clock0:0.0000} then {clock1:0.0000})");
+                    }
                     // Goals and statistics are kept with the account.
                     a.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(new Stack[Inventory.Size]).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("wood,bench|mined=12;"));
                     Thread.Sleep(200);
