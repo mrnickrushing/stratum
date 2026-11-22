@@ -2,7 +2,9 @@ using System;
 
 namespace Stratum.Core
 {
-    public enum Biome : byte { Ocean, River, Beach, Plains, Forest, BirchWood, Taiga, Tundra, Desert, Peaks }
+    public enum Biome : byte { Ocean, River, Beach, Plains, Forest, BirchWood, Taiga, Tundra, Desert, Peaks,
+        // 0.15
+        Swamp, Savanna, Jungle }
 
     // Turns a seed into terrain. Everything here is a pure function of the seed and world position, so any chunk
     // can be made in any order on any thread and always comes out the same.
@@ -114,10 +116,14 @@ namespace Stratum.Core
             if (h < Chunk.SeaLevel) return col.River > 0.4f || col.Only != 0 ? Biome.River : Biome.Ocean;
             if (col.Only != 0) return (Biome)(col.Only - 1);
             if (h > 150 + col.Lift) return Biome.Peaks;
+            // Low, wet ground by the water is swamp rather than beach.
+            if (h <= Chunk.SeaLevel + 3 && col.Humid > 0.3f && col.Temp > -0.12f && col.Temp < 0.5f) return Biome.Swamp;
             if (h <= Chunk.SeaLevel + 2 && col.River < 0.3f && col.Temp > -0.45f) return Biome.Beach;
             if (col.Temp > 0.4f && col.Humid < 0.05f) return Biome.Desert;
             if (col.Temp < -0.45f) return Biome.Tundra;
             if (col.Temp < -0.12f) return Biome.Taiga;
+            if (col.Temp > 0.3f && col.Humid > 0.38f) return Biome.Jungle;          // hot and wet
+            if (col.Temp > 0.3f) return Biome.Savanna;                               // hot, with a little rain (drier still is desert)
             if (col.Humid > 0.45f && col.Temp < 0.35f) return Biome.BirchWood;
             if (col.Humid > 0.15f) return Biome.Forest;
             return Biome.Plains;
@@ -134,6 +140,7 @@ namespace Stratum.Core
 
         public void Generate(Chunk ch)
         {
+            if (Quiet.InChunk(ch.X)) { Quiet.Generate(ch, Seed); ch.Ready = true; return; }
             if (Ember.InChunk(ch.X)) { Ember.Generate(ch, _cave1, _cave2, Seed); ch.RecalcMaxY(); ch.Ready = true; return; }
             var cols = _cols ??= new Column[W * W];
             if (Kind == WorldKind.Sky) { GenerateSky(ch, cols); return; }
@@ -435,10 +442,11 @@ namespace Stratum.Core
                     float chance = biome switch
                     {
                         Biome.Forest => 0.62f, Biome.BirchWood => 0.58f, Biome.Taiga => 0.55f, Biome.Plains => 0.035f,
-                        Biome.Tundra => Kind == WorldKind.Frozen ? 0.16f : 0.06f, Biome.Desert => 0.05f, Biome.Peaks => 0.0f, _ => 0f
+                        Biome.Tundra => Kind == WorldKind.Frozen ? 0.16f : 0.06f, Biome.Desert => 0.05f, Biome.Peaks => 0.0f,
+                        Biome.Jungle => 0.85f, Biome.Savanna => 0.05f, Biome.Swamp => 0.3f, _ => 0f
                     };
                     // Woods thin out toward their edges and in clearings.
-                    if (biome == Biome.Forest || biome == Biome.BirchWood || biome == Biome.Taiga)
+                    if (biome == Biome.Forest || biome == Biome.BirchWood || biome == Biome.Taiga || biome == Biome.Jungle)
                         chance *= Smooth(-0.35f, 0.15f, _patch.S2(wx / 45f, wz / 45f));
                     float roll = ((h >> 8) & 0xFFFF) / 65536f;
                     if (roll >= chance) continue;
@@ -457,6 +465,12 @@ namespace Stratum.Core
                     {
                         case Biome.Desert: Cactus(ch, ox, gy + 1, oz, ref rng); break;
                         case Biome.Taiga: case Biome.Tundra: Pine(ch, ox, gy + 1, oz, ref rng); break;
+                        case Biome.Jungle:
+                            if (rng.Value() < 0.3f) BigOak(ch, ox, gy + 1, oz, ref rng);
+                            else Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 8, 13);
+                            break;
+                        case Biome.Savanna: Parasol(ch, ox, gy + 1, oz, ref rng); break;
+                        case Biome.Swamp: Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 3, 5); break;
                         case Biome.BirchWood:
                             if (rng.Value() < 0.75f) Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.BirchLog, Blocks.BirchLeaves, 5, 8);
                             else Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 4, 6);
@@ -491,6 +505,21 @@ namespace Stratum.Core
             var d = Blocks.Get(below);
             if (y >= 2 && !(d.Solid && d.Shape == Shape.Cube)) ch.Set(x, y - 1, z, Blocks.Dirt);
             return true;
+        }
+
+        // A savanna tree: a bare trunk and a wide, flat crown.
+        static void Parasol(Chunk ch, int x, int y, int z, ref Rng rng)
+        {
+            if (!BaseOk(ch, x, y, z, false)) return;
+            int h = rng.Range(4, 7);
+            for (int i = 0; i < h; i++) Put(ch, x, y + i, z, Blocks.OakLog, false);
+            for (int dz = -3; dz <= 3; dz++)
+                for (int dx = -3; dx <= 3; dx++)
+                {
+                    int d2 = dx * dx + dz * dz;
+                    if (d2 <= 10) Put(ch, x + dx, y + h, z + dz, Blocks.OakLeaves, false);
+                    if (d2 <= 3) Put(ch, x + dx, y + h + 1, z + dz, Blocks.OakLeaves, false);
+                }
         }
 
         static void Broadleaf(Chunk ch, int x, int y, int z, ref Rng rng, ushort log, ushort leaves, int minH, int maxH)
@@ -592,7 +621,7 @@ namespace Stratum.Core
                     ushort plant = 0;
                     if (ground == Blocks.Grass)
                     {
-                        float grass = biome == Biome.Plains ? 0.38f : biome == Biome.Forest || biome == Biome.BirchWood ? 0.16f : 0.12f;
+                        float grass = biome == Biome.Plains ? 0.38f : biome == Biome.Savanna || biome == Biome.Jungle ? 0.5f : biome == Biome.Swamp ? 0.32f : biome == Biome.Forest || biome == Biome.BirchWood ? 0.16f : 0.12f;
                         grass *= 0.4f + p * 1.2f;
                         float flower = biome == Biome.Plains ? 0.03f : 0.012f;
                         if (r < flower)
@@ -600,7 +629,7 @@ namespace Stratum.Core
                             float k = _patch.S2((bx + x) / 30f + 50, (bz + z) / 30f);
                             plant = k > 0.25f ? Blocks.YellowFlower : k < -0.25f ? Blocks.BlueFlower : Blocks.RedFlower;
                         }
-                        else if (r < flower + grass) plant = biome == Biome.Taiga ? Blocks.Fern : Blocks.TallGrass;
+                        else if (r < flower + grass) plant = biome == Biome.Taiga || (biome == Biome.Jungle || biome == Biome.Swamp) && (r * 977 % 1) < 0.45f ? Blocks.Fern : Blocks.TallGrass;
                     }
                     else if (ground == Blocks.SnowyGrass && r < 0.04f) plant = Blocks.Fern;
                     else if (ground == Blocks.Sand && biome == Biome.Desert && r < 0.012f) plant = Blocks.DeadBush;

@@ -18,6 +18,7 @@ namespace Stratum.Game
         public Renderer HeldRenderer => _heldMr;
         public bool Swinging => _swing < 0.95f;
         public System.Action<string> OpenStation;      // "workbench" / "furnace"
+        public System.Action Travel;                   // a gate stone was touched
         public System.Action<string> Toast;
         public System.Action<Vector3Int> OpenBox;      // a chest
         public System.Action<Vector3Int> UseBed;       // the bed's foot
@@ -520,7 +521,7 @@ namespace Stratum.Game
         static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
-            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.GateStone || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -589,6 +590,7 @@ namespace Stratum.Game
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
                 if (target == Blocks.BrewStand) { OpenStation?.Invoke("brewer"); return; }
+                if (target == Blocks.GateStone) { Travel?.Invoke(); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }

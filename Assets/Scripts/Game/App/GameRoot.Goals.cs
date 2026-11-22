@@ -60,6 +60,7 @@ namespace Stratum.Game
                 else if (it == "piston" || it == "sticky_piston") Reach("piston");
                 else if (it == "starstone") Reach("star");
                 else if (it == "colossus_heart") Reach("heart");
+                else if (it == "hollow_crown") Reach("crown");
                 else if (it.StartsWith("potion_")) potion = true;
             }
             if (potion) Reach("potion");
@@ -69,6 +70,8 @@ namespace Stratum.Game
             if (_player.Asleep) Reach("bed");
             if (_player.Riding == MobKind.Camel) Reach("camel");
             if (Ember.In(_player.Feet.x)) Reach("ember");
+            if (Quiet.In(_player.Feet.x)) Reach("quiet");
+            if (!inv.Slots[Inventory.ArmourStart].Empty && inv.Slots[Inventory.ArmourStart].Item.StartsWith("hollow_crown")) Reach("crown");
             if (_player.XpLevel >= 15) Reach("level");
             if (_link != null)
                 foreach (var m in _link.Mobs)

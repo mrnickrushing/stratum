@@ -192,7 +192,7 @@ namespace Stratum.Game
             float atk = Mathf.Sin(Mathf.Clamp01(1 - v.Attack) * Mathf.PI) * (v.Attack > 0 ? 1 : 0);
             if (m.ArmL != null)
             {
-                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus;
+                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus || s.Kind == MobKind.King;
                 float baseX = s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0;
                 m.ArmL.localRotation = Quaternion.Euler(baseX - sw * 0.7f - atk * 70, 0, -4);
                 m.ArmR.localRotation = Quaternion.Euler((s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0) + sw * 0.7f - atk * 90, 0, 4);
@@ -223,6 +223,10 @@ namespace Stratum.Game
                 m.Body.localRotation = Quaternion.Euler(-28 * v.Sat, 0, 0);
                 m.Body.localPosition = new Vector3(0, 0.42f - 0.12f * v.Sat, -0.06f * v.Sat);
             }
+            if (s.Kind == MobKind.King && m.Body != null) m.Body.localPosition = new Vector3(0, 0.6f + Mathf.Sin(Time.time * 1.4f) * 0.16f, 0);
+            if (s.Kind == MobKind.Glob) { int size = Mob.JobOf(s.More); scale *= size == 0 ? 1 : size == 1 ? 0.62f : 0.36f; }
+            // A swimmer wags its tail end as it goes.
+            if (s.Kind == MobKind.Snapper && m.Body != null) m.Body.localRotation = Quaternion.Euler(0, Mathf.Sin(Time.time * 9 + s.Id) * 10, 0);
             if (s.Kind == MobKind.Bloat)
             {
                 // About to burst: it swells and shudders.
@@ -336,6 +340,10 @@ namespace Stratum.Game
                 case MobKind.Camel: Camel(m); break;
                 case MobKind.Bloat: Bloat(m); break;
                 case MobKind.Hound: Hound(m); break;
+                case MobKind.Glob: Glob(m); break;
+                case MobKind.Shade: Shade(m); break;
+                case MobKind.Snapper: Snapper(m); break;
+                case MobKind.King: King(m); break;
             }
             return m;
         }
@@ -498,6 +506,82 @@ namespace Stratum.Game
             B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
             Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
             foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
+        }
+
+        // The Hollow King: a towering figure in a tattered dark robe that doesn't reach the ground, a pale mask for a
+        // face, long hands, and a crown of gold that glows.
+        void King(Model m)
+        {
+            Color robe = Hex(0x1c1626), trim = Hex(0x4a2e7a), mask = Hex(0xe6e0d2), gold = Hex(0xffd24a), eye = Hex(0xd8a8ff);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.6f, 0));
+            B(m, m.Body, 0, 1.6f, 0, 1.3f, 1.8f, 0.8f, robe);                              // shoulders and chest
+            B(m, m.Body, 0, 0.55f, 0, 1.0f, 1.1f, 0.66f, robe);                            // the robe narrowing
+            for (int i = -2; i <= 2; i++) B(m, m.Body, i * 0.2f, -0.1f - (i & 1) * 0.16f, 0, 0.16f, 0.5f, 0.5f, robe);      // tatters
+            B(m, m.Body, 0, 1.6f, 0.405f, 0.2f, 1.7f, 0.02f, trim, 0.4f, false);           // a stripe down the front
+            B(m, m.Body, 0, 2.42f, 0, 1.5f, 0.14f, 0.9f, trim);                            // a collar
+            m.ArmL = Pivot(m.Body, new Vector3(-0.8f, 2.3f, 0));
+            B(m, m.ArmL, 0, -0.75f, 0, 0.3f, 1.5f, 0.3f, robe); B(m, m.ArmL, 0, -1.62f, 0, 0.2f, 0.34f, 0.2f, mask);
+            m.ArmR = Pivot(m.Body, new Vector3(0.8f, 2.3f, 0));
+            B(m, m.ArmR, 0, -0.75f, 0, 0.3f, 1.5f, 0.3f, robe); B(m, m.ArmR, 0, -1.62f, 0, 0.2f, 0.34f, 0.2f, mask);
+            m.Head = Pivot(m.Root, new Vector3(0, 3.2f, 0));
+            B(m, m.Head, 0, 0.36f, -0.04f, 0.74f, 0.8f, 0.7f, robe);                       // hood
+            B(m, m.Head, 0, 0.32f, 0.32f, 0.5f, 0.6f, 0.04f, mask);                        // the mask
+            Eyes(m, m.Head, 0.12f, 0.4f, 0.345f, 0.1f, eye, 1.2f);
+            B(m, m.Head, 0, 0.82f, 0, 0.82f, 0.12f, 0.78f, gold, 0.8f);                    // crown band
+            foreach (var (cx, cz) in new[] { (-0.34f, 0.32f), (0.34f, 0.32f), (-0.34f, -0.32f), (0.34f, -0.32f), (0f, 0.34f) })
+                B(m, m.Head, cx, 1.0f, cz, 0.12f, 0.26f, 0.12f, gold, 0.8f);
+            m.Swing = 24;
+        }
+
+        // The Glob: a cube of green jelly with a darker heart and two wide eyes.
+        void Glob(Model m)
+        {
+            Color jelly = Hex(0x6fcf5a), heart = Hex(0x2f7a34);
+            m.Body = Pivot(m.Root, new Vector3(0, 0, 0));
+            B(m, m.Body, 0, 0.5f, 0, 1.0f, 1.0f, 1.0f, jelly, 0.15f);
+            B(m, m.Body, 0, 0.45f, 0, 0.56f, 0.56f, 0.56f, heart, 0, false);
+            m.Head = Pivot(m.Root, new Vector3(0, 0.6f, 0.5f));
+            Eyes(m, m.Head, 0.22f, 0.08f, 0.012f, 0.18f, Hex(0xf2f6e0));
+            Eyes(m, m.Head, 0.22f, 0.06f, 0.024f, 0.08f, Hex(0x10200c));
+            B(m, m.Head, 0, -0.2f, 0.012f, 0.3f, 0.06f, 0.02f, Hex(0x1c3c18), 0, false);
+        }
+
+        // The Shade: very tall, very thin, near black, with long arms and eyes that glow violet.
+        void Shade(Model m)
+        {
+            Color dark = Hex(0x15121c), eye = Hex(0xc890ff);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                var leg = Pivot(m.Root, new Vector3(sx * 0.12f, 1.2f, 0));
+                B(m, leg, 0, -0.6f, 0, 0.14f, 1.2f, 0.14f, dark);
+                m.Legs.Add(leg);
+            }
+            m.Body = Pivot(m.Root, new Vector3(0, 1.2f, 0));
+            B(m, m.Body, 0, 0.45f, 0, 0.42f, 0.9f, 0.24f, dark);
+            m.ArmL = Pivot(m.Body, new Vector3(-0.28f, 0.84f, 0));
+            B(m, m.ArmL, 0, -0.6f, 0, 0.12f, 1.2f, 0.12f, dark);
+            m.ArmR = Pivot(m.Body, new Vector3(0.28f, 0.84f, 0));
+            B(m, m.ArmR, 0, -0.6f, 0, 0.12f, 1.2f, 0.12f, dark);
+            m.Head = Pivot(m.Root, new Vector3(0, 2.14f, 0));
+            B(m, m.Head, 0, 0.2f, 0, 0.4f, 0.4f, 0.4f, dark);
+            Eyes(m, m.Head, 0.11f, 0.22f, 0.205f, 0.1f, eye, 1f);
+            m.Swing = 30;
+        }
+
+        // The Snapper: a deep-bodied grey-green fish with a pale belly, a tall tail and a jaw full of teeth.
+        void Snapper(Model m)
+        {
+            Color back = Hex(0x4a6a62), belly = Hex(0xc8d2c0), fin = Hex(0x2e4640);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.25f, 0));
+            B(m, m.Body, 0, 0.05f, 0, 0.34f, 0.46f, 0.9f, back);
+            B(m, m.Body, 0, -0.1f, 0.05f, 0.3f, 0.2f, 0.7f, belly);
+            B(m, m.Body, 0, 0.34f, -0.05f, 0.05f, 0.2f, 0.4f, fin);                         // back fin
+            B(m, m.Body, 0, 0.05f, -0.62f, 0.05f, 0.5f, 0.34f, fin);                        // tail
+            m.Head = Pivot(m.Root, new Vector3(0, 0.25f, 0.45f));
+            B(m, m.Head, 0, 0.08f, 0.14f, 0.3f, 0.22f, 0.3f, back);
+            B(m, m.Head, 0, -0.1f, 0.12f, 0.28f, 0.12f, 0.3f, belly);                       // jaw
+            for (int i = -1; i <= 1; i++) B(m, m.Head, i * 0.09f, -0.02f, 0.28f, 0.05f, 0.07f, 0.03f, Hex(0xf6f6ee), 0, false);    // teeth
+            Eyes(m, m.Head, 0.155f, 0.1f, 0.2f, 0.07f, Hex(0xf2e060));
         }
 
         // The Hound: a rangy grey dog with a pale muzzle and a brush of a tail; a red collar once it's a friend.

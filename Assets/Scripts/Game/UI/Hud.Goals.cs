@@ -29,6 +29,8 @@ namespace Stratum.Game
             ("star", "Star Struck", "Dig up a starstone"),
             ("level", "Seasoned", "Reach level 15"),
             ("heart", "Giant Slayer", "Take the heart of the Cinder Colossus"),
+            ("quiet", "Past the Edge", "Touch a gate stone and stand in the Quiet"),
+            ("crown", "Long Live the King", "Take the Hollow King's crown"),
         };
 
         Image _goalsPanel, _whoPanel;

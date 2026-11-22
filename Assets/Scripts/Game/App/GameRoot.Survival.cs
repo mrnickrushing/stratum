@@ -54,6 +54,18 @@ namespace Stratum.Game
             _act.Link = link; _act.Creatures = _creatures;
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
+            // A gate stone carries whoever touches it to the Quiet, and the one there carries them home (their bed, or the spawn).
+            _act.Travel = () =>
+            {
+                if (_player.Riding != null) _player.GetOut();
+                Sfx.I?.Play("portal", 0.7f, 0.9f);
+                if (Quiet.In(_player.Feet.x))
+                {
+                    var bedSpot = _hasBed && BedAt(_bed) ? BesideBed(_bed) : null;
+                    Teleport(bedSpot ?? (Online ? GroundAt(_netSpawn) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz)), "Home again");
+                }
+                else { var l = Quiet.Landing; Teleport(new Vector3(l.x, l.y + 0.05f, l.z), "The Quiet"); }
+            };
             _act.Toast = s => _hud?.Toast(s);
             _act.Spill = Give;                 // mined things that don't fit the pack: the ground, or the waiting list
             _hud.Link = link;
@@ -257,14 +269,14 @@ namespace Stratum.Game
         {
             { MobKind.Cow, "moo" }, { MobKind.Pig, "oink" }, { MobKind.Sheep, "baa" }, { MobKind.Chicken, "cluck" },
             { MobKind.Ghoul, "groan" }, { MobKind.BoneArcher, "rattle" }, { MobKind.Crawler, "hiss" },
-            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" },
+            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" }, { MobKind.Glob, "burp" }, { MobKind.Shade, "portal" }, { MobKind.King, "roar" },
         };
 
         void MobSfx(MobKind kind, string what, Vector3 at)
         {
             if (Sfx.I == null) return;
             Voices.TryGetValue(kind, out var voice);
-            float big = kind == MobKind.Colossus ? 1.6f : 1;
+            float big = kind == MobKind.Colossus || kind == MobKind.King ? 1.6f : 1;
             // Sound captions (Settings > Controls): what made the noise, and which side it came from.
             string who = MobSim.Def(kind).Name;
             if (_hud != null) _hud.Caption(what == "say" ? who + (voice == "moo" || voice == "oink" || voice == "baa" || voice == "cluck" ? " calls" : voice == "villager" ? " mutters" : " growls") : what == "hurt" ? who + " is hurt" : what == "die" ? who + " falls" : what == "shoot" ? who + " shoots" : null, at);

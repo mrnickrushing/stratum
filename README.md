@@ -253,14 +253,23 @@ frames sent and heard). `-connect host:port -name X -password P [-create]` alone
 - **Commands and goals**: /give, /gamemode, /time set (single player; `STRATUM_OPS` names who may /give and set the
   time on a server). G lists goals; Tab shows who is here; F5 changes the view; hearts and loaves replace the bars.
 
+## Since 0.15
+
+- **Creatures**: the Glob (`MobDef.Hops`; breaks into smaller ones, the smallest leave jelly), the Shade
+  (`Blinks`: steps through the air, away when struck, gone by day), the Snapper (`Swims`: deep water, goes for
+  swimmers).
+- **Biomes**: swamp (low wet ground), savanna (hot; flat-crowned trees) and jungle (hot and wet; tall, crowded trees),
+  chosen in `WorldGen.BiomeOf`. Only plants and trees differ, so land already saved is not disturbed.
+- **The Quiet** (`Core/Quiet.cs`): a third place, a strip of the same world far to the west like the Ember Deep. A
+  gate stone (obsidian, shade shards and a starstone) carries whoever touches it to the landing; the gate stone
+  there carries them home. The Hollow King (`MobKind.King`) waits at the throne.
+- **Measured before touching the mesher** (2026-11-22, Radeon Vega 8 integrated graphics, view distance 10): 333
+  chunks, 1.18 million triangles, 58 fps with vsync on. Merging faces was left alone.
+
 ## Next
 
-**Mechanics still to come**
-1. More creatures (teleporting, bouncing, water) and more biomes.
-2. A third dimension and a final boss.
+Everything on the list up to 0.15 is done. What is left is held off on purpose:
 
-**Only if measurements say so**
-- Merging flat runs of faces in the mesher, and a longer view distance (take an F4 report on the slowest computer first).
-
-**Held off on purpose**
 - The server owning inventory, health and movement; encrypting the whole session.
+
+If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.
