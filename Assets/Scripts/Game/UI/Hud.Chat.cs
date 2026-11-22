@@ -125,20 +125,23 @@ namespace Stratum.Game
             _chatKey = key;
             _sb.Clear();
             int first = Mathf.Max(0, _lines.Count - ShowLines);
-            int visibleLines = 0;
+            int visibleLines = 0, strongest = 0;
             for (int i = first; i < _lines.Count; i++)
             {
                 int a = ChatOpen ? 255 : Alpha(_lines[i].Age);
                 if (a <= 0) continue;
+                strongest = Mathf.Max(strongest, a);
                 if (_sb.Length > 0) _sb.Append('\n');
                 // Fade every colour in the line together: wrap it, and scale each inner colour's alpha.
                 _sb.Append(Faded(_lines[i].Text, a));
                 visibleLines++;
             }
             _chatText.text = _sb.ToString();
-            _chatBack.gameObject.SetActive(ChatOpen && _lines.Count > 0);
+            // A dark panel behind the lines, open or not: pale words on bright grass or snow can't be read without it.
+            _chatBack.gameObject.SetActive(visibleLines > 0);
             if (_chatBack.gameObject.activeSelf)
             {
+                _chatBack.color = new Color(0, 0, 0, (ChatOpen ? 0.45f : 0.32f) * strongest / 255f);
                 float h = Mathf.Min(_chatText.preferredHeight, 400) + 18;
                 _chatBack.rectTransform.anchoredPosition = new Vector2(0, 58);
                 _chatBack.rectTransform.sizeDelta = new Vector2(0, h);
