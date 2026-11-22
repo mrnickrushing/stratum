@@ -7,7 +7,9 @@ namespace Stratum.Core
         // 0.12: more wildlife
         Deer, Fox, Rabbit, Penguin, Goat, Camel,
         // 0.14
-        Bloat, Hound, Count }
+        Bloat, Hound,
+        // 0.15
+        Glob, Shade, Snapper, Count }
 
     public sealed class MobDef
     {
@@ -15,6 +17,7 @@ namespace Stratum.Core
         public string Name;
         public float Health = 10, Speed = 1.4f, HalfW = 0.4f, Height = 1.2f;
         public bool Hostile, Burns, Climbs, Ranged, Floats, Boss, Fireproof, Vehicle;
+        public bool Hops, Blinks, Swims;       // gets about in bounds; steps through the air from place to place; lives in water
         public float Damage, Reach = 1.7f, AttackEvery = 1.1f, Sight = 18;
         public (string item, int min, int max, float chance)[] Drops = Array.Empty<(string, int, int, float)>();
         public int Xp;
@@ -45,6 +48,7 @@ namespace Stratum.Core
         public float HomeX, HomeZ;            // villagers: the middle of their village
         public bool Tame, Sit;                // a friend to someone; told to stay
         public string OwnerKey = "";          // whose (their account, or "me" in a single-player world)
+        public float SwimVY;                  // swimmers: how fast they mean to rise or sink
         public float WayX, WayZ, WayAt; public bool HasWay;      // the next step of a path round what's in the way
 
         public const byte MBaby = 1, MLove = 2, MRest = 32, MTame = 64, MSit = 128;       // MRest: bred a little while ago, not hungry yet
@@ -119,6 +123,15 @@ namespace Stratum.Core
                 Drops = new[] { ("blast_powder", 0, 2, 1f) } });
             // The Hound: runs wild in the woods; a few bones make it a friend that follows, sits and fights.
             D(new MobDef { Kind = MobKind.Hound, Name = "Hound", Health = 20, Speed = 2.5f, HalfW = 0.3f, Height = 0.85f, Damage = 3, Reach = 1.6f, Sight = 16, Xp = 2 });
+            // The Glob: a wobbling lump of jelly that gets about in bounds and breaks into smaller ones.
+            D(new MobDef { Kind = MobKind.Glob, Name = "Glob", Health = 16, Speed = 2.2f, HalfW = 0.5f, Height = 1.0f, Hostile = true, Hops = true,
+                Damage = 3, Reach = 1.5f, AttackEvery = 1.2f, Sight = 16, Xp = 3, Drops = new[] { ("jelly", 0, 2, 1f) } });
+            // The Shade: tall, thin and dark; it steps through the air to wherever it likes, and away when struck.
+            D(new MobDef { Kind = MobKind.Shade, Name = "Shade", Health = 30, Speed = 3.2f, HalfW = 0.3f, Height = 2.6f, Hostile = true, Blinks = true,
+                Damage = 5, Reach = 2.0f, AttackEvery = 1.1f, Sight = 28, Xp = 8, Drops = new[] { ("shade_shard", 0, 1, 0.7f) } });
+            // The Snapper: a toothy fish of deep water that goes for swimmers.
+            D(new MobDef { Kind = MobKind.Snapper, Name = "Snapper", Health = 12, Speed = 3.6f, HalfW = 0.4f, Height = 0.5f, Hostile = true, Swims = true,
+                Damage = 3, Reach = 1.5f, AttackEvery = 1.0f, Sight = 14, Xp = 4, Drops = new[] { ("raw_fish", 1, 2, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -229,10 +242,16 @@ namespace Stratum.Core
             {
                 m.Health = 0; m.Dead = m.Def.Vehicle ? 0.05f : 1f;
                 Sound?.Invoke(m, "die");
+                if (m.Kind == MobKind.Glob && m.Job < 2)
+                    for (int i = 0; i < 2; i++)
+                    {
+                        var piece = Spawn(MobKind.Glob, m.X + (i == 0 ? 0.3f : -0.3f), m.Y + 0.2f, m.Z + (i == 0 ? -0.3f : 0.3f));
+                        piece.Job = (byte)(m.Job + 1); piece.Health = m.Job == 0 ? 6 : 2; piece.VY = 4; piece.Target = m.Target;
+                    }
                 if (m.Kind == MobKind.Colossus) _bossBack[((int)m.HomeX, (int)m.HomeZ)] = _clock + 1200;
                 Died?.Invoke(m, player);
             }
-            else Sound?.Invoke(m, "hurt");
+            else { Sound?.Invoke(m, "hurt"); if (m.Def.Blinks) Blink(m, m.X, m.Z, 6, 14); }
         }
 
         // A blast at (x, y, z): everything near is thrown back and hurt, less the further away it stands.
@@ -348,6 +367,7 @@ namespace Stratum.Core
         {
             var l = new List<(string, int)>();
             if (m.Baby > 0) return l;
+            if (m.Kind == MobKind.Glob && m.Job < 2) return l;        // only the smallest pieces leave jelly
             foreach (var (item, min, max, chance) in m.Def.Drops)
             {
                 if (Rand() > chance) continue;
@@ -413,7 +433,7 @@ namespace Stratum.Core
             if ((_cageTimer -= dt) <= 0)
             {
                 _cageTimer = 4 + Rand() * 6;
-                if (Difficulty > 0 && Spawning) foreach (var p in players) if (p.Alive && !Ember.In(p.X)) Cages(p);
+                if (Difficulty > 0 && Spawning) foreach (var p in players) if (p.Alive && !Ember.In(p.X)) { Cages(p); Waters(p); }
             }
             if (VillageNear != null && (_villageTimer -= dt) <= 0)
             {
@@ -528,6 +548,42 @@ namespace Stratum.Core
             }
         }
 
+        // Deep water near someone on or in it has a snapper or two in it.
+        void Waters(in Seen p)
+        {
+            int px = (int)Math.Floor(p.X), pz = (int)Math.Floor(p.Z), py = (int)Math.Floor(p.Y);
+            if (!Blocks.IsWater(_get(px, py - 1, pz)) && !Blocks.IsWater(_get(px, py, pz))) return;
+            int near = 0; foreach (var m in All) if (m.Kind == MobKind.Snapper && Math.Abs(m.X - p.X) < 24 && Math.Abs(m.Z - p.Z) < 24) near++;
+            if (near >= 2 || Rand() > 0.3f) return;
+            float a = Rand() * 6.283f, r = 9 + Rand() * 8;
+            int x = (int)Math.Floor(p.X + Math.Cos(a) * r), z = (int)Math.Floor(p.Z + Math.Sin(a) * r);
+            if (!Loaded(x, z)) return;
+            // Three blocks of water at least, and it starts well under.
+            for (int y = Math.Min(py + 1, Chunk.Height - 2); y > py - 12 && y > 3; y--)
+            {
+                if (!Blocks.IsWater(_get(x, y, z))) continue;
+                if (Blocks.IsWater(_get(x, y - 1, z)) && Blocks.IsWater(_get(x, y - 2, z))) Spawn(MobKind.Snapper, x + 0.5f, y - 1.6f, z + 0.5f);
+                return;
+            }
+        }
+
+        // Steps a creature through the air to somewhere it can stand, between rmin and rmax of (cx, cz).
+        bool Blink(Mob m, float cx, float cz, float rmin, float rmax)
+        {
+            for (int tries = 0; tries < 12; tries++)
+            {
+                float a = Rand() * 6.283f, r = rmin + Rand() * (rmax - rmin);
+                int x = (int)Math.Floor(cx + Math.Cos(a) * r), z = (int)Math.Floor(cz + Math.Sin(a) * r);
+                if (!Loaded(x, z)) continue;
+                int y = Ground(x, z, (int)m.Y + 6, 14, out ushort floor);
+                if (y == int.MinValue || Blocks.IsFluid(floor) || Blocks.IsWater(_get(x, y, z)) || Body.Blocked(_get, x + 0.5f, y, z + 0.5f, m.Def.HalfW, m.Def.Height)) continue;
+                m.X = x + 0.5f; m.Y = y; m.Z = z + 0.5f; m.VX = m.VY = m.VZ = 0; m.HasWay = false; m.WayAt = 0;
+                Sound?.Invoke(m, "say");
+                return true;
+            }
+            return false;
+        }
+
         float _cageTimer = 3;
         readonly List<(int x, int y, int z)> _cages = new List<(int, int, int)>();
 
@@ -580,6 +636,8 @@ namespace Stratum.Core
             float wx = 0, wz = 0;                       // where it wants to go (a direction, not normalised)
             bool jumpy = false;
 
+            // A Shade caught out in daylight slips away for good.
+            if (d.Blinks && IsDay && !Ember.In(m.X) && Rand() < dt * 0.2f && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 1), (int)Math.Floor(m.Z))) { m.Health = 0; m.Dead = 0.01f; return; }
             bool pet = m.Tame && m.Kind == MobKind.Hound;
             if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
             Seen? target = null;
@@ -640,9 +698,25 @@ namespace Stratum.Core
                     else m.Phase = Math.Max(0, m.Phase - dt * 2);
                     m.Windup = m.Phase > 0 ? 0.2f : 0;
                 }
+                else if (d.Swims)
+                {
+                    // Only after someone who is in the water; it rises and sinks to their level.
+                    bool wet = Blocks.IsWater(_get((int)Math.Floor(t.X), (int)Math.Floor(t.Y + 0.3f), (int)Math.Floor(t.Z)));
+                    if (wet)
+                    {
+                        wx = dx; wz = dz; m.SwimVY = Math.Clamp((t.Y + 0.5f - m.Y) * 2.5f, -3, 3);
+                        if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2 && m.Cool <= 0)
+                        {
+                            m.Cool = d.AttackEvery; m.Windup = 0.2f;
+                            HitPlayer?.Invoke(t.Id, d.Damage * (Difficulty == 1 ? 0.6f : 1), m.X, m.Z, m);
+                        }
+                    }
+                    else { m.Target = -1; m.SwimVY = -0.6f; }
+                }
                 else
                 {
                     wx = dx; wz = dz;
+                    if (d.Blinks && (m.InWater || dist > 8 && (m.Phase -= dt) <= 0)) { m.Phase = 2.5f + Rand() * 3; Blink(m, t.X, t.Z, 2, 5); }
                     if (!d.Climbs && dist > 2.5f) Way(m, t.X, t.Y, t.Z, ref wx, ref wz);
                     if (m.Kind == MobKind.Crawler && dist < 4.5f && dist > 2 && m.OnGround && Rand() < dt * 2) { m.VY = 6; m.VX += dx / dist * 4; m.VZ += dz / dist * 4; }
                     if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2.2f && m.Cool <= 0)
@@ -657,7 +731,7 @@ namespace Stratum.Core
                             m.Cool = d.AttackEvery;
                             if (dist < d.Reach + 0.6f && Math.Abs(dy) < 2.4f)
                             {
-                                float dmg = d.Damage * (Difficulty == 1 ? 0.6f : 1);
+                                float dmg = d.Damage * (Difficulty == 1 ? 0.6f : 1) * (m.Kind == MobKind.Glob ? (m.Job == 0 ? 1 : m.Job == 1 ? 0.6f : 0.2f) : 1);
                                 HitPlayer?.Invoke(t.Id, dmg, m.X, m.Z, m);
                             }
                         }
@@ -710,14 +784,29 @@ namespace Stratum.Core
             }
 
             float len = (float)Math.Sqrt(wx * wx + wz * wz);
+            // A swimmer keeps to the water: it turns back at the shore and stays under the surface.
+            if (d.Swims)
+            {
+                if (len > 0.01f && !Blocks.IsWater(_get((int)Math.Floor(m.X + wx / len * 1.2f), (int)Math.Floor(m.Y + 0.2f), (int)Math.Floor(m.Z + wz / len * 1.2f)))) { wx = wz = 0; len = 0; m.HasGoal = false; }
+                if (target == null) m.SwimVY = (float)Math.Sin(m.Age * 0.7f + m.Id) * 0.5f;
+                if (!Blocks.IsWater(_get((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 0.9f), (int)Math.Floor(m.Z)))) m.SwimVY = Math.Min(m.SwimVY, -0.8f);
+            }
             float ax = 0, az = 0;
             if (len > 0.01f)
             {
                 ax = wx / len * speed; az = wz / len * speed;
                 if (target == null) m.Yaw = LerpAngle(m.Yaw, (float)(Math.Atan2(wx, wz) * 180 / Math.PI), Math.Min(1, dt * 6));
             }
+            // A hopper only gets anywhere in the air: on the ground it gathers itself, then bounds.
+            bool bound = false;
+            if (d.Hops && m.OnGround)
+            {
+                if (len > 0.01f && (m.Phase -= dt) <= 0) { m.Phase = 0.6f + Rand() * 0.9f; bound = true; }
+                else { ax = az = 0; }
+            }
             float k = m.OnGround || m.InWater ? 1 - (float)Math.Exp(-dt * 10) : 1 - (float)Math.Exp(-dt * 1.5f);
             m.VX += (ax - m.VX) * k; m.VZ += (az - m.VZ) * k;
+            if (bound) { m.VY = 6.4f; m.VX = wx / len * speed * 1.7f; m.VZ = wz / len * speed * 1.7f; }
 
             // Hop up a step when something's in the way; climbers go straight up walls.
             if (len > 0.01f && (m.OnGround || d.Climbs || m.InWater))
@@ -732,7 +821,7 @@ namespace Stratum.Core
                 }
                 if (jumpy && m.OnGround && Rand() < dt * 1.2f) m.VY = 6;
             }
-            if (m.InWater) m.VY = Math.Max(m.VY, d.Floats ? 1.5f : 1.0f);
+            if (m.InWater && !d.Swims) m.VY = Math.Max(m.VY, d.Floats ? 1.5f : 1.0f);
         }
 
         // A friend's turn: stay if told, see off anything hostile nearby, otherwise keep up with its owner.
@@ -899,7 +988,8 @@ namespace Stratum.Core
             m.InWater = Blocks.IsWater(at);
             m.InLava = Blocks.IsLava(at);
             float g = m.InWater || m.InLava ? 8 : d.Floats && m.VY < 0 ? 12 : 26;
-            m.VY -= g * dt;
+            if (d.Swims && m.InWater) m.VY += (m.SwimVY - m.VY) * Math.Min(1, dt * 6);       // it swims where it means to
+            else m.VY -= g * dt;
             if (m.InWater || m.InLava) { m.VY = Math.Max(m.VY, -2.5f); m.VX *= 1 - dt * 2; m.VZ *= 1 - dt * 2; }
             if (d.Floats && m.VY < -3) m.VY = -3;
             if (m.VY < -40) m.VY = -40;
@@ -933,6 +1023,7 @@ namespace Stratum.Core
             if (burning) m.Burn = 1.5f; else m.Burn = Math.Max(0, m.Burn - dt);
             if (m.Burn > 0 && !d.Fireproof && m.Hurt <= 0) Hurt(m, m.InLava ? 4 : 1, m.X + 0.01f, m.Z, 0, 0.1f);
             if (m.InWater && m.Kind == MobKind.EmberImp && m.Hurt <= 0) Hurt(m, 1, m.X, m.Z, 0, 0.1f);
+            if (d.Swims && !m.InWater && m.Hurt <= 0) Hurt(m, 2, m.X, m.Z, 0, 0.3f);          // out of water it gasps
         }
 
         bool SkyOpen(int x, int y, int z)
@@ -1123,8 +1214,11 @@ namespace Stratum.Core
                 if (BlockLight(x, y, z) > 3) continue;            // torches keep a place safe
                 if (!FarFromAll(x, y, z, players, 20)) continue;
                 float k = Rand();
-                var kind = k < 0.40f ? MobKind.Ghoul : k < 0.66f ? MobKind.BoneArcher : k < 0.84f ? MobKind.Crawler : MobKind.Bloat;
-                if (kind == MobKind.Bloat && Ember.In(x)) kind = MobKind.Ghoul;
+                var kind = k < 0.34f ? MobKind.Ghoul : k < 0.56f ? MobKind.BoneArcher : k < 0.70f ? MobKind.Crawler : k < 0.82f ? MobKind.Bloat : k < 0.92f ? MobKind.Glob : MobKind.Shade;
+                if ((kind == MobKind.Bloat || kind == MobKind.Glob || kind == MobKind.Shade) && Ember.In(x)) kind = MobKind.Ghoul;
+                // Globs keep to caves and swamps; Shades walk the open night.
+                if (kind == MobKind.Glob && open && (BiomeAt == null || BiomeAt(x, z) != Biome.Swamp)) kind = MobKind.Ghoul;
+                if (kind == MobKind.Shade && (!open || Body.Blocked(_get, x + 0.5f, y, z + 0.5f, 0.3f, 2.6f))) kind = MobKind.Ghoul;
                 if (kind == MobKind.Crawler && Body.Blocked(_get, x + 0.5f, y, z + 0.5f, 0.6f, 0.9f)) kind = MobKind.Ghoul;
                 if (Body.Blocked(_get, x + 0.5f, y, z + 0.5f, Def(kind).HalfW, Def(kind).Height)) continue;
                 Spawn(kind, x + 0.5f, y, z + 0.5f);

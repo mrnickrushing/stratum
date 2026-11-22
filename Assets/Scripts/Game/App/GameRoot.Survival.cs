@@ -257,7 +257,7 @@ namespace Stratum.Game
         {
             { MobKind.Cow, "moo" }, { MobKind.Pig, "oink" }, { MobKind.Sheep, "baa" }, { MobKind.Chicken, "cluck" },
             { MobKind.Ghoul, "groan" }, { MobKind.BoneArcher, "rattle" }, { MobKind.Crawler, "hiss" },
-            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" },
+            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" }, { MobKind.Glob, "burp" }, { MobKind.Shade, "portal" },
         };
 
         void MobSfx(MobKind kind, string what, Vector3 at)

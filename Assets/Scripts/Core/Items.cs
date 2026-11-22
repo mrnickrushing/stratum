@@ -150,6 +150,8 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bottle", Name = "Glass Bottle", MaxStack = 16 });
             foreach (var (key, name, effect, secs, with) in Potions)
                 Add(new ItemDef { Id = "potion_" + key, Name = "Potion of " + name, MaxStack = 16, Drink = true, Leaves = "bottle", Effect = effect, EffectSecs = secs });
+            Add(new ItemDef { Id = "jelly", Name = "Glob Jelly" });
+            Add(new ItemDef { Id = "shade_shard", Name = "Shade Shard" });
             Add(new ItemDef { Id = "shield", Name = "Shield", MaxStack = 1, Durability = 300 });
             Add(new ItemDef { Id = "fishing_rod", Name = "Fishing Rod", MaxStack = 1, Durability = 64 });
             Food("raw_fish", "Raw Fish", 2, 0.4f);
@@ -244,6 +246,7 @@ namespace Stratum.Core
             foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));
             R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));
             R("sticky_piston", 1, "workbench", ("piston", 1), ("clay", 2));
+            R("sticky_piston", 1, "workbench", ("piston", 1), ("jelly", 1));
             R("dispenser", 1, "workbench", ("cobble", 7), ("bow", 1), ("spark", 1));
             R("observer", 1, "workbench", ("cobble", 6), ("spark", 2), ("sunstone_shard", 1));
             R("comparator", 1, "workbench", ("stone", 3), ("spark_torch", 3), ("sunstone_shard", 1));

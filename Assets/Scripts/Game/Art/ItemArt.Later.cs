@@ -77,6 +77,15 @@ namespace Stratum.Game
                 case "potion_night": Bottle(c, Hex(0x3a3a9a), true); return true;
                 case "potion_feather": Bottle(c, Hex(0xe8e8f4), true); return true;
                 case "potion_haste": Bottle(c, Hex(0xf2d24a), true); return true;
+                case "jelly":
+                    c.Disc(V(48, 40), 30, (dx, dy) => { var j = Color.Lerp(Hex(0x3f9a3a), Hex(0xa8f08a), Mathf.Clamp01(dx * 0.4f + dy * 0.6f + 0.5f)); j.a = 0.9f; return j; }, 24);
+                    c.Disc(V(40, 50), 6, (dx, dy) => new Color(1, 1, 1, 0.8f), 4);
+                    return true;
+                case "shade_shard":
+                    c.Poly(new[] { V(48, 90), V(66, 52), V(56, 10), V(40, 8), V(30, 48) }, (x, y) => Color.Lerp(Hex(0x1a1030), Hex(0x8a4ae0), Mathf.Clamp01((x - 30) / 40f * 0.6f + (y - 8) / 82f * 0.5f)));
+                    c.Poly(new[] { V(48, 90), V(40, 8), V(30, 48) }, (x, y) => Hex(0x120a24));
+                    c.Disc(V(52, 46), 5, (dx, dy) => new Color(0.85f, 0.7f, 1f, 0.9f), 9);
+                    return true;
                 case "starstone":
                     // A cut stone: pale blue facets round a bright table.
                     c.Poly(new[] { V(48, 88), V(80, 62), V(72, 22), V(48, 8), V(24, 22), V(16, 62) }, (x, y) => Color.Lerp(Hex(0x2f9ab8), Hex(0xa8f6f8), Mathf.Clamp01((x * 0.4f + y * 0.9f - 20) / 100f)));
