@@ -42,7 +42,9 @@ namespace Stratum.Core
         // Creature sounds in MobSound.
         // Stacks a player may have beyond their pack's 40 slots (held by the cursor, waiting for room, set aside by a
         // load): as many as fit in one list of stacks, whose count is one byte.
-        public const int MaxExtraStacks = 255 - 40;
+        // A list of stacks counts itself in one byte, so the first 255 travel there and the rest in a second list at the
+        // end of the message (MoreStacks), which older games and servers never read.
+        public const int MaxExtraStacks = 2000;
         public static readonly string[] MobSounds = { "hurt", "die", "say", "shoot", "stick" };
 
         public static bool ValidName(string n)
@@ -137,6 +139,22 @@ namespace Stratum.Core
             return this;
         }
 
+        // What Stacks() had no room for (everything past the first 255), counted in two bytes. Always written, even
+        // when there is nothing, so fields added after it keep their place.
+        public Packet MoreStacks(Stack[] slots)
+        {
+            int n = Math.Clamp(slots.Length - 255, 0, Net.MaxExtraStacks + 64);
+            _w.Write((ushort)n);
+            for (int i = 255; i < 255 + n; i++)
+            {
+                var s = slots[i];
+                Str(s.Empty ? "" : s.Item);
+                _w.Write((ushort)(s.Empty ? 0 : Math.Min(s.Count, 0xFFFF)));
+                _w.Write((ushort)Math.Clamp(s.Wear, 0, 0xFFFF));
+            }
+            return this;
+        }
+
         public byte[] Bytes()
         {
             _w.Flush();
@@ -188,6 +206,24 @@ namespace Stratum.Core
             {
                 string item = Str(); int count = _r.ReadUInt16(); int wear = _r.ReadUInt16();
                 a[i] = string.IsNullOrEmpty(item) || count == 0 ? Stack.None : new Stack(item, count) { Wear = wear };
+            }
+            return a;
+        }
+
+        // The rest of a list of stacks whose first 255 went in Stacks(): the two together, in order. A message from
+        // before this was added has nothing more to read, and the first part is all there is.
+        public Stack[] WithMore(Stack[] first)
+        {
+            if (!More) return first;
+            int n = _r.ReadUInt16();
+            if (n == 0) return first;
+            if (n > Net.MaxExtraStacks + 64) throw new System.IO.InvalidDataException("too many stacks");
+            var a = new Stack[first.Length + n];
+            Array.Copy(first, a, first.Length);
+            for (int i = 0; i < n; i++)
+            {
+                string item = Str(); int count = _r.ReadUInt16(); int wear = _r.ReadUInt16();
+                a[first.Length + i] = string.IsNullOrEmpty(item) || count == 0 ? Stack.None : new Stack(item, count) { Wear = wear };
             }
             return a;
         }

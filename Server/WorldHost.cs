@@ -46,6 +46,10 @@ namespace Stratum.Server
             public long NextPortal;                      // when they may next ask for a portal to be found or built
             public int Given;                            // how many things have been handed over in this visit
             public readonly List<(int n, Stack s)> Owed = new List<(int, Stack)>();    // handed over, not yet seen in a backpack update
+            // What their own game moved in or out of the pack since its last backpack update (+ into their hands,
+            // - out of them): a chest slot changed, a thing thrown down, everything dropped on falling. The next
+            // update carries it; a connection lost before then is settled from this.
+            public readonly List<(string item, int n, int wear)> Transit = new List<(string, int, int)>();
             public MobKind? Boarded; public long BoardedAt;      // what they just got on, until their own game says so
             public bool Away; public long AwayAt; public float AX, AY, AZ;   // mid-journey (a portal, a teleport): where they set out from
             public bool HasSafe; public float SX, SY, SZ;  // where they last stood on something (a satchel after a fall into the sky goes there)
@@ -189,7 +193,8 @@ namespace Stratum.Server
                 // A broken chest cart spills what it carried.
                 if (m.Kind == MobKind.ChestCart && _boxes.Has(Mob.HoldX + m.Hold, 0, 0))
                 {
-                    foreach (var o in _players.Values) if (o.HasBox && o.BX == Mob.HoldX + m.Hold) o.HasBox = false;
+                    // Whoever has it open is told it is gone (as for a broken chest), so their screen closes.
+                    foreach (var o in _players.Values) if (o.HasBox && o.BX == Mob.HoldX + m.Hold) { o.HasBox = false; o.Conn.Send(BlockPacket(o.BX, 0, 0, 0, 0)); }
                     foreach (var st in _boxes.Remove(Mob.HoldX + m.Hold, 0, 0)) if (!st.Empty) _drops.Scatter(st.Item, st.Count, st.Wear, m.X, m.Y + 0.5f, m.Z);
                 }
                 if (p == null) return;
@@ -415,7 +420,8 @@ namespace Stratum.Server
                 .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints)
                 .U8((byte)World.Gen.Kind)                                   // 0.4: what sort of world (older clients stop reading before it)
                 .Bool(_cfg.Keep)                                            // 0.5.1: things are kept on death here
-                .Str(p.Rec.notes ?? "");                                    // 0.17: goals reached and statistics, kept with the account
+                .Str(p.Rec.notes ?? "")                                     // 0.17: goals reached and statistics, kept with the account
+                .MoreStacks(p.Rec.Stacks());                                // 0.16.4: what a list of 255 stacks had no room for
             p.Conn.Send(w);
             foreach (var kv in _boxes.Signs)
             {
@@ -460,15 +466,14 @@ namespace Stratum.Server
             p.Rec.x = p.X; p.Rec.y = p.Y; p.Rec.z = p.Z; p.Rec.yaw = p.Yaw; p.Rec.pitch = p.Pitch;
             // Lost mid-journey (waiting high over the far side of a portal): they come back where they set out.
             if (p.Away) { p.Rec.x = p.AX; p.Rec.y = p.AY; p.Rec.z = p.AZ; }
-            if (p.Owed.Count > 0 && leaving)
+            if ((p.Owed.Count > 0 || p.Transit.Count > 0) && leaving)
             {
-                // Handed over but never seen in their pack: kept with it, past the pack's own slots, where a game
-                // that joins puts such things back in the pack.
-                var all = new List<Stack>(p.Rec.Stacks());
-                foreach (var o in p.Owed) if (all.Count < Inventory.Size + Net.MaxExtraStacks) all.Add(o.s);
-                p.Rec.SetStacks(all.ToArray());
-                Log.Info($"{p.Name} left with {p.Owed.Count} thing(s) still on the way to their pack; kept for them");
-                p.Owed.Clear();
+                // Handed over but never seen in their pack, or moved by their own game since its last word: the saved
+                // pack is settled, so nothing is lost and nothing is doubled.
+                var owed = new List<Stack>(); foreach (var o in p.Owed) owed.Add(o.s);
+                p.Rec.SetStacks(Settle(p.Rec.Stacks(), p.Transit, owed));
+                Log.Info($"{p.Name} left with {p.Owed.Count + p.Transit.Count} thing(s) between their pack and the world; settled");
+                p.Owed.Clear(); p.Transit.Clear();
             }
             p.Rec.lastSeen = DateTime.UtcNow.Ticks;
             p.Rec.Save(_cfg.Dir, p.Key);
@@ -663,17 +668,22 @@ namespace Stratum.Server
 
         void Keep(Player p, Reader r)
         {
+            p.Transit.Clear();                  // their game's pack, as of now, counts all it has done
             p.Rec.health = Math.Clamp(r.F32(), 0, 20);
             p.Rec.food = Math.Clamp(r.F32(), 0, 20);
             p.Rec.saturation = Math.Clamp(r.F32(), 0, 20);
             p.Rec.selected = r.U8();
             var st = r.Stacks();
-            if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + Net.MaxExtraStacks) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
             if (r.More) { string notes = r.Str(); if (notes.Length <= 4000) p.Rec.notes = notes; }      // 0.17: goals reached and statistics
             // 0.16.3: how many handed-over things this pack already counts. An older game doesn't say, and is trusted.
             if (r.More) { int seen = r.I32(); p.Owed.RemoveAll(o => o.n <= seen); } else p.Owed.Clear();
+            st = r.WithMore(st);                 // 0.16.4: the stacks a list of 255 had no room for
+            // Past the pack's own slots: what the cursor or a station held, what is waiting for room. More than the
+            // most a player may have is cut short, not thrown out whole (the pack itself comes first).
+            if (st.Length > Inventory.Size + Net.MaxExtraStacks) Array.Resize(ref st, Inventory.Size + Net.MaxExtraStacks);
+            if (st.Length >= Inventory.Size) p.Rec.SetStacks(st);
         }
 
         // ------------------------------------------------------------------ creatures
@@ -714,7 +724,9 @@ namespace Stratum.Server
         {
             string item = r.Str(); int count = r.U16(), wear = r.U16();
             float x = r.F32(), y = r.F32(), z = r.F32(), vx = r.F32(), vy = r.F32(), vz = r.F32(); bool mined = r.Bool();
-            if (++p.Tosses > 40 || !p.Alive || Items.Get(item) == null || count <= 0 || Smelting.Hidden(item)) return;
+            if (Items.Get(item) == null || count <= 0 || Smelting.Hidden(item)) return;
+            if (!mined && !_cfg.Creative) p.Transit.Add((item, -Math.Min(count, 640), wear));      // out of their pack, whatever becomes of it
+            if (++p.Tosses > 40 || !p.Alive) return;
             float dx = x - p.X, dy = y - (p.Y + 1), dz = z - p.Z;
             if (float.IsNaN(dx + dy + dz) || dx * dx + dy * dy + dz * dz > (Net.Reach + 3) * (Net.Reach + 3)) return;
             if (mined)
@@ -745,6 +757,39 @@ namespace Stratum.Server
         {
             p.Owed.Add((++p.Given, new Stack { Item = item, Count = count, Wear = wear }));
             p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(count).U16(wear));
+        }
+
+        void Carried(Player p, Stack before, Stack after)
+        {
+            if (_cfg.Creative) return;
+            if (!before.Empty && !after.Empty && before.Item == after.Item && before.Wear == after.Wear) { if (before.Count != after.Count) p.Transit.Add((before.Item, before.Count - after.Count, before.Wear)); return; }
+            if (!before.Empty && !Smelting.Hidden(before.Item)) p.Transit.Add((before.Item, before.Count, before.Wear));
+            if (!after.Empty && !Smelting.Hidden(after.Item)) p.Transit.Add((after.Item, -after.Count, after.Wear));
+        }
+
+        // A connection lost with things in transit: the saved pack is made to say what their game's pack said.
+        static Stack[] Settle(Stack[] pack, List<(string item, int n, int wear)> transit, IEnumerable<Stack> owed)
+        {
+            var all = new List<Stack>(pack);
+            // A shield kept last of all was in their other hand, and must stay last to go back there.
+            int at = all.Count > Inventory.Size && all[all.Count - 1].Item == "shield" ? all.Count - 1 : all.Count;
+            void Add(Stack s) { if (all.Count < Inventory.Size + Net.MaxExtraStacks) all.Insert(at++, s); }
+            foreach (var s in owed) Add(s);
+            foreach (var (item, n, wear) in transit)
+            {
+                if (n > 0) { Add(new Stack(item, n) { Wear = wear }); continue; }
+                int left = -n;
+                // The very thing first (the same wear), then any of its kind.
+                for (int pass = 0; pass < 2 && left > 0; pass++)
+                    for (int i = all.Count - 1; i >= 0 && left > 0; i--)
+                    {
+                        var s = all[i];
+                        if (s.Empty || s.Item != item || pass == 0 && s.Wear != wear) continue;
+                        int take = Math.Min(left, s.Count); left -= take; s.Count -= take;
+                        all[i] = s.Count > 0 ? s : Stack.None;
+                    }
+            }
+            return all.ToArray();
         }
 
         void TakeDrop(Player p, Reader r)
@@ -904,6 +949,8 @@ namespace Stratum.Server
             // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
             var want = st;
             if (furnace && !hasSeen) return;       // a furnace changes under the player's hands: only games that say what they saw may use one
+            // What their game did to its own pack: what it saw in the slot came out, what it put there went in.
+            Carried(p, hasSeen ? seen : _boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], want);
             _owed.Clear();
             if (hasSeen) st = Containers.Reconcile(_boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], seen, want, _owed);
             _boxes.Set(x, y, z, slot, st);
@@ -916,7 +963,7 @@ namespace Stratum.Server
             {
                 if (Smelting.Hidden(item)) continue;
                 if (n > 0) Give(p, item, n, wear);
-                else p.Conn.Send(new Packet(Net.Msg.TakeBack).Str(item).U16(-n));
+                else { p.Conn.Send(new Packet(Net.Msg.TakeBack).Str(item).U16(-n)); if (!_cfg.Creative) p.Transit.Add((item, n, wear)); }
             }
             var f = new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes();
             foreach (var o in _players.Values) if (o.Joined && o != p && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.Conn.Send(f);
@@ -925,13 +972,16 @@ namespace Stratum.Server
         // What a player had when they fell, or what didn't fit in their pack: into a satchel on the ground.
         void Drop(Player p, Reader r)
         {
-            float x = r.F32(), y = r.F32(), z = r.F32(); var st = r.Stacks();
+            float x = r.F32(), y = r.F32(), z = r.F32(); var st = r.WithMore(r.Stacks());     // everything, however much
             bool here = Math.Abs(x - p.X) <= 8 && Math.Abs(z - p.Z) <= 8 && Math.Abs(y - p.Y) <= 12;
             // After a fall off a sky island the things wait where the player last stood, which is far above them.
             bool safe = p.HasSafe && Math.Abs(x - p.SX) <= 8 && Math.Abs(z - p.SZ) <= 8 && Math.Abs(y - p.SY) <= 12;
             if (!here && !safe) { if (p.Y < 1 && p.HasSafe) { x = p.SX; y = p.SY; z = p.SZ; } else { x = p.X; y = p.Y; z = p.Z; } }
             bool any = false; foreach (var s in st) if (!s.Empty) any = true;
             if (!any) return;
+            // All of it has left their pack, the moment this is heard: cut off before their game says so, they
+            // must not come back still carrying what lies in the satchel.
+            if (!_cfg.Creative) foreach (var s in st) if (!s.Empty) p.Transit.Add((s.Item, -s.Count, s.Wear));
             int ix = (int)Math.Floor(x), iz = (int)Math.Floor(z);
             if (!World.IsLoaded(ix, iz)) return;
             // Into satchels at and around the spot: one already there is topped up, a full one gets a neighbour,
@@ -964,6 +1014,7 @@ namespace Stratum.Server
             float dx = x - p.X, dy = y - p.Y, dz = z - p.Z;
             if (dx * dx + dy * dy + dz * dz > (Net.Reach + 2) * (Net.Reach + 2)) return;
             p.Boarded = null;
+            p.Flags = (byte)(p.Flags & ~(Net.InBoat | Net.InCart));       // they're out of it now, whatever their last word on moving said
             _mobs.Park(k, x, y, z, yaw, p.Key);
         }
 

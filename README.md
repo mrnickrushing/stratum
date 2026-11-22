@@ -300,6 +300,15 @@ panel behind it, the backpack is solid and the shield slot has a row of its own,
 handed over is the player's until a backpack update counts it (`Player.Owed`, the count rides on the end of Keep), a
 connection lost mid-portal returns to the departure point (`Player.Away`), a refused edit is marked (`by` -1, feature
 bit 32) so the block is always handed back, a boat just boarded is left behind (`Player.Boarded`), and the sleep count
-follows joins and leaves. Still open: one inventory message carries at most 255 stacks.
+follows joins and leaves.
+
+0.16.4: a pack of any size travels whole. A list of stacks still counts itself in one byte, so the first 255 go there and
+the rest in a second list at the end of the message (`Packet.MoreStacks`, `Reader.WithMore`), in Welcome, Keep and Drop;
+a server keeps up to `Net.MaxExtraStacks` (2000) beyond the pack.
+The game tells players when a newer version is out: `site/public/server.json` carries `version` (bump it with every
+release), the game asks at launch and every twenty minutes (`GameRoot.WatchSite`), shows an Update button on the title
+screen and says so in chat. Things a player's own game moves between pack and world (a chest slot, a throw, the drop on
+falling) are kept in `Player.Transit` until its next backpack update, and a lost connection is settled from it
+(`WorldHost.Settle`). A fallen player stays fallen until Respawn (`Player.Dead`), also across a reconnect.
 
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

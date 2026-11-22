@@ -25,7 +25,12 @@ namespace Stratum.Game
         }
 
         [Serializable] class Name { public string name, address; }
-        [Serializable] class Answer { public string address; public string key; public Name[] names; }
+        [Serializable] class Answer { public string address; public string key; public string version; public Name[] names; }
+
+        // The newest version the site offers, once it has been asked ("" until then, or if it couldn't be).
+        public static string Latest = "";
+        public static bool Newer => System.Version.TryParse(Latest, out var l) && System.Version.TryParse(Application.version, out var mine) && l > mine;
+        public static string DownloadUrl => "https://stratum.rushingtechnologies.com/download/" + (Application.platform == RuntimePlatform.LinuxPlayer || Application.platform == RuntimePlatform.LinuxEditor ? "linux" : "windows");
 
         // Whether to trust a server showing this key (its fingerprint). Null: go ahead. Otherwise, why not.
         // Our own server's key is published on the download site (fetched over HTTPS at launch); any other server's
@@ -75,6 +80,8 @@ namespace Stratum.Game
                 {
                     var ans = JsonUtility.FromJson<Answer>(req.downloadHandler.text);
                     now = ans?.address?.Trim();
+                    string v = ans?.version?.Trim() ?? "";
+                    if (System.Version.TryParse(v, out _)) Latest = v;
                     // The key our own server shows, vouched for by the site.
                     string key = ans?.key?.Trim().ToLowerInvariant() ?? "";
                     if (key.Length == 32 || key == "") { PlayerPrefs.SetString(DefaultKey, key); PlayerPrefs.Save(); }

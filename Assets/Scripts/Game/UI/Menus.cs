@@ -101,10 +101,27 @@ namespace Stratum.Game
                 ((RectTransform)b.transform).Place(0, 0.5f, 148, y, 420, 76);
                 y -= 92;
             }
+            // Shown once the site says a newer version is out: it downloads the installer in the browser.
+            _updateBtn = UIKit.Button(_main.transform, "Update", () => Application.OpenURL(DefaultServer.DownloadUrl), 30, true);
+            ((RectTransform)_updateBtn.transform).Place(0, 0.5f, 600, 20, 440, 76);
+            _updateNote = UIKit.Label(_main.transform, "", 22, new Color(1, 1, 1, 0.85f), TextAnchor.UpperLeft).Shadowed(2);
+            _updateNote.rectTransform.Place(0, 0.5f, 644, -75, 520, 90);
+            _updateBtn.gameObject.SetActive(false); _updateNote.gameObject.SetActive(false);
             var foot = UIKit.Label(_main.transform, $"v{Application.version}   ·   Rushing Technologies", 22, new Color(1, 1, 1, 0.6f), TextAnchor.LowerLeft).Shadowed(2);
             foot.rectTransform.Place(0, 0, 40, 30, 800, 40);
             var keys = UIKit.Label(_main.transform, "Keys can be changed in Settings › Controls  ·  Esc pause", 22, new Color(1, 1, 1, 0.6f), TextAnchor.LowerRight).Shadowed(2);
             keys.rectTransform.Place(1, 0, -40, 30, 1100, 40);
+        }
+
+        Button _updateBtn; Text _updateNote;
+
+        // A newer version is out (the site said so).
+        public void UpdateOut(string version)
+        {
+            if (_updateBtn == null) return;
+            _updateBtn.SetText($"Update to {version}");
+            _updateNote.text = "Downloads the new version. Close Stratum, then open\nthe file. Your worlds and logins are kept.";
+            _updateBtn.gameObject.SetActive(true); _updateNote.gameObject.SetActive(true);
         }
 
         void BuildWorlds()

@@ -189,6 +189,7 @@ namespace Stratum.Game
             if (kind >= WorldKind.Count) kind = WorldKind.Normal;
             _keepInv = welcome.More && welcome.Bool();          // 0.5.1: the server's world lets players keep their things
             _serverNotes = welcome.More ? welcome.Str() : null;   // 0.17: goals and statistics kept with the account
+            slots = welcome.WithMore(slots);                      // 0.16.4: the stacks a list of 255 had no room for
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _myName = name;
@@ -207,6 +208,9 @@ namespace Stratum.Game
             _player.Creative = creative;
             _player.Feet = feet;
             _player.Yaw = yaw; _player.Pitch = pitch;
+            // Left the game while fallen: they come back the way Respawn would have brought them, not standing where
+            // they fell with a sliver of health.
+            bool fallen = hasPos && health <= 0 && !creative;
             _player.Health = hasPos ? Mathf.Clamp(health, 1, 20) : 20;
             _player.Food = hasPos ? Mathf.Clamp(food, 0, 20) : 20;
             _player.Saturation = hasPos ? Mathf.Clamp(sat, 0, 20) : 5;
@@ -266,6 +270,7 @@ namespace Stratum.Game
             _hud.AddChat("", $"Welcome to {_serverName}. Press T to chat.");
             if (!string.IsNullOrWhiteSpace(motd)) _hud.AddChat("", motd);
             if (!hasPos) _hud.Toast(creative ? "Creative: double-tap Space to fly" : "Press E to open your backpack");
+            if (fallen) { _hud.AddChat("", "You had fallen when you left. You're back at your bed or the start."); Respawn(); }
             if (Settings.VoiceMode == 1) _hud.AddChat("", "Hold V to talk.");
             else if (Settings.VoiceMode == 2) _hud.AddChat("", "Your microphone is on: friends hear you when you speak.");
             Debug.Log($"[Stratum] joined {_serverName} at {address} as {name} (id {_myId})");
@@ -310,7 +315,7 @@ namespace Stratum.Game
             if (_player.Flying) flags |= Net.Flying;
             if (_act != null && _act.Swinging) flags |= Net.Swinging;
             if (_player.InWater) flags |= Net.InWater;
-            if (_player.Health <= 0) flags |= Net.Dead;
+            if (_player.Health <= 0 || _player.Dead) flags |= Net.Dead;
             if (_player.Asleep) flags |= Net.Asleep;
             if (_player.Riding == MobKind.Boat) flags |= Net.InBoat;
             if (_player.Riding == MobKind.Cart) flags |= Net.InCart;
@@ -328,8 +333,9 @@ namespace Stratum.Game
         void SendKeep()
         {
             if (_net == null || _player == null) return;
-            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(SaveSlots())
-                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints).Str(Notes()).I32(_givesSeen));
+            var slots = SaveSlots();
+            _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(slots)
+                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints).Str(Notes()).I32(_givesSeen).MoreStacks(slots));
         }
 
         // Reads what the server sent and keeps it up to date with us. Runs every frame while connected.

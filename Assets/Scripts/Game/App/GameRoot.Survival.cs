@@ -573,7 +573,7 @@ namespace Stratum.Game
         }
         public override void CloseBox() => Send(new Packet(Net.Msg.CloseBox));
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
-        public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));
+        public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks).MoreStacks(stacks));
         public override void Toss(Core.Stack s, Vector3 o, Vector3 v) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(o.x).F32(o.y).F32(o.z).F32(v.x).F32(v.y).F32(v.z).Bool(false));
         public override void Spill(Vector3 at, Core.Stack s) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(at.x).F32(at.y).F32(at.z).F32(0).F32(0).F32(0).Bool(true));
         public override void TakeDrop(int id) => Send(new Packet(Net.Msg.TakeDrop).I32(id));

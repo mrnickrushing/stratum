@@ -100,7 +100,7 @@ namespace Stratum.Game
             _menus.Respawn = Respawn;
             _menus.Quit = () => { Application.Quit(); };
             _menus.SettingsChanged = OnSettingsChanged;
-            StartCoroutine(DefaultServer.Refresh(_menus.DefaultServerChanged));
+            StartCoroutine(WatchSite());
 
             Step("title");
             ToTitle();
@@ -169,6 +169,24 @@ namespace Stratum.Game
         }
 
         // ------------------------------------------------------------------ title
+
+        // Asks the site now and every twenty minutes: where our server is, and whether a newer version is out. A
+        // game that is running hears of an update too, without being interrupted by it.
+        System.Collections.IEnumerator WatchSite()
+        {
+            string told = "";
+            while (true)
+            {
+                yield return DefaultServer.Refresh(_menus.DefaultServerChanged);
+                if (DefaultServer.Newer && told != DefaultServer.Latest)
+                {
+                    told = DefaultServer.Latest;
+                    _menus.UpdateOut(told);
+                    if (_hud != null) _hud.AddChat("", $"Stratum {told} is out. When you're ready, save and quit to the title screen and press Update.");
+                }
+                yield return new WaitForSecondsRealtime(1200);
+            }
+        }
 
         void ToTitle()
         {
@@ -557,13 +575,13 @@ Core.Stack[] SaveSlots()
             if (!_player.Inv.Slots[Inventory.OffHand].Empty) (over ??= new List<Core.Stack>()).Add(_player.Inv.Slots[Inventory.OffHand]);
             if (over == null) return a;
             // No free slot for these: they follow the pack's own slots in the save and come back on loading. All of
-            // them: a save on this computer has no limit, and a server takes as many as one message can carry.
+            // them: a save on this computer has no limit, and a server keeps up to Net.MaxExtraStacks.
             var all = new Core.Stack[a.Length + over.Count];
             Array.Copy(a, all, a.Length); over.CopyTo(all, a.Length);
             return all;
         }
 
-        // The most extra stacks a server keeps for a player beyond the pack (one message carries 255 stacks in all).
+        // The most extra stacks a server keeps for a player beyond the pack.
         public const int MaxLoose = Core.Net.MaxExtraStacks;
         readonly List<Core.Stack> _looseBack = new List<Core.Stack>();
 
