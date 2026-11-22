@@ -14,6 +14,16 @@ namespace Stratum.Game
                 case Tex.KegTop: KegTop(p); return 2.5f;
                 case Tex.KegSide: KegSide(p, false); return 3f;
                 case Tex.KegLit: KegSide(p, true); return 3f;
+                case Tex.PistonSide: PistonSide(p); return 3f;
+                case Tex.PistonBack: Rock(p, Hex(0x7c7d82), Hex(0x5c5d62), 0.12f, false); Frame(p, Hex(0x4a4b50), 3); return 3f;
+                case Tex.PistonFace: PistonFace(p, false); return 3f;
+                case Tex.PistonSticky: PistonFace(p, true); return 3f;
+                case Tex.DispenserFace: MachineFace(p, 0); return 4f;
+                case Tex.ObserverFace: MachineFace(p, 1); return 4f;
+                case Tex.ObserverBack: MachineFace(p, 2); return 3f;
+                case Tex.ObserverSide: MachineFace(p, 3); return 3f;
+                case Tex.ComparatorOff: Gauge(p, false); return 2f;
+                case Tex.ComparatorOn: Gauge(p, true); return 2f;
                 case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
@@ -88,6 +98,95 @@ namespace Stratum.Game
                             var c = Paint.Mul(root, 0.8f + (4 - Mathf.Abs(x)) * 0.06f); c.a = 1; p.Set(px, y, c, 0.7f);
                         }
             }
+        }
+
+        // A piston's side: cobbled stone below, a band of planks at the pushing end (the top of the picture).
+        static void PistonSide(Paint p)
+        {
+            Rock(p, Hex(0x7c7d82), Hex(0x5c5d62), 0.12f, false);
+            for (int y = 46; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float g = p.Streak(x, y, 12, 2, 3);
+                    Color c = Paint.Mul(Hex(0xa8824e), 0.82f + g * 0.3f);
+                    if (y == 46 || y == 47) c = Hex(0x3a3c42);
+                    c.a = 1; p.Set(x, y, c, 0.55f + g * 0.1f);
+                }
+            for (int x = 0; x < 64; x++) { p.Set(x, 20, Hex(0x45464c), 0.8f); p.Set(x, 21, Hex(0x45464c), 0.8f); }
+        }
+
+        // The pushing face: planks in an iron frame; the sticky one has a green smear across it.
+        static void PistonFace(Paint p, bool sticky)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float g = p.Streak(x, y, 12, 2, 3);
+                    Color c = Paint.Mul(Hex(0xb08a54), ((y / 16) % 2 == 0 ? 0.95f : 0.86f) * (0.85f + g * 0.3f));
+                    float h = 0.5f + g * 0.1f;
+                    if (y % 16 == 0) { c = Paint.Mul(c, 0.55f); h = 0.2f; }
+                    bool rim = x < 4 || x > 59 || y < 4 || y > 59;
+                    if (rim) { c = Paint.Mul(Hex(0x55585e), 0.9f + p.V(x, y, 16) * 0.25f); h = 0.85f; }
+                    if (sticky && !rim)
+                    {
+                        float blob = p.Fbm(x, y, 8, 3);
+                        float dx = x - 31.5f, dy = y - 31.5f;
+                        if (blob > 0.42f + (dx * dx + dy * dy) / 2600f) { c = Color.Lerp(Hex(0x5fae3a), Hex(0x9be06a), blob); h = 0.75f; }
+                    }
+                    c.a = 1; p.Set(x, y, c, h);
+                }
+        }
+
+        // Stone machine faces: 0 a dispenser's mouth, 1 an observer's eye, 2 its output spot, 3 its plain side with an arrow.
+        static void MachineFace(Paint p, int kind)
+        {
+            Rock(p, Hex(0x7c7d82), Hex(0x5c5d62), 0.12f, false); Frame(p, Hex(0x4a4b50), 3);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float dx = x - 31.5f, dy = y - 31.5f, r = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (kind == 0)
+                    {
+                        // A round mouth, dark inside, with a lip.
+                        if (r < 13) { var c = Color.Lerp(Hex(0x0c0c0e), Hex(0x2a2a2e), Mathf.Clamp01((dy + 13) / 40f)); c.a = 1; p.Set(x, y, c, 0.05f); }
+                        else if (r < 16) { p.Set(x, y, Hex(0x3e3f44), 0.9f); }
+                    }
+                    else if (kind == 1)
+                    {
+                        // A wide eye: pale, with a dark slot of a pupil.
+                        float ex = dx / 22f, ey = dy / 11f;
+                        if (ex * ex + ey * ey < 1)
+                        {
+                            Color c = Mathf.Abs(dx) < 4 && Mathf.Abs(dy) < 9 ? Hex(0x16161a) : Color.Lerp(Hex(0xe8e2d0), Hex(0xb4ae9c), ex * ex + ey * ey);
+                            c.a = 1; p.Set(x, y, c, 0.3f);
+                        }
+                        else if (ex * ex + ey * ey < 1.3f) p.Set(x, y, Hex(0x3a3b40), 0.9f);
+                    }
+                    else if (kind == 2)
+                    {
+                        if (r < 6) p.Set(x, y, Hex(0xd8302a), 0.8f);
+                        else if (r < 9) p.Set(x, y, Hex(0x3a3b40), 0.9f);
+                    }
+                    else
+                    {
+                        // An arrow along the side, pointing from the eye to the output.
+                        if (Mathf.Abs(dy) < 3 && Mathf.Abs(dx) < 16 || Mathf.Abs(dy) < 12 - (dx + 16) * 1.0f && dx < -4 && dx > -17) p.Set(x, y, Hex(0x3a3b40), 0.3f);
+                    }
+                }
+        }
+
+        // A comparator's top: a stone plate with three pins (one in front, two behind), lit red when it's on.
+        static void Gauge(Paint p, bool on)
+        {
+            Rock(p, Hex(0x9a9b9f), Hex(0x7a7b80), 0.08f, false);
+            Color pin = on ? Hex(0xff4a3a) : Hex(0x6a1a16), line = on ? Hex(0xd8302a) : Hex(0x4a1512);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool a = (x - 32) * (x - 32) + (y - 14) * (y - 14) < 30, b = (x - 18) * (x - 18) + (y - 46) * (y - 46) < 30, c = (x - 46) * (x - 46) + (y - 46) * (y - 46) < 30;
+                    if (a || b || c) p.Set(x, y, pin, 0.9f);
+                    else if (Mathf.Abs(x - 32) < 2 && y > 14 && y < 46 || Mathf.Abs(y - 46) < 2 && x > 18 && x < 46) p.Set(x, y, line, 0.4f);
+                }
         }
 
         static void KegTop(Paint p)

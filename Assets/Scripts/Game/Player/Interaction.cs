@@ -769,6 +769,21 @@ namespace Stratum.Game
                 else if (TargetNormal.y == 0) place = (ushort)(Blocks.WallSign + DirOf(-TargetNormal));
                 else return;
             }
+            else if (def.Machine || def.Watcher)
+            {
+                // Pistons and dispensers face whoever puts them down; an observer looks the way they look.
+                var aim = P.Cam.transform.forward;
+                int ld = Mathf.Abs(aim.y) > 0.7f ? (aim.y > 0 ? 4 : 5) : DirOf(aim);
+                int dir = def.Watcher ? ld : ld < 4 ? (ld + 2) & 3 : ld == 4 ? 5 : 4;
+                place = (ushort)(id + dir * 2);
+            }
+            else if (def.Gauge)
+            {
+                // A comparator reads the container it is put down facing, and gives power back toward the player.
+                var bb = Blocks.Get(below);
+                if (!(bb.Solid && bb.Opaque && bb.Shape == Shape.Cube) && !Blocks.Slabs.Contains(below)) return;
+                place = (ushort)(id + ((DirOf(P.Cam.transform.forward) + 2) & 3) * 2);
+            }
             else place = Blocks.Facing(id, look.x, look.z);
             if (!World.Set(at.x, at.y, at.z, place)) return;
             Placed(id);

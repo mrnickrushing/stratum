@@ -78,7 +78,7 @@ namespace Stratum.Game
             if (_file != null) try { Boxes.Load(_file); } catch (Exception e) { Debug.LogWarning("containers unreadable: " + e.Message); }
             Furnaces = new Furnaces(Boxes);
             Furnaces.WakeSaved();
-            Furnaces.Changed = (x, y, z, slot, s) => { var at = new Vector3Int(x, y, z); if (_open && at == _box) BoxChanged?.Invoke(at, slot, s); };
+            Furnaces.Changed = (x, y, z, slot, s) => { var at = new Vector3Int(x, y, z); if (_open && at == _box) BoxChanged?.Invoke(at, slot, s); world.Signal?.Wake(x, y, z); };
             Chutes = new Chutes(Boxes, world.Get, (x, z) => world.IsReady(x, z)) { Changed = Furnaces.Changed, Fed = Furnaces.Wake };
             Chutes.LoadSaved();
             Sim = new MobSim(world.Get, seed ^ Environment.TickCount) { Difficulty = difficulty, BiomeAt = world.Gen.BiomeAt };
@@ -118,6 +118,11 @@ namespace Stratum.Game
             Blasts.Boom = (x, y, z, power) => { Sim.Blast(x, y, z, power, _seen); Boomed?.Invoke(new Vector3(x, y, z), power); };
             Blasts.Lit = (x, y, z) => MobSound?.Invoke(MobKind.Bloat, "say", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
             Sim.Burst += m => Blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
+            if (world.Signal != null)
+            {
+                world.Signal.Fired = (x, y, z, dir) => { Machines.Dispense(Boxes, Ground, Sim, world.Get, (bx, by, bz, id) => world.Set(bx, by, bz, id), x, y, z, dir, _dice); MobSound?.Invoke(MobKind.Arrow, "shoot", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)); };
+                world.Signal.Holds = (x, y, z) => Machines.Holds(Boxes, x, y, z);
+            }
             Sim.Laid += m => Ground.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             world.Changed += (x, y, z, old, id) =>
             {
@@ -218,6 +223,7 @@ namespace Stratum.Game
             if (_world.Get(at.x, at.y, at.z) == Blocks.Chute && slot >= Chutes.Slots) return;
             Boxes.Set(at.x, at.y, at.z, slot, s);
             if (furnace) Furnaces.Wake(at.x, at.y, at.z);
+            _world.Signal?.Wake(at.x, at.y, at.z);          // a comparator beside it looks again
         }
         public override void CloseBox() => _open = false;
 

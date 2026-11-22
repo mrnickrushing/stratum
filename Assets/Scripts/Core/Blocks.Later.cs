@@ -6,6 +6,24 @@ namespace Stratum.Core
     // Blocks added from 0.14 on. Always after everything before them, so saved worlds keep their numbers.
     public static partial class Blocks
     {
+        // A machine that can face six ways: twelve blocks, direction * 2 + on.
+        static ushort SixWay(string key, string name, Tex face, Tex side, Tex back, Action<BlockDef, int, bool> more)
+        {
+            ushort first = 0;
+            for (int i = 0; i < 12; i++)
+            {
+                int dir = i / 2; bool on = (i & 1) == 1;
+                var d = Add(i == 0 ? key : key + "_" + i, name, side);
+                if (i == 0) first = d.Id; else { d.Creative = false; Palette.Remove(d.Id); d.DropItem = key; }
+                d.BaseId = first; d.Variant = i; d.Dir = dir; d.Hardness = 2; d.Tool = Tool.Pickaxe; d.Sound = Sound.Stone;
+                if (dir < 4) { d.Facing = (ushort)dir; d.Front = face; d.HasFront = true; d.Top = d.Bottom = side; }
+                else if (dir == 4) { d.Top = face; d.Bottom = back; }
+                else { d.Bottom = face; d.Top = back; }
+                more(d, dir, on);
+            }
+            return first;
+        }
+
         static void Later()
         {
             // A torch on the side of a block, leaning out from the wall it faces.
@@ -37,6 +55,39 @@ namespace Stratum.Core
 
             // Starstone: the hardest thing in the ground, deep down, for the best tools.
             b = Rock("star_ore", "Starstone Ore", Tex.StarOre, 5, 4); b.DropItem = "starstone"; StarOre = b.Id;
+
+            // ---- spark machines
+            Piston = SixWay("piston", "Piston", Tex.PistonFace, Tex.PistonSide, Tex.PistonBack, (d, dir, on) => { d.Machine = true; d.Piston = true; });
+            StickyPiston = SixWay("sticky_piston", "Sticky Piston", Tex.PistonSticky, Tex.PistonSide, Tex.PistonBack, (d, dir, on) => { d.Machine = true; d.Piston = true; d.Sticky = true; });
+            for (int dir = 0; dir < 6; dir++)
+            {
+                b = Add(dir == 0 ? "piston_arm" : "piston_arm_" + dir, "Piston Arm", Tex.PistonFace, Tex.PistonSide, Tex.PistonFace);
+                b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 2; b.Sound = Sound.Wood; b.DropItem = ""; b.Creative = false; Palette.Remove(b.Id);
+                b.Arm = true; b.Dir = dir; b.Variant = dir;
+                // A plate at the far end, a rod back to the body.
+                b.Boxes = dir switch
+                {
+                    0 => new[] { Box.Px(0, 0, 12, 16, 16, 16), Box.Px(6, 6, 0, 10, 10, 12) },
+                    1 => new[] { Box.Px(12, 0, 0, 16, 16, 16), Box.Px(0, 6, 6, 12, 10, 10) },
+                    2 => new[] { Box.Px(0, 0, 0, 16, 16, 4), Box.Px(6, 6, 4, 10, 10, 16) },
+                    3 => new[] { Box.Px(0, 0, 0, 4, 16, 16), Box.Px(4, 6, 6, 16, 10, 10) },
+                    4 => new[] { Box.Px(0, 12, 0, 16, 16, 16), Box.Px(6, 0, 6, 10, 12, 10) },
+                    _ => new[] { Box.Px(0, 0, 0, 16, 4, 16), Box.Px(6, 4, 6, 10, 16, 10) },
+                };
+                if (dir == 0) PistonArm = b.Id; else b.BaseId = PistonArm;
+            }
+            Dispenser = SixWay("dispenser", "Dispenser", Tex.DispenserFace, Tex.FurnaceSide, Tex.FurnaceTop, (d, dir, on) => { d.Machine = true; d.Container = true; d.Hardness = 3; });
+            Observer = SixWay("observer", "Observer", Tex.ObserverFace, Tex.ObserverSide, Tex.ObserverBack, (d, dir, on) => { d.Watcher = true; d.Emitter = true; });
+            for (int i = 0; i < 8; i++)
+            {
+                b = Add(i == 0 ? "comparator" : "comparator_" + i, "Comparator", Tex.Stone);
+                if (i != 0) { b.Creative = false; Palette.Remove(b.Id); b.DropItem = "comparator"; }
+                b.Variant = i; b.Dir = i / 2; b.Facing = (ushort)(i / 2); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Hardness = 0; b.Sound = Sound.Stone;
+                b.Top = (i & 1) == 1 ? Tex.ComparatorOn : Tex.ComparatorOff; b.Side = b.Bottom = Tex.Stone; b.FlatIcon = true;
+                b.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16), Box.Px(6, 2, 2, 10, 5, 5).Turn(i / 2), Box.Px(3, 2, 10, 6, 6, 13).Turn(i / 2), Box.Px(10, 2, 10, 13, 6, 13).Turn(i / 2) };
+                b.Gauge = true; b.Emitter = true; if ((i & 1) == 1) b.Emit = 4;
+                if (i == 0) Comparator = b.Id; else b.BaseId = Comparator;
+            }
 
             // What fire eats.
             for (int i = 1; i < _next; i++)

@@ -41,19 +41,24 @@ namespace Stratum.Core
         static bool IsLamp(ushort id) => id != 0 && Base(id) == Blocks.SparkLamp;
         static bool IsRepeater(ushort id) => id != 0 && Base(id) == Blocks.Repeater;
         static bool Opens(ushort id) => id != 0 && Blocks.Get(id).Opens;
+        static bool IsEmitter(ushort id) => id != 0 && Blocks.Get(id).Emitter;
+        static bool IsMachine(ushort id) => id != 0 && Blocks.Get(id).Machine;
+        // Where an observer or comparator puts its power: an observer behind itself, a comparator in front.
+        static (int, int, int) OutOf(BlockDef d, int x, int y, int z) => d.Watcher ? (x - DX[d.Dir], y - DY[d.Dir], z - DZ[d.Dir]) : (x + DX[d.Dir], y + DY[d.Dir], z + DZ[d.Dir]);
         static int V(ushort id) => id - Blocks.Get(id).BaseId;
 
         // Lever, button and plate: the low bit is "on". Torch: variant 0 is lit. Repeater: low bit on, facing = output.
         static bool On(ushort id) =>
+            IsEmitter(id) || IsMachine(id) ? (V(id) & 1) == 1 :
             IsLever(id) || IsButton(id) || IsRepeater(id) ? (V(id) & 1) == 1 :
             IsPlate(id) || IsWire(id) || IsLamp(id) ? V(id) == 1 :
             IsTorch(id) ? V(id) == 0 : false;
 
         public static bool IsPart(ushort id) => IsWire(id) || IsLever(id) || IsButton(id) || IsPlate(id) || IsTorch(id) || IsLamp(id) || IsRepeater(id) || id == Blocks.BlastKeg
-                                              || Opens(id) || Rails.Booster(id);
+                                              || Opens(id) || Rails.Booster(id) || IsEmitter(id) || IsMachine(id);
 
         // Things that stand on the block below them (and pop off when it goes).
-        public static bool NeedsFloor(ushort id) => IsWire(id) || IsLever(id) || IsPlate(id) || IsRepeater(id);
+        public static bool NeedsFloor(ushort id) => IsWire(id) || IsLever(id) || IsPlate(id) || IsRepeater(id) || id != 0 && Blocks.Get(id).Gauge;
 
         static bool Conductor(ushort id) { if (id == 0) return false; var d = Blocks.Get(id); return d.Solid && d.Opaque && d.Shape == Shape.Cube; }
 
@@ -85,9 +90,20 @@ namespace Stratum.Core
 
         public void Wake(int x, int y, int z)
         {
+            // An observer looking at this cell blinks; an arm whose piston has gone goes too.
+            for (int d = 0; d < 6; d++)
+            {
+                int nx = x + DX[d], ny = y + DY[d], nz = z + DZ[d];
+                if ((uint)ny >= Chunk.Height) continue;
+                var n = Blocks.Get(_get(nx, ny, nz));
+                if (n.Watcher && (n.Variant & 1) == 0 && nx + DX[n.Dir] == x && ny + DY[n.Dir] == y && nz + DZ[n.Dir] == z) _blinks.Add((nx, ny, nz));
+                if (n.Arm && nx - DX[n.Dir] == x && ny - DY[n.Dir] == y && nz - DZ[n.Dir] == z && !Blocks.Get(_get(x, y, z)).Piston) _blinks.Add((nx, ny, nz));
+            }
             if (_applying) return;
             _dirty.Add((x, y, z));
         }
+        readonly HashSet<(int, int, int)> _blinks = new HashSet<(int, int, int)>();
+        const float BlinkFor = 0.2f;
 
         // bodies: everyone standing about (players and creatures), for pressure plates.
         public void Tick(float dt, IEnumerable<(float x, float y, float z)> bodies)
@@ -126,6 +142,16 @@ namespace Stratum.Core
                         if (cur == 0 || Base(cur) != Base(id) || cur == id) continue;   // broken or changed meanwhile
                         Put(x, y, z, id);
                     }
+            }
+            if (_blinks.Count > 0)
+            {
+                var blinks = new List<(int, int, int)>(_blinks); _blinks.Clear();
+                foreach (var (x, y, z) in blinks)
+                {
+                    ushort id = _get(x, y, z); var d = Blocks.Get(id);
+                    if (d.Arm) { if (!Blocks.Get(_get(x - DX[d.Dir], y - DY[d.Dir], z - DZ[d.Dir])).Piston) Put(x, y, z, 0); }
+                    else if (d.Watcher && (d.Variant & 1) == 0) { Put(x, y, z, (ushort)(id + 1)); _later[(x, y, z)] = (_time + BlinkFor, id); }
+                }
             }
             if (_dirty.Count == 0) return;
             var seeds = new List<(int, int, int)>(_dirty);
@@ -238,6 +264,7 @@ namespace Stratum.Core
                 else if (IsButton(id)) _strong.Add((x + DX[d.Facing], y, z + DZ[d.Facing]));
                 else if (IsTorch(id)) _strong.Add((x, y + 1, z));
                 else if (IsRepeater(id)) _strong.Add((x + DX[d.Facing], y, z + DZ[d.Facing]));
+                else if (IsEmitter(id)) _strong.Add(OutOf(d, x, y, z));
             }
 
             // 3. Wire: full strength next to a source, one less for each block along.
@@ -254,6 +281,7 @@ namespace Stratum.Core
                     ushort n = _get(nx, ny, nz);
                     if ((IsLever(n) || IsButton(n) || IsPlate(n) || IsTorch(n)) && On(n)) fed = true;
                     else if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) fed = true;
+                    else if (IsEmitter(n) && On(n) && OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z)) fed = true;
                     else if (_strong.Contains((nx, ny, nz)) && Conductor(n)) fed = true;
                 }
                 if (fed) { _level[c] = 15; buckets[15].Add(c); }
@@ -302,6 +330,21 @@ namespace Stratum.Core
                         if (want != id) _set(x, y, z, want);
                     }
                     else if (id == Blocks.BlastKeg) { if (Powered(c, x, y, z)) _set(x, y, z, Blocks.KegLit); }
+                    else if (def.Piston) Push(c, id, def, Powered(c, x, y, z));
+                    else if (def.Machine)
+                    {
+                        // A dispenser throws one thing out each time power arrives.
+                        bool p = Powered(c, x, y, z), on = (V(id) & 1) == 1;
+                        if (p == on) continue;
+                        _set(x, y, z, (ushort)(p ? id + 1 : id - 1));
+                        if (p) Fired?.Invoke(x, y, z, def.Dir);
+                    }
+                    else if (def.Gauge)
+                    {
+                        // A comparator is on while the container behind it has anything in it.
+                        bool want = Holds != null && Holds(x - DX[def.Dir], y, z - DZ[def.Dir]), on = (V(id) & 1) == 1;
+                        if (want != on) Later(c, (ushort)(want ? id + 1 : id - 1));
+                    }
                     else if (IsLamp(id))
                     {
                         ushort want = (ushort)(Blocks.SparkLamp + (Powered(c, x, y, z) ? 1 : 0));
@@ -355,6 +398,57 @@ namespace Stratum.Core
             finally { _applying = false; }
         }
 
+        public Action<int, int, int, int> Fired;              // a dispenser went off: where, and which way it faces
+        public Func<int, int, int, bool> Holds;               // does the container here hold anything (for comparators)
+        public const int PushMost = 12;
+
+        static bool Movable(BlockDef d) =>
+            d.Hardness >= 0 && d.Hardness < 15 && !d.Container && !d.Arm && !d.Door && d.BaseId != Blocks.Bed && !(d.Piston && (d.Variant & 1) == 1) && d.Fluid == 0
+            && d.BaseId != Blocks.Sign && d.BaseId != Blocks.WallSign && d.BaseId != Blocks.Portal;
+
+        // A piston: with power it pushes up to twelve blocks along and puts its arm out; without, it draws the arm
+        // back (a sticky one brings the block in front of the arm with it).
+        void Push((int x, int y, int z) c, ushort id, BlockDef def, bool powered)
+        {
+            bool on = (def.Variant & 1) == 1;
+            if (powered == on) return;
+            var (x, y, z) = c;
+            int dx = DX[def.Dir], dy = DY[def.Dir], dz = DZ[def.Dir];
+            if (powered)
+            {
+                int n = 0; bool room = false;
+                for (; n <= PushMost; n++)
+                {
+                    int by = y + dy * (n + 1);
+                    if (by < 1 || by >= Chunk.Height - 1 || Loaded != null && !Loaded(x + dx * (n + 1), z + dz * (n + 1))) break;
+                    var b = Blocks.Get(_get(x + dx * (n + 1), by, z + dz * (n + 1)));
+                    if (b.Id == 0 || b.Replaceable || !b.Solid && !b.Arm && !b.Container && !b.Door) { room = true; break; }      // empty, or something that just breaks
+                    if (!Movable(b)) break;
+                }
+                if (!room) return;                    // stuck: it tries again whenever the circuit next changes
+                for (int i = n; i >= 1; i--)
+                    _set(x + dx * (i + 1), y + dy * (i + 1), z + dz * (i + 1), _get(x + dx * i, y + dy * i, z + dz * i));
+                _set(x + dx, y + dy, z + dz, (ushort)(Blocks.PistonArm + def.Dir));
+                _set(x, y, z, (ushort)(id + 1));
+                for (int i = 0; i <= n + 1; i++) _dirty.Add((x + dx * i, y + dy * i, z + dz * i));
+            }
+            else
+            {
+                _set(x, y, z, (ushort)(id - 1));
+                if (Blocks.Get(_get(x + dx, y + dy, z + dz)).Arm) _set(x + dx, y + dy, z + dz, 0);
+                if (def.Sticky)
+                {
+                    var b = Blocks.Get(_get(x + dx * 2, y + dy * 2, z + dz * 2));
+                    if (b.Id != 0 && b.Solid && !b.Replaceable && Movable(b))
+                    {
+                        _set(x + dx, y + dy, z + dz, b.Id);
+                        _set(x + dx * 2, y + dy * 2, z + dz * 2, 0);
+                    }
+                }
+                for (int i = 0; i <= 2; i++) _dirty.Add((x + dx * i, y + dy * i, z + dz * i));
+            }
+        }
+
         void Later((int, int, int) c, ushort id)
         {
             if (_later.TryGetValue(c, out var l) && l.id == id) return;
@@ -387,6 +481,7 @@ namespace Stratum.Core
                     return true;
                 }
                 if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) return true;
+                if (IsEmitter(n) && On(n) && OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z)) return true;
                 if (IsWire(n) && _level.ContainsKey((nx, ny, nz)))
                 {
                     if (d == 4) return true;                                 // wire lying on top

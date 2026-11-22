@@ -223,6 +223,11 @@ namespace Stratum.Core
             R("fire_striker", 1, null, ("iron_ingot", 1), ("flint", 1));
             R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
             R("fishing_rod", 1, "workbench", ("stick", 3), ("thread", 2));
+            R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));
+            R("sticky_piston", 1, "workbench", ("piston", 1), ("clay", 2));
+            R("dispenser", 1, "workbench", ("cobble", 7), ("bow", 1), ("spark", 1));
+            R("observer", 1, "workbench", ("cobble", 6), ("spark", 2), ("sunstone_shard", 1));
+            R("comparator", 1, "workbench", ("stone", 3), ("spark_torch", 3), ("sunstone_shard", 1));
             R("cooked_fish", 1, "furnace", ("raw_fish", 1));
             R("baked_potato", 1, "furnace", ("potato", 1));
             R("fried_egg", 1, "furnace", ("egg", 1));

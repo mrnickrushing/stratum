@@ -1256,6 +1256,62 @@ namespace Stratum.Server
                 Check(parked != null && parked.Tame && parked.Kept, "and waits where its rider got off");
             }
 
+            // Spark machines.
+            {
+                var mw = new Patch(); Signal sig = null;
+                sig = new Signal(mw.Get, (x, y, z, id) => { mw.Set(x, y, z, id); sig.Wake(x, y, z); });
+                void Put(int x, int y, int z, ushort id) { mw.Set(x, y, z, id); sig.Wake(x, y, z); }
+                void Run(float secs) { for (int i = 0; i < secs * 20; i++) sig.Tick(0.05f, null); }
+                // A lever beside a piston that faces +X, a stone in front of it.
+                Put(1, 11, 0, (ushort)(Blocks.Piston + 1 * 2)); Put(2, 11, 0, Blocks.Cobble); Put(0, 11, 0, Blocks.Lever);
+                Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Cobble, "a piston with no power leaves things be");
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(Blocks.Get(mw.Get(1, 11, 0)).Piston && (Blocks.Get(mw.Get(1, 11, 0)).Variant & 1) == 1 && Blocks.Get(mw.Get(2, 11, 0)).Arm && mw.Get(3, 11, 0) == Blocks.Cobble,
+                    "with power it pushes the block in front along and puts its arm out");
+                Put(0, 11, 0, Blocks.Lever); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == 0 && mw.Get(3, 11, 0) == Blocks.Cobble && mw.Get(1, 11, 0) == Blocks.Piston + 2, "without power the arm goes back and the block stays where it was pushed");
+                // A sticky one brings it back.
+                Put(1, 11, 0, (ushort)(Blocks.StickyPiston + 1 * 2)); Put(2, 11, 0, Blocks.Cobble); Put(3, 11, 0, 0);
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Put(0, 11, 0, Blocks.Lever); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Cobble && mw.Get(3, 11, 0) == 0, "a sticky piston pulls the block back");
+                // Obsidian can't be pushed; thirteen blocks are one too many.
+                Put(2, 11, 0, Blocks.Obsidian); Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Obsidian && mw.Get(3, 11, 0) == 0, "obsidian can't be pushed");
+                Put(0, 11, 0, Blocks.Lever); Run(0.3f);
+                for (int i = 0; i < 13; i++) Put(2 + i, 11, 0, Blocks.Cobble);
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(mw.Get(15, 11, 0) == 0 && mw.Get(2, 11, 0) == Blocks.Cobble, "thirteen blocks in a row are one too many to push");
+
+                // An observer looking at a cell blinks when the block there changes, and lights a lamp behind it.
+                Put(0, 11, 5, (ushort)(Blocks.Observer + 1 * 2));          // its eye looks toward +X
+                Put(-1, 11, 5, Blocks.SparkLamp);
+                Run(0.3f);
+                bool lit = false;
+                Put(1, 11, 5, Blocks.Cobble);
+                for (int i = 0; i < 12; i++) { sig.Tick(0.05f, null); if (mw.Get(-1, 11, 5) == Blocks.SparkLamp + 1) lit = true; }
+                Run(1);
+                Check(lit && mw.Get(-1, 11, 5) == Blocks.SparkLamp && mw.Get(0, 11, 5) == Blocks.Observer + 2, "an observer blinks when the block it watches changes, and the lamp behind it flashes");
+
+                // A comparator is on while the container behind it holds something; a dispenser fires once per switch.
+                bool full = false; int fired = 0;
+                sig.Holds = (x, y, z) => full && x == 0 && y == 11 && z == 9;
+                sig.Fired = (x, y, z, dir) => fired++;
+                Put(1, 11, 9, (ushort)(Blocks.Comparator + 1 * 2));        // reads (0,11,9), gives power toward +X
+                Put(2, 11, 9, Blocks.SparkLamp);
+                Run(0.5f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp, "a comparator by an empty chest gives nothing");
+                full = true; sig.Wake(0, 11, 9); Run(0.6f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp + 1, "with something in the chest it lights the lamp in front of it");
+                full = false; sig.Wake(0, 11, 9); Run(0.6f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp, "and stops when the chest is emptied");
+                Put(1, 11, 13, (ushort)(Blocks.Dispenser + 0)); Put(0, 11, 13, Blocks.Lever);
+                Run(0.3f);
+                Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f); Put(0, 11, 13, Blocks.Lever); Run(0.4f); Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f);
+                Check(fired == 2, $"a dispenser goes off once each time power arrives ({fired})");
+            }
+
             // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.
             var bw = new Patch(); int booms = 0, broke = 0;
             var blasts = new Blasts(bw.Get, bw.Set) { Boom = (x, y, z, p) => booms++, Broke = (x, y, z, d) => broke++ };

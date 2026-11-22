@@ -109,6 +109,7 @@ namespace Stratum.Server
                 foreach (var o in _players.Values)
                     if (o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
                         o.Conn.Send(f ??= new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st).Bytes());
+                World.Signal.Wake(x, y, z);          // a comparator beside it looks again
             };
             _chutes = new Chutes(_boxes, World.Get, World.IsLoaded) { Changed = _furnaces.Changed, Fed = _furnaces.Wake };
             _chutes.LoadSaved();
@@ -139,6 +140,8 @@ namespace Stratum.Server
                 foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 96 * 96) o.Conn.Send(f);
             };
             _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
+            World.Signal.Fired = (x, y, z, dir) => Machines.Dispense(_boxes, _drops, _mobs, World.Get, World.Put, x, y, z, dir, _dice);
+            World.Signal.Holds = (x, y, z) => Machines.Holds(_boxes, x, y, z);
             _mobs.Laid += m => _drops.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             _leaves = new Decay(World.Get, World.Put);
             _leaves.Fell = (x, y, z, d) =>
@@ -756,6 +759,7 @@ namespace Stratum.Server
             if (hasSeen) st = Containers.Reconcile(_boxes.At(x, y, z, Math.Max(Containers.ChestSlots, slot + 1))[slot], seen, want, _owed);
             _boxes.Set(x, y, z, slot, st);
             if (furnace) _furnaces.Wake(x, y, z);
+            World.Signal.Wake(x, y, z);
             if (!Containers.Same(st, want)) p.Conn.Send(new Packet(Net.Msg.BoxSet).I32(x).I32(y).I32(z).U8((byte)slot).Slot(st));     // put their screen right
             // And their pack: the game counted what it saw as taken. What wasn't there comes back out of their
             // hands, and what didn't fit goes back into them, so nothing is made or lost.
