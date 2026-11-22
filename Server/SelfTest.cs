@@ -969,14 +969,16 @@ namespace Stratum.Server
                         Check(d.Wait(Net.Msg.Block, r => r.I32() == px + 2 && r.I32() == py + 2 && r.I32() == pz && r.U16() == Blocks.Stone && r.I32() == WorldHost.Refused, 2000) != null,
                               "Dot, putting stone in the same place, is told it was refused (so her game hands the block back)");
                         a.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz).U16(0).U16(Blocks.Stone));
-                        // A chest: all 4 cobble go in, 3 come back out, and she is cut off before her game sends its pack.
+                        // A chest: all 4 cobble go in, 3 come back out, one of those is put down as a block, and she is cut
+                        // off before her game sends its pack.
                         d.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz + 2).U16(Blocks.Chest).U16(0));
                         Thread.Sleep(200);
                         d.Send(new Packet(Net.Msg.OpenBox).I32(px + 2).I32(py + 2).I32(pz + 2));
                         bool opened = d.Wait(Net.Msg.Box, null, 2000) != null;
                         d.Send(new Packet(Net.Msg.BoxSlot).I32(px + 2).I32(py + 2).I32(pz + 2).U8(0).Slot(new Stack("cobble", 4)).Slot(Stack.None));
                         d.Send(new Packet(Net.Msg.BoxSlot).I32(px + 2).I32(py + 2).I32(pz + 2).U8(0).Slot(new Stack("cobble", 1)).Slot(new Stack("cobble", 4)));
-                        Check(opened, "Dot puts her cobble in a chest and takes 3 back");
+                        d.Send(new Packet(Net.Msg.SetBlock).I32(px + 3).I32(py + 2).I32(pz + 2).U16(Blocks.Cobble).U16(0));
+                        Check(opened, "Dot puts her cobble in a chest, takes 3 back and builds with one");
                         // A boat she has only just got into is left behind when she is cut off.
                         var before = Boats(d);
                         d.Send(new Packet(Net.Msg.Park).U8((byte)MobKind.Boat).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0));
@@ -991,7 +993,7 @@ namespace Stratum.Server
                     {
                         d.Login("Dot", "dot-password", world: "");
                         bool dotBack = d.Welcome();
-                        Check(dotBack && Cobble(d) == 3, $"cut off with the chest open, she has the 3 she took and not the 1 she left (has {Cobble(d)})");
+                        Check(dotBack && Cobble(d) == 2, $"cut off with the chest open, she has the 3 she took less the 1 she built with, and not the 1 she left (has {Cobble(d)})");
                         d.Send(new Packet(Net.Msg.OpenBox).I32(px + 2).I32(py + 2).I32(pz + 2));
                         int inChest = -1;
                         d.Wait(Net.Msg.Box, r => { r.I32(); r.I32(); r.I32(); inChest = 0; foreach (var st in r.Stacks()) if (st.Item == "cobble") inChest += st.Count; return true; }, 2000);
@@ -1007,7 +1009,7 @@ namespace Stratum.Server
                         Thread.Sleep(150);
                         d.Send(new Packet(Net.Msg.Park).U8((byte)MobKind.Boat).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0));
                         // She falls: everything she carries goes into a satchel, and she is cut off before her game says its pack is empty.
-                        var falls = new Stack[Inventory.Size]; falls[0] = new Stack("cobble", 3);
+                        var falls = new Stack[Inventory.Size]; falls[0] = new Stack("cobble", 2);
                         d.Send(new Packet(Net.Msg.Drop).F32(px + 0.5f).F32(py + 1).F32(pz + 2.5f).Stacks(falls).MoreStacks(falls));
                         Thread.Sleep(200);
                         // Waiting high over the far side of a portal, then cut off: she returns where she set out.
