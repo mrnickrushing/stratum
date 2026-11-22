@@ -108,13 +108,15 @@ namespace Stratum.Game
         void FillLooks()
         {
             int now = Looks.Current;
-            for (int i = 0; i < Looks.All.Length; i++)
+            // The usual look first, then the rest in their order.
+            for (int n = 0; n < Looks.All.Length; n++)
             {
+                int i = n == 0 ? Looks.Default : n <= Looks.Default ? n - 1 : n;
                 int idx = i; var look = Looks.All[i];
-                var tile = Tile(look.Name, i == 0 ? "Look · the usual one" : "Look", look.Desc, out var pic);
+                var tile = Tile(look.Name, i == Looks.Default ? "Look · the usual one" : "Look", look.Desc, out var pic);
                 // Eight blocks side by side in this look.
                 const int S = Paint.S;
-                var tex = new Texture2D(S * 4, S * 2, TextureFormat.RGBA32, false) { filterMode = i == 1 ? FilterMode.Point : FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+                var tex = new Texture2D(S * 4, S * 2, TextureFormat.RGBA32, false) { filterMode = i == 1 || i == 5 ? FilterMode.Point : FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
                 for (int k = 0; k < 8; k++)
                 {
                     var px = BlockTextures.Sample(LookSample[k], i);

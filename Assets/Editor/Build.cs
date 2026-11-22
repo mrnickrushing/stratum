@@ -26,7 +26,7 @@ namespace Stratum.EditorTools
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(Scene, true) };
             PlayerSettings.companyName = "Rushing Technologies";
             PlayerSettings.productName = "Stratum";
-            PlayerSettings.bundleVersion = "0.12.1";
+            PlayerSettings.bundleVersion = "0.13.0";
             PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
             PlayerSettings.defaultIsNativeResolution = true;
             PlayerSettings.resizableWindow = true;

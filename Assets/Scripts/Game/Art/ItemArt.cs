@@ -250,6 +250,11 @@ namespace Stratum.Game
                     }
                     break;
                 }
+                case "xp":
+                    // A glowing bead of experience.
+                    c.Disc(new Vector2(48, 48), 30, (dx, dy) => { float r = Mathf.Sqrt(dx * dx + dy * dy); return new Color(0.55f, 1f, 0.35f, (1 - r) * 0.55f); });
+                    c.Disc(new Vector2(48, 48), 19, (dx, dy) => Color.Lerp(Hex(0xf4ffb0), Hex(0x58c81e), Mathf.Clamp01(Mathf.Sqrt((dx + 0.35f) * (dx + 0.35f) + (dy - 0.35f) * (dy - 0.35f)))));
+                    break;
                 case "candle":
                     c.Poly(new[] { new Vector2(38, 10), new Vector2(58, 10), new Vector2(58, 58), new Vector2(38, 58) }, (x, y) => Color.Lerp(Hex(0xd8cdb0), Hex(0xfff6e0), Mathf.Clamp01((x - 38) / 20f * 0.7f + (y - 10) / 48f * 0.3f)));
                     c.Line(new Vector2(48, 58), new Vector2(48, 66), 2.5f, (t, ss) => Hex(0x2a2420));
