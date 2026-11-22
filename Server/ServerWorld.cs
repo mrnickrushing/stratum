@@ -83,6 +83,13 @@ namespace Stratum.Server
             {
                 // Nobody has ever been here, so nothing depends on where the start is: use today's better pick
                 // (level open ground), which worlds made before 0.16.2 didn't get.
+                // And its clock goes back to the first morning (it ran on while the world stood empty, before 0.16.8).
+                if (Meta.day != 1 || Math.Abs(Meta.time - 0.3) > 0.001)
+                {
+                    Log.Info($"{dir}: nobody has played here yet; day {Meta.day} goes back to the first morning");
+                    Meta.day = 1; Meta.time = 0.3; Meta.weather = 0; Meta.weatherLeft = 900;
+                    SaveMeta();
+                }
                 var s = Gen.FindSpawn();
                 if (s.x != Meta.sx || s.y != Meta.sy || s.z != Meta.sz)
                 {

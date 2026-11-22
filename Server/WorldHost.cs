@@ -268,7 +268,10 @@ namespace Stratum.Server
 
                     while (World.Notices.TryDequeue(out var note)) Broadcast(SaidPacket("", note));
                     World.Water.Tick(dt);
-                    _weather.Tick(dt);
+                    // With nobody here the day and the weather stand still: people come back to the hour they left, and
+                    // a world nobody has been to yet is still on its first morning.
+                    bool anyone = false; foreach (var pl in _players.Values) if (pl.Joined) { anyone = true; break; }
+                    if (anyone) _weather.Tick(dt);
                     _furnaces.Tick(dt);
                     _chutes.Tick(dt);
                     _near.Clear(); foreach (var pl in _players.Values) if (pl.Joined) _near.Add((pl.X, pl.Z));
@@ -279,7 +282,7 @@ namespace Stratum.Server
                     World.Signal.Tick(dt, _bodies);
                     TickMobs(dt);
                     if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); if (drops ^= true) SendDrops(); }
-                    World.Meta.time += dt / 1200.0;     // Sky.DayLength
+                    if (anyone) World.Meta.time += dt / 1200.0;     // Sky.DayLength
                     if (World.Meta.time >= 1) { World.Meta.time -= 1; World.Meta.day++; }
 
                     if (now >= nextMoves) { nextMoves = now + 0.1; SendMoves(); }
