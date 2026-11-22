@@ -321,4 +321,7 @@ after changing a tool, a creature or the spawning. From it: night creatures far 
 install, 0.16.5 over 0.16.4, and with the game open: `WINEPREFIX=... wine Stratum-<v>-Setup.exe /S`). Blocks put down
 just before a lost connection come out of the saved pack (`WorldHost.ItemFor`).
 
+0.16.7: a satchel for someone who fell in water lies on the bottom (`Containers.Room`; before, there was nowhere for
+it and the things quietly went back to their owner). Tried online: death 700 m from a bed returns the player to the bed.
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

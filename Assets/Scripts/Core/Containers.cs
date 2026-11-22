@@ -271,6 +271,9 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
 
         // The same, also counting a satchel already lying there as a place (to add to), leaving out cells `skip`
         // names, and saying honestly when there is nowhere at all.
+        // Where a satchel can lie: open air, grass and the like, or water (it rests on the bottom). Never in lava.
+        static bool Room(BlockDef b) => b.Id == 0 || b.Replaceable && !Blocks.IsLava(b.Id);
+
         public static bool SpotFor(Func<int, int, int, ushort> get, int x, int y, int z, Func<int, int, int, bool> skip, out (int x, int y, int z) at)
         {
             at = (x, y, z);
@@ -287,11 +290,19 @@ public static Stack Reconcile(Stack now, Stack seen, Stack want) => Reconcile(no
                                 if (skip != null && skip(cx, cy, cz)) continue;
                                 var here = Blocks.Get(get(cx, cy, cz));
                                 bool satchel = skip != null && here.Id == Blocks.Satchel;
-                                if (!satchel && !(here.Id == 0 || here.Replaceable && here.Fluid == 0)) continue;
+                                if (!satchel && !Room(here)) continue;
                                 if (!satchel && !Blocks.Get(get(cx, cy - 1, cz)).Solid) continue;
                                 at = (cx, cy, cz);
                                 return true;
                             }
+            // Fallen in deep water or in mid-air with nothing near: it sinks, or drops, straight down to the bottom.
+            for (int cy = y; cy >= 1; cy--)
+            {
+                var here = Blocks.Get(get(x, cy, z));
+                if (!Room(here)) break;
+                if (skip != null && skip(x, cy, z)) continue;
+                if (Blocks.Get(get(x, cy - 1, z)).Solid) { at = (x, cy, z); return true; }
+            }
             return false;
         }
     }
