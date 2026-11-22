@@ -139,6 +139,7 @@ namespace Stratum.Server
                 foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 96 * 96) o.Conn.Send(f);
             };
             _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
+            _mobs.Laid += m => _drops.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             _leaves = new Decay(World.Get, World.Put);
             _leaves.Fell = (x, y, z, d) =>
             {

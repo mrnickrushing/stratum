@@ -15,6 +15,11 @@ namespace Stratum.Game
                 case Tex.KegSide: KegSide(p, false); return 3f;
                 case Tex.KegLit: KegSide(p, true); return 3f;
             }
+            if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
+            if (t >= Tex.Potato0 && t <= Tex.Potato3) { RootCrop(p, t - Tex.Potato0, Hex(0x3f7e34), Hex(0xc9a25e), false); return 1f; }
+            switch (t)
+            {
+            }
             return 1f;
         }
 
@@ -44,6 +49,43 @@ namespace Stratum.Game
                     c.a = 1;
                     p.Set(x, y, c, 0.5f);
                 }
+            }
+        }
+
+        // A row of leafy tufts that fill out as they grow; ripe, the tops of the roots show at the soil.
+        static void RootCrop(Paint p, int stage, Color leaf, Color root, bool feathery)
+        {
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.Set(x, y, new Color(leaf.r, leaf.g, leaf.b, 0), 0);
+            float height = new[] { 0.22f, 0.4f, 0.6f, 0.78f }[stage];
+            for (int k = 0; k < 4; k++)
+            {
+                float cx = 8 + k * 16 + (p.Hash(k, 1) - 0.5f) * 4;
+                float h = (0.85f + p.Hash(k, 2) * 0.15f) * height * 64;
+                int leaves = feathery ? 7 : 5;
+                for (int l = 0; l < leaves; l++)
+                {
+                    float a = (l / (float)(leaves - 1) - 0.5f) * (feathery ? 1.5f : 1.9f), len = h * (1 - Mathf.Abs(a) * 0.28f);
+                    for (float s = 0; s < len; s += 0.5f)
+                    {
+                        float t = s / len;
+                        int x = Mathf.RoundToInt(cx + Mathf.Sin(a) * s * 0.75f), y = Mathf.RoundToInt(2 + Mathf.Cos(a) * s);
+                        float w = feathery ? 1 + (1 - t) * 0.6f : 1.2f + Mathf.Sin(t * Mathf.PI) * 2.6f;
+                        for (int dx = -Mathf.CeilToInt(w); dx <= Mathf.CeilToInt(w); dx++)
+                        {
+                            if (Mathf.Abs(dx) > w || x + dx < 0 || x + dx > 63 || y < 0 || y > 63) continue;
+                            var c = Paint.Mul(leaf, 0.72f + t * 0.4f + (((x + dx + y) & 3) == 0 ? -0.12f : 0)); c.a = 1;
+                            p.Set(x + dx, y, c, 0.3f + t * 0.5f);
+                        }
+                    }
+                }
+                if (stage == 3)
+                    for (int y = 0; y < 6; y++)
+                        for (int x = -4; x <= 4; x++)
+                        {
+                            if (Mathf.Abs(x) > 4 - y * 0.4f) continue;
+                            int px = Mathf.RoundToInt(cx) + x; if (px < 0 || px > 63) continue;
+                            var c = Paint.Mul(root, 0.8f + (4 - Mathf.Abs(x)) * 0.06f); c.a = 1; p.Set(px, y, c, 0.7f);
+                        }
             }
         }
 

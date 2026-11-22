@@ -408,7 +408,8 @@ namespace Stratum.Game
             // Clicking back into the window grabs the mouse again.
             if (!_hud.InventoryOpen && Cursor.lockState != CursorLockMode.Locked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) SetCursor(true);
 
-            _act.HideHeld = _hud.InventoryOpen || _hudHidden;
+            _act.HideHeld = _hud.InventoryOpen || _hudHidden || _player.View != 0;
+            SelfView();
 
             _autosave -= Time.unscaledDeltaTime;
             if (_autosave <= 0) { _autosave = 120; Save(); }

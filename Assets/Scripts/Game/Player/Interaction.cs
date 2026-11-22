@@ -109,7 +109,7 @@ namespace Stratum.Game
         {
             HasTarget = false;
             var o = P.Cam.transform.position; var d = P.Cam.transform.forward;
-            float reach = P.Creative ? 7f : 5f;
+            float reach = (P.Creative ? 7f : 5f) + (P.View == 1 ? P.ViewBack : 0);
             // Grid walk (Amanatides & Woo).
             int x = Mathf.FloorToInt(o.x), y = Mathf.FloorToInt(o.y), z = Mathf.FloorToInt(o.z);
             int sx = d.x > 0 ? 1 : -1, sy = d.y > 0 ? 1 : -1, sz = d.z > 0 ? 1 : -1;
@@ -154,6 +154,96 @@ namespace Stratum.Game
         // Which way (0 +Z, 1 +X, 2 -Z, 3 -X) a horizontal direction mostly points.
         static int DirOf(Vector3 v) => Mathf.Abs(v.x) > Mathf.Abs(v.z) ? (v.x > 0 ? 1 : 3) : (v.z > 0 ? 0 : 2);
         static int DirOf(Vector3Int v) => v.x > 0 ? 1 : v.x < 0 ? 3 : v.z > 0 ? 0 : 2;
+
+        // ------------------------------------------------------------------ fishing
+        bool _fishing; GameObject _bobber; float _biteIn, _biteLeft, _fishClock;
+        static readonly (string item, int weight)[] Catch =
+        {
+            ("raw_fish", 78), ("stick", 5), ("bone", 4), ("thread", 4), ("hide", 3), ("clay", 3), ("jade", 1), ("sunstone_shard", 1), ("bow", 1),
+        };
+
+        // Water within a long throw, along the view.
+        bool CastAim(out Vector3Int cell)
+        {
+            cell = default;
+            var o = P.Cam.transform.position; var d = P.Cam.transform.forward;
+            for (float t = 0.4f; t < 11f; t += 0.1f)
+            {
+                var p = o + d * t;
+                var c = new Vector3Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z));
+                ushort id = World.Get(c.x, c.y, c.z);
+                if (Blocks.IsWater(id))
+                {
+                    while (Blocks.IsWater(World.Get(c.x, c.y + 1, c.z))) c.y++;
+                    cell = c; return true;
+                }
+                if (Blocks.Get(id).Solid) return false;
+            }
+            return false;
+        }
+
+        void Cast(Vector3Int water)
+        {
+            if (_bobber == null)
+            {
+                _bobber = new GameObject("Float");
+                foreach (var (y, h, col) in new[] { (0.07f, 0.14f, new Color(0.85f, 0.2f, 0.15f)), (-0.05f, 0.1f, new Color(0.95f, 0.95f, 0.92f)), (0.2f, 0.12f, new Color(0.3f, 0.22f, 0.14f)) })
+                {
+                    var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    Destroy(part.GetComponent<Collider>());
+                    part.transform.SetParent(_bobber.transform, false);
+                    part.transform.localPosition = new Vector3(0, y, 0);
+                    part.transform.localScale = y > 0.15f ? new Vector3(0.03f, h, 0.03f) : new Vector3(0.14f, h, 0.14f);
+                    var mr = part.GetComponent<MeshRenderer>(); mr.shadowCastingMode = ShadowCastingMode.Off;
+                    mr.material = new Material(Shader.Find("Universal Render Pipeline/Unlit")); mr.material.SetColor("_BaseColor", col);
+                }
+            }
+            _bobber.SetActive(true);
+            _bobber.transform.position = new Vector3(water.x + 0.5f, water.y + 0.86f, water.z + 0.5f);
+            _fishing = true; _biteLeft = 0; _fishClock = 0;
+            _biteIn = Random.Range(5f, 16f);
+            Sfx.I?.Play("swish", 0.4f, 0.8f);
+            Sfx.I?.PlayAt("splash", _bobber.transform.position, 0.35f, 1.5f);
+        }
+
+        void FishTick(float dt)
+        {
+            _fishClock += dt;
+            var at = _bobber.transform.position;
+            var cell = new Vector3Int(Mathf.FloorToInt(at.x), Mathf.FloorToInt(at.y - 0.3f), Mathf.FloorToInt(at.z));
+            if (!Blocks.IsWater(World.Get(cell.x, cell.y, cell.z))) { Reel(false); return; }
+            float dip = 0;
+            if (_biteLeft > 0)
+            {
+                _biteLeft -= dt; dip = 0.16f + Mathf.Sin(_fishClock * 30) * 0.03f;
+                if (_biteLeft <= 0) _biteIn = Random.Range(4f, 12f);           // it got away
+            }
+            else if ((_biteIn -= dt) <= 0)
+            {
+                _biteLeft = 1.6f;
+                Sfx.I?.PlayAt("splash", at, 0.6f, 1.2f);
+                Toast?.Invoke("A bite!");
+            }
+            else dip = Mathf.Sin(_fishClock * 2.4f) * 0.02f - (_biteIn < 1.2f ? 0.03f : 0);       // a nibble just before
+            _bobber.transform.position = new Vector3(at.x, cell.y + 0.86f - dip, at.z);
+        }
+
+        void Reel(bool pulled)
+        {
+            bool bite = _biteLeft > 0;
+            _fishing = false; _biteLeft = 0;
+            if (_bobber != null) _bobber.SetActive(false);
+            if (!pulled) return;
+            Sfx.I?.Play("swish", 0.4f, 1.3f);
+            if (!bite) return;
+            int total = 0; foreach (var (_, w) in Catch) total += w;
+            int roll = _rng.Next(total); string got = "raw_fish";
+            foreach (var (item, w) in Catch) { if (roll < w) { got = item; break; } roll -= w; }
+            Gain(got, 1);
+            P.AddXp(_rng.Next(1, 4));
+            Sfx.I?.Play("pickup", 0.4f, 1.2f);
+            if (!P.Creative && P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Fishing Rod broke"); }
+        }
 
         // The first fluid source (or anything solid) along the view, for buckets.
         bool FluidAim(out Vector3Int cell)
@@ -268,6 +358,17 @@ namespace Stratum.Game
                 && MobSim.Def(ride.Kind).Vehicle)
             {
                 Link?.Mount(TargetMob); _swing = 0;
+                return;
+            }
+            // Fishing: cast onto water, wait for the float to dip, pull in.
+            if (_fishing && (heldDef == null || heldDef.Id != "fishing_rod" || (_bobber.transform.position - P.EyePos).sqrMagnitude > 14 * 14)) Reel(false);
+            if (_fishing) FishTick(dt);
+            if (heldDef != null && heldDef.Id == "fishing_rod" && mouse.rightButton.wasPressedThisFrame)
+            {
+                _swing = 0;
+                if (_fishing) Reel(true);
+                else if (CastAim(out var fw)) Cast(fw);
+                else Toast?.Invoke("Cast onto water");
                 return;
             }
             if (heldDef != null && heldDef.Id == "boat" && mouse.rightButton.wasPressedThisFrame && P.Riding == null)
@@ -520,7 +621,7 @@ namespace Stratum.Game
             }
             if (item.Id == "bone_meal")
             {
-                bool works = tdef.BaseId == Blocks.Wheat && tdef.Variant < Blocks.WheatStages - 1 || tdef.Grows == 2 || target == Blocks.Grass && World.Get(Target.x, Target.y + 1, Target.z) == 0;
+                bool works = tdef.Grows == 1 && tdef.Variant < Blocks.WheatStages - 1 || tdef.Grows == 2 || target == Blocks.Grass && World.Get(Target.x, Target.y + 1, Target.z) == 0;
                 if (!works) return;
                 Link?.Fertilize(Target);
                 if (!P.Creative) P.Inv.UseHeld();
@@ -656,7 +757,7 @@ namespace Stratum.Game
         {
             ushort below = World.Get(at.x, at.y - 1, at.z);
             var bd = Blocks.Get(below);
-            if (id == Blocks.Wheat) return bd.BaseId == Blocks.Farmland;
+            if (Blocks.Get(id).Grows == 1) return bd.BaseId == Blocks.Farmland;
             if (id == Blocks.SugarCane)
             {
                 if (below == Blocks.SugarCane) return true;

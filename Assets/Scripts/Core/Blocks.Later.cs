@@ -24,6 +24,17 @@ namespace Stratum.Core
             b = Add("blast_keg_lit", "Blast Keg", Tex.KegTop, Tex.KegLit, Tex.KegTop); b.Hardness = 0.6f; b.Sound = Sound.Wood; b.Emit = 10; b.DropItem = "blast_keg";
             b.Creative = false; Palette.Remove(b.Id); KegLit = b.Id;
 
+            // Root crops: planted as themselves on farmland, four stages like wheat, several to a ripe plant.
+            foreach (var (key, name, tex) in new[] { ("carrot", "Carrots", Tex.Carrot0), ("potato", "Potatoes", Tex.Potato0) })
+                for (int st = 0; st < WheatStages; st++)
+                {
+                    b = Plant(key + "_crop_" + st, name, (Tex)((int)tex + st)); b.Replaceable = false; b.Sway = st > 0; b.Grows = 1; b.Variant = st;
+                    b.Creative = false; Palette.Remove(b.Id); b.DropItem = key;
+                    if (st == WheatStages - 1) { b.DropCount = 2; b.Bonus = key; b.BonusChance = 0.6f; b.Bonus2 = key; b.Bonus2Chance = 0.4f; }
+                    if (st == 0) { if (key == "carrot") Carrot = b.Id; else Potato = b.Id; }
+                    else b.BaseId = key == "carrot" ? Carrot : Potato;
+                }
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

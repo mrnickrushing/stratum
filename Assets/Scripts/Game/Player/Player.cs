@@ -369,7 +369,27 @@ namespace Stratum.Game
             float fov = Settings.Fov + (Sprinting && horiz > Walk ? 8 : 0) + (Flying && Sprinting ? 6 : 0);
             _fov = Mathf.Lerp(_fov, fov, 1 - Mathf.Exp(-dt * 8));
             Cam.fieldOfView = _fov;
+            // Seen from behind or from in front (F5): the camera stands off along the view, stopping short of walls.
+            if (View == 0) { Cam.transform.localPosition = Vector3.zero; Cam.transform.localRotation = Quaternion.identity; ViewBack = 0; }
+            else
+            {
+                var dir = View == 1 ? -Head.forward : Head.forward;
+                var eyeAt = Head.position;
+                float d = 0.3f;
+                for (; d < 4.2f; d += 0.15f)
+                {
+                    var p = eyeAt + dir * (d + 0.3f);
+                    var def = Blocks.Get(World.Get(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z)));
+                    if (def.Solid && def.Shape == Shape.Cube) break;
+                }
+                ViewBack = d;
+                Cam.transform.position = eyeAt + dir * d;
+                Cam.transform.rotation = View == 1 ? Head.rotation : Quaternion.LookRotation(-Head.forward, Vector3.up);
+            }
         }
+
+        public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
+        public float ViewBack;           // how far the camera stands off
 
         void Land()
         {

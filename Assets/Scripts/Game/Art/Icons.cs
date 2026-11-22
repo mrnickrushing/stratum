@@ -174,6 +174,7 @@ namespace Stratum.Game
             foreach (var item in Items.Order)
             {
                 if (item.Block == 0) continue;
+                if (ItemArt.Painted(item.Id)) { _icons[item.Id] = ItemArt.Paint(item); continue; }      // a thing you plant, shown as the thing
                 var flat = Blocks.Get(item.Block);
                 if (flat.FlatIcon)
                 {

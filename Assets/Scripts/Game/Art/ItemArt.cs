@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Stratum.Game
 {
     // Paints the icons of items that aren't blocks (sticks, coal, ingots, shards, tools) with antialiased shapes.
-    public static class ItemArt
+    public static partial class ItemArt
     {
         const int S = 96;
 
@@ -121,6 +121,7 @@ namespace Stratum.Game
         {
             var c = new Canvas();
             string id = item.Id;
+            if (Later(c, id)) return c.Done();
             if (item.Tool == Tool.Sword) { Sword(c, id); return c.Done(); }
             if (item.Tool == Tool.Shears) { Shears(c); return c.Done(); }
             if (item.ArmourSlot >= 0) { Armour(c, item); return c.Done(); }

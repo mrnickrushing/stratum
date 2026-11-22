@@ -108,6 +108,7 @@ namespace Stratum.Game
             _airBack.rectTransform.anchoredPosition = new Vector2(bw / 2 + 5, 18 + S + 40 + 26);
             _foodBack = Bar("Food", new Color(0.86f, 0.58f, 0.22f), bw / 2 + 5, 18 + S + 40, bw, out _food);
             _armourBack = Bar("Armour", new Color(0.78f, 0.80f, 0.86f), -bw / 2 - 5, 18 + S + 40 + 26, bw, out _armour);
+            BuildIconRows();
             _xpBack = Bar("Xp", new Color(0.45f, 0.9f, 0.25f), 0, 18 + S + 20, bw * 2 + 10, out _xp);
             _xpBack.rectTransform.sizeDelta = new Vector2(bw * 2 + 10, 12);
             _xpLevel = UIKit.Label(_xpBack.transform, "", 22, new Color(0.6f, 1f, 0.35f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(2);
@@ -225,6 +226,7 @@ namespace Stratum.Game
             int arm = P.Inv.ArmourPoints;
             _armourBack.gameObject.SetActive(survival && show && arm > 0);
             _armour.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, arm / 20f), 1);
+            ShowIconRows(arm);
             float use = Act.EatProgress > 0 ? Act.EatProgress : Act.DrawProgress > 0 ? Act.DrawProgress : Act.AttackReady < 1 && Act.HasMob ? Act.AttackReady : 0;
             _useBack.gameObject.SetActive(show && use > 0);
             _use.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, use), 1);

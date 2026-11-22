@@ -118,6 +118,7 @@ namespace Stratum.Game
             Blasts.Boom = (x, y, z, power) => { Sim.Blast(x, y, z, power, _seen); Boomed?.Invoke(new Vector3(x, y, z), power); };
             Blasts.Lit = (x, y, z) => MobSound?.Invoke(MobKind.Bloat, "say", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
             Sim.Burst += m => Blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
+            Sim.Laid += m => Ground.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             world.Changed += (x, y, z, old, id) =>
             {
                 if (id == Blocks.Fire) Flames.Found(x, y, z);

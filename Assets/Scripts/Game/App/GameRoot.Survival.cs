@@ -93,6 +93,8 @@ namespace Stratum.Game
             _waiting.Clear(); _waitTold = false;          // saved with the player before this; the next world has its own
             if (_creatures != null) Destroy(_creatures.gameObject);
             if (_dropViews != null) Destroy(_dropViews.gameObject);
+            if (_self != null) Destroy(_self.gameObject);
+            _self = null; if (_player != null) _player.View = 0;
             _dropViews = null; _askedDrops.Clear();
             if (_signs != null) Destroy(_signs.gameObject);
             if (_weatherFx != null) Destroy(_weatherFx.gameObject);
@@ -124,6 +126,28 @@ namespace Stratum.Game
         }
 
         DropViews _dropViews;
+        Avatars _self;                               // our own figure, for the views from outside (F5)
+
+        void SelfView()
+        {
+            if (_player == null || _state != State.Playing) return;
+            if (_player.InputEnabled && !_hud.ChatOpen && Keys.Pressed(Act.View)) _player.View = (_player.View + 1) % 3;
+            bool show = _player.View != 0 && _player.Health > 0;
+            if (show && _self == null)
+            {
+                _self = Avatars.Create(_world, _sky, _cam);
+                _self.Add(0, "", _player.Feet, _player.Yaw, Extras.Outfit, Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : null);
+            }
+            if (_self == null) return;
+            _self.gameObject.SetActive(show);
+            if (!show) return;
+            byte flags = 0;
+            if (_player.Sneaking) flags |= Net.Sneaking;
+            if (_player.Flying) flags |= Net.Flying;
+            if (_player.InWater) flags |= Net.InWater;
+            if (_act.Swinging) flags |= Net.Swinging;
+            _self.Moved(0, _player.Feet, _player.Yaw, _player.Pitch, flags);
+        }
         readonly Dictionary<int, float> _askedDrops = new Dictionary<int, float>();     // drops we asked for, and when
 
         // Walking over something that fits in the pack picks it up; Q throws what's in the hand (Ctrl: the whole stack).

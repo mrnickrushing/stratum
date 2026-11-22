@@ -81,7 +81,7 @@ namespace Stratum.Core
                 Drops = new[] { ("raw_chicken", 1, 1, 1f), ("feather", 0, 2, 1f) } });
             D(new MobDef { Kind = MobKind.Ghoul, Name = "Ghoul", Health = 20, Speed = 2.3f, HalfW = 0.3f, Height = 1.85f, Hostile = true, Burns = true,
                 Damage = 3, Reach = 1.7f, AttackEvery = 1.0f, Sight = 24, Xp = 5,
-                Drops = new[] { ("coal", 0, 2, 1f), ("bone", 0, 1, 1f), ("iron_ingot", 1, 1, 0.04f), ("copper_ingot", 1, 1, 0.06f) } });
+                Drops = new[] { ("coal", 0, 2, 1f), ("bone", 0, 1, 1f), ("iron_ingot", 1, 1, 0.04f), ("copper_ingot", 1, 1, 0.06f), ("carrot", 1, 1, 0.04f), ("potato", 1, 1, 0.04f) } });
             D(new MobDef { Kind = MobKind.BoneArcher, Name = "Bone Archer", Health = 20, Speed = 2.2f, HalfW = 0.3f, Height = 1.9f, Hostile = true, Burns = true,
                 Ranged = true, Damage = 3, Reach = 14, AttackEvery = 2.4f, Sight = 22, Xp = 5,
                 Drops = new[] { ("bone", 0, 2, 1f), ("arrow", 0, 3, 1f), ("bow", 1, 1, 0.06f) } });
@@ -137,6 +137,8 @@ namespace Stratum.Core
         public event Action<int, float, float, float, Mob> HitPlayer;
         // A creature died: (it, the player who killed it, or 0).
         public event Action<Mob, int> Died;
+        // A hen laid an egg where it stands.
+        public event Action<Mob> Laid;
         // A Bloat burst: the host makes the blast.
         public event Action<Mob> Burst;
         // A creature made a sound worth hearing: (it, "hurt"/"die"/"say"/"shoot").
@@ -369,6 +371,12 @@ namespace Stratum.Core
                 m.Hurt = Math.Max(0, m.Hurt - dt);
                 m.Cool = Math.Max(0, m.Cool - dt);
                 if (m.Sheared && (m.Regrow -= dt) <= 0) m.Sheared = false;
+                // A grown hen lays an egg every few minutes.
+                if (m.Kind == MobKind.Chicken && m.Baby <= 0)
+                {
+                    if (m.Regrow <= 0) m.Regrow = 120 + Rand() * 400;
+                    else if ((m.Regrow -= dt) <= 0) { Laid?.Invoke(m); m.Regrow = 300 + Rand() * 300; }
+                }
                 if (m.Baby > 0) m.Baby = Math.Max(0, m.Baby - dt);
                 if (m.BreedCool > 0) m.BreedCool = Math.Max(0, m.BreedCool - dt);
                 if (m.Love > 0) { m.Love = Math.Max(0, m.Love - dt); Mate(m); }
