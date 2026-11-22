@@ -568,6 +568,9 @@ namespace Stratum.Server
                 return;
             }
             World.SetRaw(x, y, z, id);
+            // Something put down where there was nothing: it came out of their pack (cut off before their game says
+            // so, they must not keep both the block and the thing it was).
+            if (id != 0 && !_cfg.Creative && (cur == 0 || Blocks.Get(cur).Replaceable) && ItemFor(id) is string spent) p.Transit.Add((spent, -1, 0));
             if (id == 0 && Decay.IsLog(Blocks.Get(cur))) _leaves.LogBroken(x, y, z);
             if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z);
             if (id == 0 || Blocks.Get(id).BaseId != Blocks.Get(cur).BaseId) { p.Broke[p.BrokeAt] = (x, y, z, Environment.TickCount64); p.BrokeAt = (p.BrokeAt + 1) % p.Broke.Length; }
@@ -762,6 +765,19 @@ namespace Stratum.Server
         {
             p.Owed.Add((++p.Given, new Stack { Item = item, Count = count, Wear = wear }));
             p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(count).U16(wear));
+        }
+
+        // The thing in a pack that becomes this block when put down (seeds for wheat, the block itself for stone).
+        static Dictionary<ushort, string> _itemFor;
+        static string ItemFor(ushort block)
+        {
+            if (_itemFor == null)
+            {
+                var map = new Dictionary<ushort, string>();
+                foreach (var it in Items.Order) if (it.Block != 0 && !map.ContainsKey(it.Block)) map[it.Block] = it.Id;
+                _itemFor = map;
+            }
+            return _itemFor.TryGetValue(Blocks.Get(block).BaseId, out var id) ? id : null;
         }
 
         void Carried(Player p, Stack before, Stack after)

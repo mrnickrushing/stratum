@@ -317,4 +317,8 @@ falling) are kept in `Player.Transit` until its next backpack update, and a lost
 after changing a tool, a creature or the spawning. From it: night creatures far from anyone and after nobody now move on
 (those shut in caves used to fill the limit and leave the open night empty), and Bone Archers shoot every 3 s, not 2.4.
 
+0.16.6: the Windows installer asks for a running game to be closed before it updates (it was tried under Wine: a fresh
+install, 0.16.5 over 0.16.4, and with the game open: `WINEPREFIX=... wine Stratum-<v>-Setup.exe /S`). Blocks put down
+just before a lost connection come out of the saved pack (`WorldHost.ItemFor`).
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

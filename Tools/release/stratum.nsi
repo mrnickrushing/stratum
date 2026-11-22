@@ -43,6 +43,16 @@ VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 
+; An update can't replace a game that is running (Windows keeps its files open): ask for it to be closed first.
+Function .onInit
+  again:
+    FindWindow $0 "UnityWndClass" "${NAME}"
+    StrCmp $0 0 clear
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "Stratum is still open.$\r$\n$\r$\nSave and quit the game, then press OK." /SD IDCANCEL IDOK again
+    Abort
+  clear:
+FunctionEnd
+
 Section "Stratum" Main
   SectionIn RO
   ; An update replaces the game's files (worlds live in AppData\LocalLow, not here).
