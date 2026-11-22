@@ -104,7 +104,7 @@ namespace Stratum.Game
             {
                 bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0;
                 if (!boat && !cart) continue;
-                into.Add(new MobState { Id = -1000 - a.Id, Kind = boat ? MobKind.Boat : MobKind.Cart, Pos = a.Pos, Yaw = a.Yaw, Health = 1 });
+                into.Add(new MobState { Id = -1000 - a.Id, Kind = boat && cart ? MobKind.Camel : boat ? MobKind.Boat : MobKind.Cart, Pos = a.Pos, Yaw = a.Yaw, Health = 1, More = Mob.MTame });
             }
         }
 
@@ -121,21 +121,22 @@ namespace Stratum.Game
 
             bool sneak = (a.Flags & Net.Sneaking) != 0, fly = (a.Flags & Net.Flying) != 0;
             bool boat = (a.Flags & Net.InBoat) != 0, cart = (a.Flags & Net.InCart) != 0, seated = boat || cart;
-            a.Root.position = a.Pos + Vector3.up * (boat ? -0.25f : cart ? 0.0f : 0);
-            a.Root.rotation = Quaternion.Euler(0, a.Yaw, 0);
-            a.Body.localRotation = Quaternion.Euler(sneak ? 22 : 0, 0, 0);
-            a.Head.localRotation = Quaternion.Euler(Mathf.Clamp(a.Pitch, -60, 60), 0, 0);
+            a.Root.position = a.Pos + Vector3.up * (boat && cart ? 1.2f : boat ? -0.25f : cart ? 0.0f : 0);
+            // The figure is modelled with its face toward -Z, so it is turned to look the way its player looks.
+            a.Root.rotation = Quaternion.Euler(0, a.Yaw + 180, 0);
+            a.Body.localRotation = Quaternion.Euler(sneak ? -22 : 0, 0, 0);
+            a.Head.localRotation = Quaternion.Euler(-Mathf.Clamp(a.Pitch, -60, 60), 0, 0);
 
             float walk = fly ? 0 : Mathf.Clamp01(a.Speed / 4.3f);
             a.Phase += dt * (4 + a.Speed * 2.2f) * (walk > 0.05f ? 1 : 0);
             float sw = Mathf.Sin(a.Phase) * 38 * walk;
             if (seated) { sw = 0; a.Root.position += Vector3.up * 0.1f; }
-            a.LegL.localRotation = Quaternion.Euler(seated ? -80 : sw, 0, 0);
-            a.LegR.localRotation = Quaternion.Euler(seated ? -80 : -sw, 0, 0);
+            a.LegL.localRotation = Quaternion.Euler(seated ? 80 : sw, 0, 0);
+            a.LegR.localRotation = Quaternion.Euler(seated ? 80 : -sw, 0, 0);
             a.Swing = Mathf.Max(0, a.Swing - dt * 3.5f);
             float hit = Mathf.Sin(a.Swing * Mathf.PI) * 75;
             a.ArmL.localRotation = Quaternion.Euler(-sw * 0.8f, 0, 0);
-            a.ArmR.localRotation = Quaternion.Euler(sw * 0.8f - hit, 0, 0);
+            a.ArmR.localRotation = Quaternion.Euler(sw * 0.8f + hit, 0, 0);
 
             // The world's stored light where they stand (the brighter of feet and head, so leaves overhead don't
             // black them out), eased so walking under a roof dims them smoothly. The shader lights them from it.
@@ -268,6 +269,7 @@ namespace Stratum.Game
             a.Parts = parts.ToArray(); a.Colors = cols.ToArray();
 
             // The tag: a dark rounded plate with the name on it (plate first, so the name draws over it).
+            if (string.IsNullOrEmpty(name)) return a;            // our own figure: no name over it
             a.Tag = UIKit.Rect(_tags, "Tag " + name);
             a.Tag.anchorMin = a.Tag.anchorMax = Vector2.zero;
             a.Tag.pivot = new Vector2(0.5f, 0);

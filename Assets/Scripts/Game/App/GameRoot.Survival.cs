@@ -27,6 +27,7 @@ namespace Stratum.Game
             _player.Difficulty = _difficulty;
             _player.Toast = s => _hud?.Toast(s);
             _creatures = Creatures.Create(_world, _cam.transform);
+            _dropViews = DropViews.Create(_world, _blockMat);
             _signs = SignView.Create(_world);
             _weatherFx = WeatherFx.Create(_world, _sky, _cam.transform, _player);
             _weatherFx.Thundered = () => _hud?.Caption("Thunder");
@@ -69,7 +70,10 @@ namespace Stratum.Game
             link.Hurt = (dmg, from, kind) =>
             {
                 if (_player.Asleep) WakeUp();
+                float before = _player.Health;
                 _player.Hit(dmg, from);
+                // A crawler's bite that gets through leaves poison behind.
+                if (kind == MobKind.Crawler && _player.Health < before && _difficulty >= 2) _player.AddFx(Player.Fx.Poison, 6);
             };
             link.Sleepers = (asleep, total) =>
             {
@@ -77,6 +81,13 @@ namespace Stratum.Game
                 _hud.Sleeping(true, total > 1 ? $"Sleeping...  {asleep}/{total} players in bed" : "Sleeping...");
             };
             link.MobSound = MobSfx;
+            link.Boomed = (at, power) =>
+            {
+                Sfx.I?.PlayAt("thunder", at, 1f, 1.5f + UnityEngine.Random.value * 0.3f);
+                Sfx.I?.PlayAt("hit_hard", at, 1f, 0.6f);
+                _hud?.Caption("Blast");
+                _act.Puff(at, power);
+            };
             link.Said = s => { _hud.Toast(s); if (_hud.CanChat) _hud.AddChat("", s); };
         }
 
@@ -84,6 +95,10 @@ namespace Stratum.Game
         {
             _waiting.Clear(); _waitTold = false;          // saved with the player before this; the next world has its own
             if (_creatures != null) Destroy(_creatures.gameObject);
+            if (_dropViews != null) Destroy(_dropViews.gameObject);
+            if (_self != null) Destroy(_self.gameObject);
+            _self = null; if (_player != null) _player.View = 0;
+            _dropViews = null; _askedDrops.Clear();
             if (_signs != null) Destroy(_signs.gameObject);
             if (_weatherFx != null) Destroy(_weatherFx.gameObject);
             _sky.Weather = 0;
@@ -97,9 +112,12 @@ namespace Stratum.Game
             if (_link == null) return;
             _link.Tick(Time.deltaTime);
             _shown.Clear(); _shown.AddRange(_link.Mobs);
-            if (_player.Riding != null) _shown.Add(new MobState { Id = -1, Kind = _player.Riding.Value, Pos = _player.Feet, Yaw = _player.RideYaw, Health = 1 });
+            if (_player.Riding != null) _shown.Add(new MobState { Id = -1, Kind = _player.Riding.Value, Pos = _player.Feet, Yaw = _player.RideYaw, Health = 1, More = Mob.MTame });
             _avatars?.Rides(_shown);
             _creatures.Show(_shown, Time.deltaTime);
+            _dropViews.Day = _sky.DayFactor;
+            _dropViews.Show(_link.Drops, Time.deltaTime);
+            PickUp(kb);
             if (_player.Asleep)
             {
                 _sleptFor += Time.deltaTime;
@@ -108,6 +126,74 @@ namespace Stratum.Game
                 if (leave || day && _sleptFor > 1 || !BedAt(_bed)) WakeUp();
                 else _player.Velocity = Vector3.zero;
             }
+        }
+
+        DropViews _dropViews;
+        Avatars _self;                               // our own figure, for the views from outside (F5)
+
+        void SelfView()
+        {
+            if (_player == null || _state != State.Playing) return;
+            if (_player.InputEnabled && !_hud.ChatOpen && Keys.Pressed(Act.View)) _player.View = (_player.View + 1) % 3;
+            bool show = _player.View != 0 && _player.Health > 0;
+            if (show && _self == null)
+            {
+                _self = Avatars.Create(_world, _sky, _cam);
+                _self.Add(0, "", _player.Feet, _player.Yaw, Extras.Outfit, Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : null);
+            }
+            if (_self == null) return;
+            _self.gameObject.SetActive(show);
+            if (!show) return;
+            byte flags = 0;
+            if (_player.Sneaking) flags |= Net.Sneaking;
+            if (_player.Flying) flags |= Net.Flying;
+            if (_player.InWater) flags |= Net.InWater;
+            if (_act.Swinging) flags |= Net.Swinging;
+            _self.Moved(0, _player.Feet, _player.Yaw, _player.Pitch, flags);
+        }
+        readonly Dictionary<int, float> _askedDrops = new Dictionary<int, float>();     // drops we asked for, and when
+
+        // Walking over something that fits in the pack picks it up; Q throws what's in the hand (Ctrl: the whole stack).
+        void PickUp(Keyboard kb)
+        {
+            if (_player.Health <= 0 || _state != State.Playing) return;
+            float now = Time.unscaledTime;
+            var body = _player.Feet + Vector3.up * 0.9f;
+            foreach (var d in _link.Drops)
+            {
+                if ((d.Pos - body).sqrMagnitude > DropSim.PickUp * DropSim.PickUp) continue;
+                if (_askedDrops.TryGetValue(d.Id, out float t) && now - t < 0.4f) continue;
+                if (!Fits(d.Item, d.Count)) continue;
+                _askedDrops[d.Id] = now;
+                _link.TakeDrop(d.Id);
+            }
+            if (_askedDrops.Count > 200) _askedDrops.Clear();
+            if (kb != null && _player.InputEnabled && !_hud.ChatOpen && Keys.Pressed(Act.Drop))
+            {
+                var held = _player.Inv.Held;
+                if (held.Empty) return;
+                bool all = kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed;
+                var thrown = held; if (!all) thrown.Count = 1;
+                _player.Inv.UseHeld(thrown.Count);
+                var fwd = _cam.transform.forward;
+                _link.Toss(thrown, _player.EyePos - Vector3.up * 0.25f + fwd * 0.3f, fwd * 6.5f + Vector3.up * 1.6f + _player.Velocity * 0.5f);
+                Sfx.I?.Play("swish", 0.3f, 1.2f);
+            }
+        }
+
+        // Is there room in the pack for the whole of this?
+        bool Fits(string item, int count)
+        {
+            var def = Items.Get(item);
+            if (def == null) return false;
+            var inv = _player.Inv;
+            for (int i = 0; i < Inventory.Main; i++)
+            {
+                var s = inv.Slots[i];
+                if (s.Empty) return true;
+                if (s.Item == item && s.Wear == 0 && def.MaxStack > 1) { count -= def.MaxStack - s.Count; if (count <= 0) return true; }
+            }
+            return false;
         }
 
         // Things handed over by the host (loot, a chest's contents, wool): into the pack, or onto the ground.
@@ -171,7 +257,7 @@ namespace Stratum.Game
         {
             { MobKind.Cow, "moo" }, { MobKind.Pig, "oink" }, { MobKind.Sheep, "baa" }, { MobKind.Chicken, "cluck" },
             { MobKind.Ghoul, "groan" }, { MobKind.BoneArcher, "rattle" }, { MobKind.Crawler, "hiss" },
-            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" },
+            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" }, { MobKind.Hound, "bark" },
         };
 
         void MobSfx(MobKind kind, string what, Vector3 at)
@@ -262,7 +348,7 @@ namespace Stratum.Game
         {
             if (_player.Creative || _link == null) return;
             var all = new List<Core.Stack>();
-            for (int i = 0; i < Inventory.Size; i++)
+            for (int i = 0; i <= Inventory.OffHand; i++)
                 if (!_player.Inv.Slots[i].Empty) { all.Add(_player.Inv.Slots[i]); _player.Inv.Slots[i] = Core.Stack.None; }
             int xp = Xp.Dropped(_player.XpLevel);
             if (xp > 0) all.Add(new Core.Stack("xp", xp));
@@ -304,7 +390,7 @@ namespace Stratum.Game
             {
                 case "/help":
                 case "/?":
-                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night (single player)");
+                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night  /time set <day|noon|night|midnight>  /give <thing> [how many]  /gamemode <survival|creative>");
                     return true;
                 case "/keep":
                     if (Online) { _hud.AddChat("", _keepInv ? "This world lets you keep your things when you fall." : "In this world your things drop in a satchel when you fall. The server decides."); return true; }
@@ -341,6 +427,40 @@ namespace Stratum.Game
                     wl.Weather.Set(w, w == 0 ? 900 : 480);
                     _hud.AddChat("", w == 0 ? "The weather clears." : w == 2 ? "A thunderstorm rolls in." : "It starts to rain.");
                     return true;
+                case "/give":
+                {
+                    if (Online) return false;               // the server decides who may
+                    var ga = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    string what = ga.Length > 0 ? ga[0].ToLowerInvariant() : "";
+                    int many = ga.Length > 1 && int.TryParse(ga[1], out int gn) ? Mathf.Clamp(gn, 1, 640) : 1;
+                    var gd = FindItem(what);
+                    if (gd == null) { _hud.AddChat("", ga.Length == 0 ? "/give <thing> [how many], for example /give torch 16" : $"There's nothing called \"{what}\"."); return true; }
+                    Give(gd.Id, many, 0);
+                    _hud.AddChat("", $"Given {many} {gd.Name}.");
+                    return true;
+                }
+                case "/gamemode":
+                {
+                    if (Online) { _hud.AddChat("", "On a server the world's mode is set by whoever runs it."); return true; }
+                    string gm = arg.ToLowerInvariant();
+                    bool? want = gm == "creative" || gm == "c" || gm == "1" ? true : gm == "survival" || gm == "s" || gm == "0" ? false : (bool?)null;
+                    if (want == null) { _hud.AddChat("", "/gamemode survival or /gamemode creative"); return true; }
+                    _player.Creative = _meta.creative = want.Value;
+                    if (!want.Value) _player.Flying = false;
+                    Save();
+                    _hud.AddChat("", want.Value ? "Creative: every block to hand, and you can fly." : "Survival: mine it, make it, stay alive.");
+                    return true;
+                }
+                case "/time":
+                {
+                    if (Online) return false;
+                    var ta = arg.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    float t = ta.Length == 2 && ta[0] == "set" ? WeatherSim.TimeOf(ta[1]) : -1;
+                    if (t < 0) { _hud.AddChat("", "/time set day, noon, night or midnight (or a number from 0 to 24000)"); return true; }
+                    _sky.Time01 = t;
+                    _hud.AddChat("", "The time is set.");
+                    return true;
+                }
                 case "/day":
                 case "/night":
                     if (Online) return false;
@@ -349,6 +469,17 @@ namespace Stratum.Game
                     return true;
             }
             return false;
+        }
+
+        // A thing by its key or its name ("oak_planks", "Oak Planks", "oak planks").
+        static ItemDef FindItem(string what)
+        {
+            if (string.IsNullOrEmpty(what)) return null;
+            var d = Items.Get(what);
+            if (d != null && d.Creative) return d;
+            string spaced = what.Replace('_', ' ');
+            foreach (var it in Items.Order) if (it.Creative && string.Equals(it.Name, spaced, StringComparison.OrdinalIgnoreCase)) return it;
+            return null;
         }
 
         void Teleport(Vector3 to, string what)
@@ -404,6 +535,15 @@ namespace Stratum.Game
         public override void CloseBox() => Send(new Packet(Net.Msg.CloseBox));
         public override void Sleep(bool on) => Send(new Packet(Net.Msg.Sleep).Bool(on));
         public override void Drop(Vector3 at, Core.Stack[] stacks) => Send(new Packet(Net.Msg.Drop).F32(at.x).F32(at.y).F32(at.z).Stacks(stacks));
+        public override void Toss(Core.Stack s, Vector3 o, Vector3 v) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(o.x).F32(o.y).F32(o.z).F32(v.x).F32(v.y).F32(v.z).Bool(false));
+        public override void Spill(Vector3 at, Core.Stack s) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(at.x).F32(at.y).F32(at.z).F32(0).F32(0).F32(0).Bool(true));
+        public override void TakeDrop(int id) => Send(new Packet(Net.Msg.TakeDrop).I32(id));
+        public void ReceivedDrops(Reader r)
+        {
+            Drops.Clear();
+            int n = r.U16();
+            for (int i = 0; i < n; i++) Drops.Add(new DropState { Id = r.I32(), Item = r.Str(), Count = r.U16(), Pos = new Vector3(r.F32(), r.F32(), r.F32()) });
+        }
         public override void Fertilize(Vector3Int at) => Send(new Packet(Net.Msg.Fertilize).I32(at.x).I32(at.y).I32(at.z));
         public override void Mount(int mob) => Send(new Packet(Net.Msg.Mount).I32(mob));
         public override void Park(MobKind kind, Vector3 at, float yaw) => Send(new Packet(Net.Msg.Park).U8((byte)kind).F32(at.x).F32(at.y).F32(at.z).F32(yaw));

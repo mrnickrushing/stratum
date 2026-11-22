@@ -20,6 +20,7 @@ namespace Stratum.Game
         ColorAdjustments _grade;
         public float ViewDistanceMeters = 160;
         public bool Underwater;
+        public bool NightVision;
         public bool Islands;                    // a Sky Islands world: a sea of clouds far below
         Transform _lowClouds;
         public bool Deep;                       // in the Ember Deep: no sun or weather, a red haze, the rock glowing faintly
@@ -183,6 +184,7 @@ namespace Stratum.Game
             ambient += new Color(0.9f, 0.92f, 1f) * Flash * 0.9f;
             zenith += new Color(0.5f, 0.52f, 0.6f) * Flash; horizon += new Color(0.5f, 0.52f, 0.6f) * Flash;
             ambient = Color.Lerp(ambient, new Color(0.75f, 0.55f, 0.45f), Mathf.Clamp01(1 - Mathf.Abs(elev - 0.05f) / 0.15f) * 0.35f);
+            if (NightVision) ambient = Color.Lerp(ambient, new Color(0.7f, 0.76f, 0.86f), 0.9f);      // a potion: the night as bright as day
 
             Shader.SetGlobalColor(SkyZenith, zenith);
             Shader.SetGlobalColor(SkyHorizon, horizon);

@@ -52,15 +52,18 @@ namespace Stratum.Core
             }
         }
 
+        public Action<int, int, int> FoundFire;             // a fire block nobody is watching (the land was saved burning)
+
         void Tick(int x, int y, int z, ushort id)
         {
             var d = Blocks.Get(id);
-            if (d.BaseId == Blocks.Wheat)
+            if (id == Blocks.Fire) { FoundFire?.Invoke(x, y, z); return; }
+            if (d.Grows == 1)
             {
                 var below = Blocks.Get(_get(x, y - 1, z));
                 if (below.BaseId != Blocks.Farmland) { _set(x, y, z, 0); return; }
                 if (d.Variant < Blocks.WheatStages - 1 && _rng.Value() < (below.Id == Blocks.FarmlandWet ? 0.34f : 0.15f))
-                    _set(x, y, z, (ushort)(Blocks.Wheat + d.Variant + 1));
+                    _set(x, y, z, (ushort)(d.BaseId + d.Variant + 1));
             }
             else if (d.Grows == 2)
             {
@@ -79,7 +82,7 @@ namespace Stratum.Core
                 if (above.Solid) { _set(x, y, z, Blocks.Dirt); return; }
                 if (wet && id != Blocks.FarmlandWet) _set(x, y, z, Blocks.FarmlandWet);
                 else if (!wet && id == Blocks.FarmlandWet) _set(x, y, z, Blocks.Farmland);
-                else if (!wet && above.BaseId != Blocks.Wheat && _rng.Value() < 0.3f) _set(x, y, z, Blocks.Dirt);
+                else if (!wet && above.Grows != 1 && _rng.Value() < 0.3f) _set(x, y, z, Blocks.Dirt);
             }
             else if (id == Blocks.Dirt)
             {
@@ -115,11 +118,11 @@ namespace Stratum.Core
         {
             ushort id = _get(x, y, z);
             var d = Blocks.Get(id);
-            if (d.BaseId == Blocks.Wheat)
+            if (d.Grows == 1)
             {
                 if (d.Variant >= Blocks.WheatStages - 1) return false;
                 int to = Math.Min(Blocks.WheatStages - 1, d.Variant + 1 + _rng.Range(0, 2));
-                _set(x, y, z, (ushort)(Blocks.Wheat + to));
+                _set(x, y, z, (ushort)(d.BaseId + to));
                 return true;
             }
             if (d.Grows == 2)

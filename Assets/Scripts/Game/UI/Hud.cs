@@ -108,6 +108,7 @@ namespace Stratum.Game
             _airBack.rectTransform.anchoredPosition = new Vector2(bw / 2 + 5, 18 + S + 40 + 26);
             _foodBack = Bar("Food", new Color(0.86f, 0.58f, 0.22f), bw / 2 + 5, 18 + S + 40, bw, out _food);
             _armourBack = Bar("Armour", new Color(0.78f, 0.80f, 0.86f), -bw / 2 - 5, 18 + S + 40 + 26, bw, out _armour);
+            BuildIconRows();
             _xpBack = Bar("Xp", new Color(0.45f, 0.9f, 0.25f), 0, 18 + S + 20, bw * 2 + 10, out _xp);
             _xpBack.rectTransform.sizeDelta = new Vector2(bw * 2 + 10, 12);
             _xpLevel = UIKit.Label(_xpBack.transform, "", 22, new Color(0.6f, 1f, 0.35f), TextAnchor.MiddleCenter, FontStyle.Bold).Shadowed(2);
@@ -154,7 +155,7 @@ namespace Stratum.Game
         }
 
         Image _xpBack, _xp; Text _xpLevel, _craftSub;
-        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map);
+        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map) || Own(t);
 
         Image Bar(string name, Color col, float x, float y, float w, out Image fill)
         {
@@ -225,6 +226,7 @@ namespace Stratum.Game
             int arm = P.Inv.ArmourPoints;
             _armourBack.gameObject.SetActive(survival && show && arm > 0);
             _armour.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, arm / 20f), 1);
+            ShowIconRows(arm);
             float use = Act.EatProgress > 0 ? Act.EatProgress : Act.DrawProgress > 0 ? Act.DrawProgress : Act.AttackReady < 1 && Act.HasMob ? Act.AttackReady : 0;
             _useBack.gameObject.SetActive(show && use > 0);
             _use.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, use), 1);
@@ -451,6 +453,18 @@ namespace Stratum.Game
                     v.Hover = on => { if (on && P.Inv.Slots[idx].Empty) _tip.text = names[slotType] + " armour goes here"; else Tip(on ? P.Inv.Slots[idx] : Stack.None); };
                     _armSlots.Add(v);
                 }
+                // The other hand: a shield.
+                {
+                    var v = SlotView.Make(_invGrid, S);
+                    v.GetComponent<RectTransform>().Place(0, 1, 5 * (S + G), -468, S, S);
+                    v.Click = b =>
+                    {
+                        if (!_cursor.Empty && _cursor.Item != "shield") { Toast("Only a shield goes in the other hand"); return; }
+                        CursorClick(ref P.Inv.Slots[Inventory.OffHand], b == PointerEventData.InputButton.Right ? PointerEventData.InputButton.Left : b);
+                    };
+                    v.Hover = on => { if (on && P.Inv.Slots[Inventory.OffHand].Empty) _tip.text = "A shield goes here: hold the right button to raise it"; else Tip(on ? P.Inv.Slots[Inventory.OffHand] : Stack.None); };
+                    _armSlots.Add(v);
+                }
                 _armText = UIKit.Label(_invGrid, "", 22, UIKit.Dim);
                 _armText.rectTransform.Place(0, 1, 0, -558, 340, 30);
             }
@@ -637,12 +651,13 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
+            bool brewer = _station == "brewer" || Near(Blocks.BrewStand, 4);
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : _station == "brewer" ? "Brewing Stand" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
-                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench))
+                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "brewer" && brewer))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
                 .OrderBy(x => x.sec).ThenByDescending(x => x.can).ToList();
             int shown = -1;
@@ -652,7 +667,7 @@ namespace Stratum.Game
                 if (several && sec != shown)
                 {
                     shown = sec;
-                    var head = UIKit.Label(_craftList, sec == 3 ? "By hand" : sec == 4 ? "Needs a station nearby" : r.Station == "furnace" ? "Furnace" : "Workbench", 20, UIKit.Accent, TextAnchor.LowerLeft, FontStyle.Bold);
+                    var head = UIKit.Label(_craftList, sec == 3 ? "By hand" : sec == 4 ? "Needs a station nearby" : r.Station == "furnace" ? "Furnace" : r.Station == "brewer" ? "Brewing Stand" : "Workbench", 20, UIKit.Accent, TextAnchor.LowerLeft, FontStyle.Bold);
                     head.rectTransform.sizeDelta = new Vector2(0, 34);
                 }
                 var row = UIKit.Panel(_craftList, "Recipe", new Color(0.16f, 0.17f, 0.21f, here ? 0.95f : 0.5f), UIKit.RoundSmall);
@@ -667,7 +682,7 @@ namespace Stratum.Game
                     int have = P.Inv.Count(x.item); bool ok = have >= x.count;
                     return $"<color=#{ColorUtility.ToHtmlStringRGB(ok ? UIKit.Good : UIKit.Bad)}>{Mathf.Min(have, x.count)}/{x.count} {Items.DisplayName(x.item)}</color>";
                 }));
-                if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : "at a Workbench";
+                if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : r.Station == "brewer" ? "at a Brewing Stand" : "at a Workbench";
                 var needL = UIKit.Label(row.transform, need, 20, UIKit.Dim, TextAnchor.UpperLeft);
                 needL.supportRichText = true;
                 needL.rectTransform.Place(0, 1, 88, -46, 380, 30);

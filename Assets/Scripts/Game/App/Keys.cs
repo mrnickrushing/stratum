@@ -4,12 +4,12 @@ using UnityEngine.InputSystem;
 namespace Stratum.Game
 {
     // The keys for moving and the everyday actions, changeable from Settings > Controls and kept per computer.
-    public enum Act { Forward, Back, Left, Right, Jump, Sprint, Sneak, Backpack, Chat, Talk }
+    public enum Act { Forward, Back, Left, Right, Jump, Sprint, Sneak, Backpack, Chat, Talk, Drop, View }
 
     public static class Keys
     {
-        public static readonly string[] Names = { "Walk forward", "Walk back", "Step left", "Step right", "Jump / fly up", "Sprint", "Sneak / fly down", "Backpack", "Chat", "Talk (voice chat)" };
-        static readonly Key[] Defaults = { Key.W, Key.S, Key.A, Key.D, Key.Space, Key.LeftShift, Key.LeftCtrl, Key.E, Key.T, Key.V };
+        public static readonly string[] Names = { "Walk forward", "Walk back", "Step left", "Step right", "Jump / fly up", "Sprint", "Sneak / fly down", "Backpack", "Chat", "Talk (voice chat)", "Drop what you hold", "Change view" };
+        static readonly Key[] Defaults = { Key.W, Key.S, Key.A, Key.D, Key.Space, Key.LeftCtrl, Key.LeftShift, Key.E, Key.T, Key.V, Key.Q, Key.F5 };
         static Key[] _keys;
 
         static Key[] All

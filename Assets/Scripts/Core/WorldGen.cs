@@ -70,7 +70,7 @@ namespace Stratum.Core
             float mountain = Smooth(0.25f, 0.85f, 1 - e) * land;
             float peaks = _peak.Ridge2(fx / 420f, fz / 420f, 4);
             float h = Spline(ContX, ContY, c);
-            h += mountain * (float)Math.Pow(peaks, 1.5) * (crags ? 175f : 115f);
+            h += mountain * (float)(peaks * Math.Sqrt(peaks)) * (crags ? 175f : 115f);     // (x * sqrt x: the same on every runtime, unlike Pow)
             h += _hill.Fbm2(fx / 150f, fz / 150f, 4) * (4f + 12f * land) * (1 - mountain * 0.5f);
             h += _detail.Fbm2(fx / 37f, fz / 37f, 2) * 2.2f;
             if (tower && h > Chunk.SeaLevel)
@@ -78,7 +78,7 @@ namespace Stratum.Core
                 // Everything above the sea doubles, and broad terraces and spires stand on top of that.
                 float up = h - Chunk.SeaLevel;
                 float mesa = Smooth(0.05f, 0.3f, _patch.Fbm2(fx / 95f + 11.7f, fz / 95f - 4.3f, 3)) * land;
-                float spire = (float)Math.Pow(Math.Max(0, _strata.Fbm2(fx / 85f - 9.1f, fz / 85f + 2.9f, 3) * 1.6f), 2);
+                double sp = Math.Max(0, _strata.Fbm2(fx / 85f - 9.1f, fz / 85f + 2.9f, 3) * 1.6f); float spire = (float)(sp * sp);
                 h = Chunk.SeaLevel + up * 2.1f + mesa * 42f + spire * 40f * land;
             }
 
@@ -210,6 +210,7 @@ namespace Stratum.Core
             Trees(ch, cols);
             Flora(ch, cols);
             int vbx = bx, vbz = bz;
+            if (!Level && Kind != WorldKind.Sky) Ruins.Stamp(ch, Seed);
             if (Builds.Is(Kind)) Builds.Stamp(ch, Kind);
             else Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
             ch.RecalcMaxY();
@@ -371,6 +372,13 @@ namespace Stratum.Core
             return y0 + (y1 - y0) * fz;
         }
 
+        // Starstone has dice of its own, so adding it moved no other ore.
+        void StarVein(Chunk ch)
+        {
+            var rng = new Rng(Noise.Hash(ch.X, 23, ch.Z, Seed));
+            if (rng.Value() < 0.55f) Vein(ch, ref rng, Blocks.StarOre, 1, 3, 15, 4);
+        }
+
         void Ores(Chunk ch)
         {
             var rng = new Rng(Noise.Hash(ch.X, 7, ch.Z, Seed));
@@ -382,6 +390,7 @@ namespace Stratum.Core
             if (rng.Value() < 0.5f) Vein(ch, ref rng, Blocks.JadeOre, 1, 8, 110, 3);
             Vein(ch, ref rng, Blocks.SparkOre, 5, 4, 18, 6);
             Vein(ch, ref rng, Blocks.Gravel, 5, 5, 90, 14);
+            StarVein(ch);
             // Moss grows on rock beside cave air below 50.
         }
 
@@ -470,12 +479,18 @@ namespace Stratum.Core
             else if (Blocks.Get(cur).Sway && !Blocks.Get(id).Sway) ch.Blocks[i] = id;   // a trunk beats a leaf
         }
 
+        // A tree is drawn by every chunk its crown reaches, and only the trunk's own chunk can see the ground under
+        // it. So a tree is never refused for its ground (the neighbours would draw half a crown in the air): where a
+        // cave mouth took the ground away, earth is put back under the trunk instead. A cactus is one column wide,
+        // in one chunk, and still wants sand.
         static bool BaseOk(Chunk ch, int x, int y, int z, bool sand)
         {
-            if ((uint)x >= 16 || (uint)z >= 16) return true;   // the neighbour decides; the tree is the same there
+            if ((uint)x >= 16 || (uint)z >= 16) return true;
             ushort below = ch.Get(x, y - 1, z);
             if (sand) return below == Blocks.Sand;
-            return below == Blocks.Grass || below == Blocks.SnowyGrass || below == Blocks.Dirt;
+            var d = Blocks.Get(below);
+            if (y >= 2 && !(d.Solid && d.Shape == Shape.Cube)) ch.Set(x, y - 1, z, Blocks.Dirt);
+            return true;
         }
 
         static void Broadleaf(Chunk ch, int x, int y, int z, ref Rng rng, ushort log, ushort leaves, int minH, int maxH)

@@ -250,6 +250,7 @@ namespace Stratum.Game
                 var s = meta.slots[i];
                 if (!string.IsNullOrEmpty(s.item) && s.count > 0 && Items.Get(s.item) != null) _looseBack.Add(new Core.Stack(s.item, s.count) { Wear = s.wear });
             }
+            TakeUpShield();
             if (!meta.hasPlayer && meta.creative) StarterCreative(_player.Inv);
             _player.Died = OnDied;
             _player.InputEnabled = false;
@@ -358,6 +359,7 @@ namespace Stratum.Game
         {
             _world.SetFocus(_player.Feet);
             _sky.Underwater = _player.HeadInWater;
+            _sky.NightVision = _player.Has(Player.Fx.NightEyes);
             Sfx.I.Daylight = _sky.DayFactor;
             float depth = Mathf.Clamp01((Chunk.SeaLevel - 6 - _player.Feet.y) / 30f);
             Sfx.I.Depth = depth;
@@ -393,7 +395,7 @@ namespace Stratum.Game
                 }
                 if (_hud.CanChat && !_hud.InventoryOpen && _hud.ChatClosedFrame != Time.frameCount && (Keys.Pressed(Act.Chat) || kb.enterKey.wasPressedThisFrame)) { _hud.OpenChat(); return; }
                 if (_hud.CanChat && !_hud.InventoryOpen && kb.slashKey.wasPressedThisFrame) { _hud.OpenChat("/"); return; }
-                if ((Keys.Pressed(Act.Backpack) || kb.tabKey.wasPressedThisFrame) && !_hud.Typing)
+                if (Keys.Pressed(Act.Backpack) && !_hud.Typing && !_hud.GoalsOpen)
                 {
                     if (_hud.InventoryOpen) CloseInventory(); else OpenInventory(null);
                 }
@@ -408,7 +410,9 @@ namespace Stratum.Game
             // Clicking back into the window grabs the mouse again.
             if (!_hud.InventoryOpen && Cursor.lockState != CursorLockMode.Locked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) SetCursor(true);
 
-            _act.HideHeld = _hud.InventoryOpen || _hudHidden;
+            _act.HideHeld = _hud.InventoryOpen || _hudHidden || _player.View != 0;
+            GoalsTick(Keyboard.current);
+            SelfView();
 
             _autosave -= Time.unscaledDeltaTime;
             if (_autosave <= 0) { _autosave = 120; Save(); }
@@ -529,7 +533,7 @@ namespace Stratum.Game
         // so a crash with the backpack open doesn't lose it.
 Core.Stack[] SaveSlots()
         {
-            var a = (Core.Stack[])_player.Inv.Slots.Clone();
+            var a = new Core.Stack[Inventory.Size]; Array.Copy(_player.Inv.Slots, a, Inventory.Size);
             // Everything that is the player's but not in a slot right now: what the cursor, a station or the grid
             // holds, what is waiting for room, and what a load set aside and hasn't handed back yet.
             IEnumerable<Core.Stack> loose = System.Linq.Enumerable.Concat(_waiting, _looseBack);
@@ -542,6 +546,8 @@ Core.Stack[] SaveSlots()
                 for (int k = 0; k < Inventory.Main && !put; k++) if (a[k].Empty) { a[k] = s; put = true; }
                 if (!put) (over ??= new List<Core.Stack>()).Add(s);
             }
+            // The shield in the other hand goes last of all, so a load knows it for what it is.
+            if (!_player.Inv.Slots[Inventory.OffHand].Empty) (over ??= new List<Core.Stack>()).Add(_player.Inv.Slots[Inventory.OffHand]);
             if (over == null) return a;
             // No free slot for these: they follow the pack's own slots in the save and come back on loading. All of
             // them: a save on this computer has no limit, and a server takes as many as one message can carry.
@@ -553,6 +559,14 @@ Core.Stack[] SaveSlots()
         // The most extra stacks a server keeps for a player beyond the pack (one message carries 255 stacks in all).
         public const int MaxLoose = Core.Net.MaxExtraStacks;
         readonly List<Core.Stack> _looseBack = new List<Core.Stack>();
+
+        // A shield saved last of the loose stacks was in the other hand: back it goes.
+        void TakeUpShield()
+        {
+            if (_looseBack.Count == 0 || _looseBack[_looseBack.Count - 1].Item != "shield" || !_player.Inv.Slots[Inventory.OffHand].Empty) return;
+            _player.Inv.Slots[Inventory.OffHand] = _looseBack[_looseBack.Count - 1];
+            _looseBack.RemoveAt(_looseBack.Count - 1);
+        }
 
         // Things a save recorded beyond the pack (held by the cursor, a station or the grid when it was written):
         // back into the pack if there's room now, else into a satchel at the player's feet.

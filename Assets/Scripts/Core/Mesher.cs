@@ -534,6 +534,14 @@ namespace Stratum.Core
             uint tint = 0xFFFFFF | ((uint)(Flag.Clip | (glow ? Flag.Glow : 0)) << 24);
             const float w = 1f / 16f, hgt = 10f / 16f;
             float x0 = x + 0.5f - w, x1 = x + 0.5f + w, z0 = z + 0.5f - w, z1 = z + 0.5f + w, y0 = y, y1 = y + hgt;
+            // On a wall: the foot against the wall, a little up, the flame leaning out into the room.
+            float lowX = 0, lowZ = 0, topX = 0, topZ = 0;
+            if (td.OnWall)
+            {
+                int wx = td.Facing == 1 ? 1 : td.Facing == 3 ? -1 : 0, wz = td.Facing == 0 ? 1 : td.Facing == 2 ? -1 : 0;
+                lowX = wx * 0.42f; lowZ = wz * 0.42f; topX = wx * 0.2f; topZ = wz * 0.2f;
+                y0 += 0.2f; y1 += 0.2f;
+            }
             float u0 = 0.5f - w, u1 = 0.5f + w;
             for (int f = 0; f < 6; f++)
             {
@@ -543,7 +551,7 @@ namespace Stratum.Core
                 {
                     ref var v = ref _v[_vn++];
                     int ox = C[f, k, 0], oy = C[f, k, 1], oz = C[f, k, 2];
-                    v.X = ox == 1 ? x1 : x0; v.Y = oy == 1 ? y1 : y0; v.Z = oz == 1 ? z1 : z0;
+                    v.X = (ox == 1 ? x1 : x0) + (oy == 1 ? topX : lowX); v.Y = oy == 1 ? y1 : y0; v.Z = (oz == 1 ? z1 : z0) + (oy == 1 ? topZ : lowZ);
                     v.NX = N[f, 0]; v.NY = N[f, 1]; v.NZ = N[f, 2];
                     v.Light = light; v.Layer = layer; v.Tint = tint;
                     if (f == 2) { v.U = ox == 1 ? u1 : u0; v.V = oz == 1 ? hgt : hgt - 2 * w; }

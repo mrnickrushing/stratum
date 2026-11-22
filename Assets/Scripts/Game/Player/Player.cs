@@ -78,6 +78,7 @@ namespace Stratum.Game
         public Vector3 Feet { get => transform.position; set => transform.position = value; }
         public Vector3 EyePos => Head.position;
 
+        float _lastForward = -9; bool _tapSprint;
         void Update()
         {
             float dt = Mathf.Min(Time.deltaTime, 0.05f);
@@ -96,13 +97,19 @@ namespace Stratum.Game
                 if (Keys.Down(Act.Left)) move.x -= 1;
                 jump = Keys.Down(Act.Jump);
                 jumpPressed = Keys.Pressed(Act.Jump);
-                sprintKey = Keys.Down(Act.Sprint);
+                // Tapping forward twice quickly sprints for as long as forward is held.
+                if (Keys.Pressed(Act.Forward)) { if (Time.unscaledTime - _lastForward < 0.3f) _tapSprint = true; _lastForward = Time.unscaledTime; }
+                if (!Keys.Down(Act.Forward)) _tapSprint = false;
+                sprintKey = Keys.Down(Act.Sprint) || _tapSprint;
                 sneakKey = Keys.Down(Act.Sneak);
                 down = sneakKey;
             }
             if (move.sqrMagnitude > 1) move.Normalize();
 
-            if (Riding != null)
+            // On a camel: it walks where you steer, faster than on foot, and jumps higher; the sneak key gets off.
+            bool mounted = Riding == MobKind.Camel;
+            if (mounted) { Flying = false; RideYaw = Yaw; if (InputEnabled && kb != null && Keys.Pressed(Act.Sneak)) { GetOut(); mounted = false; } sneakKey = false; }
+            if (Riding != null && !mounted)
             {
                 Sneaking = Sprinting = false; Flying = false;
                 InWater = InLava = OnLadder = false;
@@ -130,7 +137,7 @@ namespace Stratum.Game
             var right = Quaternion.Euler(0, Yaw, 0) * Vector3.right;
             var wish = fwd * move.y + right * move.x;
 
-            Sprinting = sprintKey && move.y > 0.1f && !Sneaking && (Food > 6 || Creative);
+            Sprinting = !mounted && sprintKey && move.y > 0.1f && !Sneaking && (Food > 6 || Creative);
             bool wantSneak = sneakKey && !Flying;
             if (!wantSneak && Sneaking && Blocked(Feet, Tall)) wantSneak = true;   // no standing up under a slab
             Sneaking = wantSneak;
@@ -164,14 +171,15 @@ namespace Stratum.Game
             }
             else
             {
-                float sp = Sneaking ? SneakSpeed : Sprinting ? Run : Walk;
+                float sp = (Has(Fx.Swift) ? 1.3f : 1) * (mounted ? 7.6f : Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk);
                 var target = wish * sp;
                 float accel = OnGround ? 14 : 3;
                 Velocity.x = Mathf.Lerp(Velocity.x, target.x, 1 - Mathf.Exp(-dt * accel));
                 Velocity.z = Mathf.Lerp(Velocity.z, target.z, 1 - Mathf.Exp(-dt * accel));
                 Velocity.y -= Gravity * dt;
                 if (Velocity.y < -60) Velocity.y = -60;
-                if (jump && OnGround) { Velocity.y = JumpSpeed; Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
+                if (Has(Fx.Feather) && Velocity.y < -3.2f) { Velocity.y = -3.2f; _fallStart = Feet.y; }
+                if (jump && OnGround) { Velocity.y = (mounted ? JumpSpeed * 1.3f : JumpSpeed) * (Has(Fx.Leap) ? 1.32f : 1); Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
                 // Ladders: walk into them or jump to climb, sneak to hold on, otherwise slide down slowly.
                 if (OnLadder)
                 {
@@ -356,7 +364,7 @@ namespace Stratum.Game
         void UpdateCamera(float dt, float horiz)
         {
             transform.rotation = Quaternion.Euler(0, Yaw, 0);
-            float eye = Riding == MobKind.Boat ? 1.05f : Riding == MobKind.Cart ? 1.25f : Sneaking ? EyeSneak : Eye;
+            float eye = Riding == MobKind.Boat ? 1.05f : Riding == MobKind.Cart ? 1.25f : Riding == MobKind.Camel ? Eye + 1.3f : Sneaking ? EyeSneak : Eye;
             _eye = Mathf.Lerp(_eye, eye, 1 - Mathf.Exp(-dt * 14));
             float bobAmt = OnGround && !Flying ? Mathf.Clamp01(horiz / Walk) : 0;
             float bx = Mathf.Sin(_bob * Mathf.PI) * 0.035f * bobAmt, by = Mathf.Abs(Mathf.Cos(_bob * Mathf.PI)) * 0.05f * bobAmt;
@@ -365,13 +373,35 @@ namespace Stratum.Game
             float fov = Settings.Fov + (Sprinting && horiz > Walk ? 8 : 0) + (Flying && Sprinting ? 6 : 0);
             _fov = Mathf.Lerp(_fov, fov, 1 - Mathf.Exp(-dt * 8));
             Cam.fieldOfView = _fov;
+            // Seen from behind or from in front (F5): the camera stands off along the view, stopping short of walls.
+            if (View == 0) { Cam.transform.localPosition = Vector3.zero; Cam.transform.localRotation = Quaternion.identity; ViewBack = 0; }
+            else
+            {
+                var dir = View == 1 ? -Head.forward : Head.forward;
+                var eyeAt = Head.position;
+                float d = 0.3f;
+                for (; d < 4.2f; d += 0.15f)
+                {
+                    var p = eyeAt + dir * (d + 0.3f);
+                    var def = Blocks.Get(World.Get(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z)));
+                    if (def.Solid && def.Shape == Shape.Cube) break;
+                }
+                ViewBack = d;
+                Cam.transform.position = eyeAt + dir * d;
+                Cam.transform.rotation = View == 1 ? Head.rotation : Quaternion.LookRotation(-Head.forward, Vector3.up);
+            }
         }
+
+        public bool Blocking;            // shield raised
+        public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
+        public float ViewBack;           // how far the camera stands off
 
         void Land()
         {
             float fall = _fallStart - Feet.y;
             ushort under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
+            if (Has(Fx.Leap)) fall -= 2;
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
         }
@@ -379,6 +409,14 @@ namespace Stratum.Game
         void Survival(float dt)
         {
             if (OnGround && Feet.y > 1) LastGround = Feet;
+            for (int i = 0; i < FxLeft.Length; i++) if (FxLeft[i] > 0) FxLeft[i] = Mathf.Max(0, FxLeft[i] - dt);
+            if (!Creative && Health > 0)
+            {
+                if (Has(Fx.Regen) && (_fxRegen -= dt) <= 0) { _fxRegen = 2.2f; Health = Mathf.Min(MaxHealth, Health + 1); }
+                if (Has(Fx.Poison) && (_fxPoison -= dt) <= 0) { _fxPoison = 1.25f; if (Health > 1) Damage(1, false); }
+                if (Has(Fx.FireProof)) Burning = 0;
+                if (Has(Fx.Gills)) Air = MaxAir;
+            }
             if (Creative)
             {
                 Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet;
@@ -396,7 +434,8 @@ namespace Stratum.Game
             if (Feet.y < -20) Damage(4);
 
             // Lava burns hard and sets you alight; water puts the fire out.
-            if (InLava) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
+            if (InLava && !Has(Fx.FireProof)) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
+            if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire && !Has(Fx.FireProof)) Burning = Mathf.Max(Burning, 4);
             else _lavaHurt = 0;
             if (InWater) Burning = 0;
             if (Burning > 0)
@@ -439,7 +478,18 @@ namespace Stratum.Game
         {
             Food = Mathf.Min(20, Food + food.Food);
             Saturation = Mathf.Min(Food, Saturation + food.Saturation);
+            if (food.Id == "milk_bucket") System.Array.Clear(FxLeft, 0, FxLeft.Length);       // milk washes every potion out
+            if (food.Effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
+            else if (food.Effect != null && System.Enum.TryParse<Fx>(food.Effect, out var fx)) AddFx(fx, food.EffectSecs);
         }
+
+        // What a potion (or a bite) leaves working in the body, and for how long.
+        public enum Fx { Swift, Leap, Strength, Regen, FireProof, Gills, NightEyes, Feather, Haste, Poison }
+        public static readonly string[] FxNames = { "Swiftness", "Leaping", "Strength", "Regeneration", "Fire Resistance", "Water Breathing", "Night Vision", "Slow Falling", "Haste", "Poison" };
+        public readonly float[] FxLeft = new float[10];
+        public bool Has(Fx f) => FxLeft[(int)f] > 0;
+        public void AddFx(Fx f, float secs) { if (secs > FxLeft[(int)f]) FxLeft[(int)f] = secs; }
+        float _fxRegen, _fxPoison;
 
         // A blow from outside (a creature): armour takes some of it and the body is knocked back.
         public int XpLevel, XpPoints;
@@ -457,6 +507,18 @@ namespace Stratum.Game
         public void Hit(float amount, Vector3 from)
         {
             if (Creative || Health <= 0) return;
+            // A raised shield stops what comes from in front (and takes the wear for it).
+            if (Blocking && Inv.HasShield)
+            {
+                var toward = from - Feet; toward.y = 0;
+                if (toward.sqrMagnitude < 0.01f || Vector3.Dot(toward.normalized, transform.forward) > 0.1f)
+                {
+                    Sfx.I?.Play("anvil", 0.5f, 0.7f);
+                    if (Inv.WearShield(Mathf.CeilToInt(amount))) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Shield broke"); }
+                    if (toward.sqrMagnitude > 0.01f) { var back = -toward.normalized; Velocity.x += back.x * 2.5f; Velocity.z += back.z * 2.5f; }
+                    return;
+                }
+            }
             int pts = Inv.ArmourPoints;
             float taken = amount * (1 - Mathf.Min(20, pts) * 0.04f) * (1 - Mathf.Min(0.64f, Inv.Warding * 0.04f));
             if (pts > 0) { var broke = Inv.WearArmour(); if (broke != null) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke(broke + " broke"); } }

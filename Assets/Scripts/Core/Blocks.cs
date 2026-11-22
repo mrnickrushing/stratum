@@ -30,6 +30,9 @@ namespace Stratum.Core
         Plaster, TimberFrame, RoofTiles, PolishedStone, DarkPlanks, WhitePlanks, Bookshelf, BarrelTop, BarrelSide, Hearth, Lantern, PottedPlant, Lattice,
         // 0.11: colours, doors and furniture
         WoolOrange, WoolLime, WoolCyan, WoolLightBlue, WoolPurple, WoolMagenta, WoolPink, WoolLightGrey, PlasterTint0, PlasterTint1, PlasterTint2, PlasterTint3, PlasterTint4, PlasterTint5, PlasterTint6, PlasterTint7, PlasterTint8, PlasterTint9, PlasterTint10, PlasterTint11, PlasterTint12, PlasterTint13, PlasterTint14, PlasterTint15, Tiles0, Tiles1, Tiles2, Tiles3, Tiles4, Tiles5, Tiles6, Tiles7, Tiles8, Tiles9, Tiles10, Tiles11, Tiles12, Tiles13, Tiles14, Tiles15, PaintedPlanks0, PaintedPlanks1, PaintedPlanks2, PaintedPlanks3, PaintedPlanks4, PaintedPlanks5, DoorBirchLower, DoorBirchUpper, DoorPineLower, DoorPineUpper, DoorDarkLower, DoorDarkUpper, CabinetFront, StoveFront, FridgeFront, TvFront, PianoFront, Picture0, Picture1, Picture2, ClockFace, MirrorGlass, Porcelain, Candle, LampShade, CrateSide, StoveTop, PottedYellow, PottedBlue,
+        // 0.14
+        Fire, KegSide, KegTop, KegLit, Carrot0, Carrot1, Carrot2, Carrot3, Potato0, Potato1, Potato2, Potato3, StarOre,
+        PistonFace, PistonSticky, PistonSide, PistonBack, DispenserFace, ObserverFace, ObserverSide, ObserverBack, ComparatorOff, ComparatorOn, CageSide, DustyFront, DustySide, DustyTop,
         Count
     }
 
@@ -53,6 +56,14 @@ namespace Stratum.Core
         public ushort Facing;              // 0..3 for facing variants (+Z, +X, -Z, -X)
         public ushort BaseId;              // facing variants point at the first one
         public bool Replaceable;         // placing a block here just overwrites it (plants, water)
+        public bool Falls;               // loose: falls when nothing is under it (sand, gravel)
+        public bool Burns;               // fire eats it (wood, leaves, wool, plants)
+        // Spark machines. Their variant is direction * 2 + (on ? 1 : 0); Dir is +Z, +X, -Z, -X, up, down.
+        public int Dir;
+        public bool Machine;             // switched by power (piston, dispenser)
+        public bool Piston, Sticky, Arm; // pushes the blocks in front of it; pulls one back; the arm it puts out
+        public bool Emitter;             // gives power while on (observer, comparator)
+        public bool Watcher, Gauge;      // on for a moment when the block it faces changes; on while the container behind it holds something
         public bool Creative = true;     // listed in the creative palette
         public string DropItem;          // item id dropped; null = itself; "" = nothing
         public int DropCount = 1;
@@ -116,7 +127,7 @@ namespace Stratum.Core
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
-            Hedge, Candle;
+            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest;
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;
@@ -176,8 +187,8 @@ namespace Stratum.Core
             b = Add("dirt", "Dirt", Tex.Dirt); b.Hardness = 0.5f; b.Tool = Tool.Shovel; b.Sound = Sound.Dirt; Dirt = b.Id;
             b = Add("grass", "Grass", Tex.GrassTop, Tex.GrassSide, Tex.Dirt); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Grass; b.DropItem = "dirt"; Grass = b.Id;
             b = Add("snowy_grass", "Snowy Grass", Tex.Snow, Tex.SnowSide, Tex.Dirt); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; b.DropItem = "dirt"; SnowyGrass = b.Id;
-            b = Add("sand", "Sand", Tex.Sand); b.Hardness = 0.5f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; Sand = b.Id;
-            b = Add("gravel", "Gravel", Tex.Gravel); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; b.Bonus = "flint"; b.BonusChance = 0.1f; Gravel = b.Id;
+            b = Add("sand", "Sand", Tex.Sand); b.Hardness = 0.5f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; b.Falls = true; Sand = b.Id;
+            b = Add("gravel", "Gravel", Tex.Gravel); b.Hardness = 0.6f; b.Tool = Tool.Shovel; b.Sound = Sound.Sand; b.Falls = true; b.Bonus = "flint"; b.BonusChance = 0.1f; Gravel = b.Id;
             b = Add("sandstone", "Sandstone", Tex.SandstoneTop, Tex.SandstoneSide, Tex.SandstoneTop); b.Hardness = 0.8f; b.Tool = Tool.Pickaxe; b.TierNeeded = 1; Sandstone = b.Id;
             b = Add("snow", "Snow", Tex.Snow); b.Hardness = 0.3f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; Snow = b.Id;
             b = Add("ice", "Ice", Tex.Ice); b.Hardness = 0.5f; b.Tool = Tool.Pickaxe; b.Opaque = false; b.Opacity = 2; b.Sound = Sound.Glass; b.DropItem = ""; Ice = b.Id;
@@ -523,6 +534,7 @@ namespace Stratum.Core
             b.Boxes = new[] { Box.Px(2, 0, 2, 14, 2, 14), Box.Px(4, 2, 4, 12, 14, 12), Box.Px(2, 14, 2, 14, 16, 14) };
 
             Building();
+            Later();
 
             Palette.Remove(Water);
         }

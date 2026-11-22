@@ -10,7 +10,7 @@ namespace Stratum.Core
         public ushort Block;           // the block it places (0 = not a block)
         public int MaxStack = 64;
         public Tool Tool;            // tools: what they're for
-        public int Tier;             // tools: 1 wood, 2 stone, 3 copper, 4 iron
+        public int Tier;             // tools: 1 wood, 2 stone, 3 copper, 4 iron, 5 starstone
         public int Durability;       // tools: uses before it breaks
         public float Speed = 1;      // tools: how much faster than a hand
         public bool Creative = true;
@@ -20,7 +20,10 @@ namespace Stratum.Core
         public int ArmourSlot = -1;  // 0 head, 1 body, 2 legs, 3 feet
         public int Armour;           // protection points (20 in all stops 80% of a hit)
         public bool Ranged;          // the bow
-        public bool Drink;           // milk: drunk whatever your hunger, gives the bucket back
+        public bool Drink;           // milk and potions: drunk whatever your hunger; what held it comes back (Leaves)
+        public string Leaves;        // what's left in the hand after drinking
+        public string Effect;        // potions: what it does (Player.Fx by name), for EffectSecs seconds
+        public float EffectSecs;
         public Dictionary<char, int> Enchants;   // enchanted copies only
         public string Base;                      // enchanted copies: the plain item
         public ItemDef MemberwiseCopy() => (ItemDef)MemberwiseClone();
@@ -66,6 +69,15 @@ namespace Stratum.Core
 
         static ItemDef Add(ItemDef d) { Defs[d.Id] = d; Order.Add(d); return d; }
 
+        // Potions: what each is called, what it does and for how long, and the thing that goes in with the ember.
+        public static readonly (string key, string name, string effect, float secs, string with)[] Potions =
+        {
+            ("swift", "Swiftness", "Swift", 180, "sugar_cane"), ("leap", "Leaping", "Leap", 180, "egg"), ("strength", "Strength", "Strength", 180, "bone"),
+            ("regen", "Regeneration", "Regen", 45, "apple"), ("heal", "Healing", "Heal", 0, "berries"), ("fire", "Fire Resistance", "FireProof", 180, "coal"),
+            ("gills", "Water Breathing", "Gills", 180, "raw_fish"), ("night", "Night Vision", "NightEyes", 180, "carrot"), ("feather", "Slow Falling", "Feather", 90, "feather"),
+            ("haste", "Haste", "Haste", 180, "sunstone_shard"),
+        };
+
         static void ToolSet(string mat, string matName, int tier, int dur, float speed)
         {
             Add(new ItemDef { Id = mat + "_pickaxe", Name = matName + " Pickaxe", MaxStack = 1, Tool = Tool.Pickaxe, Tier = tier, Durability = dur, Speed = speed });
@@ -94,7 +106,9 @@ namespace Stratum.Core
             ToolSet("stone", "Stone", 2, 130, 3.5f);
             ToolSet("copper", "Copper", 3, 220, 5f);
             ToolSet("iron", "Iron", 4, 400, 7f);
-            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f) })
+            ToolSet("star", "Starstone", 5, 1200, 9f);
+            Add(new ItemDef { Id = "starstone", Name = "Starstone" });
+            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("star", "Starstone", 5, 1200, 8f) })
             {
                 Add(new ItemDef { Id = mat + "_sword", Name = name + " Sword", MaxStack = 1, Tool = Tool.Sword, Tier = tier, Durability = dur, Speed = 1.5f, Damage = dmg });
                 // Tools hit a little harder than a fist too.
@@ -123,13 +137,28 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bone_meal", Name = "Bone Meal" });
             Add(new ItemDef { Id = "paper", Name = "Paper" });
             Add(new ItemDef { Id = "book", Name = "Book" });
-            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400) })
+            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("star", "Starstone", 5, 1200) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
             Add(new ItemDef { Id = "spark", Name = "Spark Dust", Block = Blocks.SparkWire });
             Add(new ItemDef { Id = "flint", Name = "Flint" });
             Add(new ItemDef { Id = "fire_striker", Name = "Fire Striker", MaxStack = 1, Durability = 64 });
+            Add(new ItemDef { Id = "blast_powder", Name = "Blast Powder" });
+            // 0.14: fishing, root crops, eggs
+            // Potions: a bottle, an ember and one more thing, mixed at a brewing stand.
+            Add(new ItemDef { Id = "bottle", Name = "Glass Bottle", MaxStack = 16 });
+            foreach (var (key, name, effect, secs, with) in Potions)
+                Add(new ItemDef { Id = "potion_" + key, Name = "Potion of " + name, MaxStack = 16, Drink = true, Leaves = "bottle", Effect = effect, EffectSecs = secs });
+            Add(new ItemDef { Id = "shield", Name = "Shield", MaxStack = 1, Durability = 300 });
+            Add(new ItemDef { Id = "fishing_rod", Name = "Fishing Rod", MaxStack = 1, Durability = 64 });
+            Food("raw_fish", "Raw Fish", 2, 0.4f);
+            Food("cooked_fish", "Cooked Fish", 5, 6);
+            Add(new ItemDef { Id = "carrot", Name = "Carrot", Block = Blocks.Carrot, Food = 3, Saturation = 3.6f });
+            Add(new ItemDef { Id = "potato", Name = "Potato", Block = Blocks.Potato, Food = 1, Saturation = 0.6f });
+            Food("baked_potato", "Baked Potato", 5, 6);
+            Food("egg", "Egg", 1, 0.2f);
+            Food("fried_egg", "Fried Egg", 4, 4);
             Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
             Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
@@ -138,7 +167,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "xp", Name = "Experience", MaxStack = 1000, Creative = false });
             Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
-            Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1 });
+            Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1, Leaves = "bucket" });
             Add(new ItemDef { Id = "hide", Name = "Hide" });
             Add(new ItemDef { Id = "feather", Name = "Feather" });
             Add(new ItemDef { Id = "bone", Name = "Bone" });
@@ -149,7 +178,7 @@ namespace Stratum.Core
             // Armour: a cap, a coat, leggings and boots of hide, copper or iron.
             string[] pieces = { "cap", "coat", "leggings", "boots" }, pieceNames = { "Cap", "Coat", "Leggings", "Boots" };
             int[] need = { 5, 8, 7, 4 };
-            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260) })
+            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420) })
                 for (int i = 0; i < 4; i++)
                 {
                     Add(new ItemDef { Id = mat + "_" + pieces[i], Name = name + " " + pieceNames[i], MaxStack = 1, ArmourSlot = i, Armour = pts[i], Durability = dur });
@@ -164,7 +193,7 @@ namespace Stratum.Core
             R("workbench", 1, null, ("@planks", 4));
             R("torch", 4, null, ("stick", 1), ("coal", 1));
             // At a workbench
-            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3) })
+            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3), ("star", "starstone", 3) })
             {
                 R(mat + "_pickaxe", 1, "workbench", (item, n), ("stick", 2));
                 R(mat + "_axe", 1, "workbench", (item, n), ("stick", 2));
@@ -179,7 +208,7 @@ namespace Stratum.Core
             R("iron_block", 1, "workbench", ("iron_ingot", 9));
             R("gold_block", 1, "workbench", ("gold_ingot", 9));
             R("mossy_cobble", 2, "workbench", ("cobble", 2), ("tall_grass", 1));
-            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot") })
+            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot"), ("star", "starstone") })
                 R(mat + "_sword", 1, "workbench", (item, 2), ("stick", 1));
             R("bow", 1, "workbench", ("stick", 3), ("thread", 3));
             R("arrow", 4, "workbench", ("stick", 1), ("feather", 1), ("cobble", 1));
@@ -208,6 +237,19 @@ namespace Stratum.Core
             R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("spark", 1));
             R("spark_torch", 1, null, ("spark", 1), ("stick", 1));
             R("fire_striker", 1, null, ("iron_ingot", 1), ("flint", 1));
+            R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
+            R("fishing_rod", 1, "workbench", ("stick", 3), ("thread", 2));
+            R("bottle", 3, "workbench", ("glass", 3));
+            R("brewing_stand", 1, "workbench", ("cobble", 3), ("ember", 1));
+            foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));
+            R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));
+            R("sticky_piston", 1, "workbench", ("piston", 1), ("clay", 2));
+            R("dispenser", 1, "workbench", ("cobble", 7), ("bow", 1), ("spark", 1));
+            R("observer", 1, "workbench", ("cobble", 6), ("spark", 2), ("sunstone_shard", 1));
+            R("comparator", 1, "workbench", ("stone", 3), ("spark_torch", 3), ("sunstone_shard", 1));
+            R("cooked_fish", 1, "furnace", ("raw_fish", 1));
+            R("baked_potato", 1, "furnace", ("potato", 1));
+            R("fried_egg", 1, "furnace", ("egg", 1));
             R("cinder_bricks", 1, "furnace", ("cinderstone", 2));
             R("lever", 1, null, ("cobble", 1), ("stick", 1));
             R("button", 1, null, ("stone", 1));
@@ -304,6 +346,8 @@ namespace Stratum.Core
             R("stone_hoe", 1, "workbench", ("cobble", 2), ("stick", 2));
             R("copper_hoe", 1, "workbench", ("copper_ingot", 2), ("stick", 2));
             R("iron_hoe", 1, "workbench", ("iron_ingot", 2), ("stick", 2));
+            R("star_hoe", 1, "workbench", ("starstone", 2), ("stick", 2));
+            R("shield", 1, "workbench", ("@planks", 6), ("iron_ingot", 1));
             R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
             R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));
             R("blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1));
@@ -365,7 +409,8 @@ namespace Stratum.Core
     {
         public const int Hotbar = 9, Main = 36, Size = 40;     // 36..39: armour (head, body, legs, feet)
         public const int ArmourStart = Main;
-        public readonly Stack[] Slots = new Stack[Size];
+        public const int OffHand = Size;                        // the other hand (a shield): kept after the pack's own slots, saved as the last loose stack
+        public readonly Stack[] Slots = new Stack[Size + 1];
         public int Selected;
 
         public Stack Held => Slots[Selected];
@@ -427,6 +472,19 @@ namespace Stratum.Core
         public int SoftLanding => Items.Get(Slots[Size - 1].Item)?.Ench('g') ?? 0;
 
         // Wears the held tool; true when it broke.
+        // The shield took a blow. True if that broke it.
+        public bool WearShield(int by)
+        {
+            ref var s = ref Slots[OffHand];
+            var d = Items.Get(s.Item);
+            if (d == null || d.Durability <= 0) return false;
+            s.Wear += Math.Max(1, by);
+            if (s.Wear >= d.Durability) { s = Stack.None; return true; }
+            return false;
+        }
+
+        public bool HasShield => Slots[OffHand].Item == "shield";
+
         public bool WearHeld()
         {
             ref var s = ref Slots[Selected];
@@ -528,7 +586,7 @@ namespace Stratum.Core
         }
 
         public static int XpFor(BlockDef b, Random r) =>
-            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.Cage ? r.Next(15, 40) : b.Id == Blocks.StarOre ? r.Next(3, 8) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
 
         // Shears bring leaves, grass and the like away whole.
         public static (string item, int count) Drop(BlockDef b, ItemDef held)

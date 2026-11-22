@@ -109,7 +109,7 @@ namespace Stratum.Game
         {
             HasTarget = false;
             var o = P.Cam.transform.position; var d = P.Cam.transform.forward;
-            float reach = P.Creative ? 7f : 5f;
+            float reach = (P.Creative ? 7f : 5f) + (P.View == 1 ? P.ViewBack : 0);
             // Grid walk (Amanatides & Woo).
             int x = Mathf.FloorToInt(o.x), y = Mathf.FloorToInt(o.y), z = Mathf.FloorToInt(o.z);
             int sx = d.x > 0 ? 1 : -1, sy = d.y > 0 ? 1 : -1, sz = d.z > 0 ? 1 : -1;
@@ -154,6 +154,98 @@ namespace Stratum.Game
         // Which way (0 +Z, 1 +X, 2 -Z, 3 -X) a horizontal direction mostly points.
         static int DirOf(Vector3 v) => Mathf.Abs(v.x) > Mathf.Abs(v.z) ? (v.x > 0 ? 1 : 3) : (v.z > 0 ? 0 : 2);
         static int DirOf(Vector3Int v) => v.x > 0 ? 1 : v.x < 0 ? 3 : v.z > 0 ? 0 : 2;
+
+        GameObject _shield; Material _shieldMat; float _shieldUp;
+
+        // ------------------------------------------------------------------ fishing
+        bool _fishing; GameObject _bobber; float _biteIn, _biteLeft, _fishClock;
+        static readonly (string item, int weight)[] Catch =
+        {
+            ("raw_fish", 78), ("stick", 5), ("bone", 4), ("thread", 4), ("hide", 3), ("clay", 3), ("jade", 1), ("sunstone_shard", 1), ("bow", 1),
+        };
+
+        // Water within a long throw, along the view.
+        bool CastAim(out Vector3Int cell)
+        {
+            cell = default;
+            var o = P.Cam.transform.position; var d = P.Cam.transform.forward;
+            for (float t = 0.4f; t < 11f; t += 0.1f)
+            {
+                var p = o + d * t;
+                var c = new Vector3Int(Mathf.FloorToInt(p.x), Mathf.FloorToInt(p.y), Mathf.FloorToInt(p.z));
+                ushort id = World.Get(c.x, c.y, c.z);
+                if (Blocks.IsWater(id))
+                {
+                    while (Blocks.IsWater(World.Get(c.x, c.y + 1, c.z))) c.y++;
+                    cell = c; return true;
+                }
+                if (Blocks.Get(id).Solid) return false;
+            }
+            return false;
+        }
+
+        void Cast(Vector3Int water)
+        {
+            if (_bobber == null)
+            {
+                _bobber = new GameObject("Float");
+                foreach (var (y, h, col) in new[] { (0.07f, 0.14f, new Color(0.85f, 0.2f, 0.15f)), (-0.05f, 0.1f, new Color(0.95f, 0.95f, 0.92f)), (0.2f, 0.12f, new Color(0.3f, 0.22f, 0.14f)) })
+                {
+                    var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    Destroy(part.GetComponent<Collider>());
+                    part.transform.SetParent(_bobber.transform, false);
+                    part.transform.localPosition = new Vector3(0, y, 0);
+                    part.transform.localScale = y > 0.15f ? new Vector3(0.03f, h, 0.03f) : new Vector3(0.14f, h, 0.14f);
+                    var mr = part.GetComponent<MeshRenderer>(); mr.shadowCastingMode = ShadowCastingMode.Off;
+                    mr.material = new Material(Shader.Find("Universal Render Pipeline/Unlit")); mr.material.SetColor("_BaseColor", col);
+                }
+            }
+            _bobber.SetActive(true);
+            _bobber.transform.position = new Vector3(water.x + 0.5f, water.y + 0.86f, water.z + 0.5f);
+            _fishing = true; _biteLeft = 0; _fishClock = 0;
+            _biteIn = Random.Range(5f, 16f);
+            Sfx.I?.Play("swish", 0.4f, 0.8f);
+            Sfx.I?.PlayAt("splash", _bobber.transform.position, 0.35f, 1.5f);
+        }
+
+        void FishTick(float dt)
+        {
+            _fishClock += dt;
+            var at = _bobber.transform.position;
+            var cell = new Vector3Int(Mathf.FloorToInt(at.x), Mathf.FloorToInt(at.y - 0.3f), Mathf.FloorToInt(at.z));
+            if (!Blocks.IsWater(World.Get(cell.x, cell.y, cell.z))) { Reel(false); return; }
+            float dip = 0;
+            if (_biteLeft > 0)
+            {
+                _biteLeft -= dt; dip = 0.16f + Mathf.Sin(_fishClock * 30) * 0.03f;
+                if (_biteLeft <= 0) _biteIn = Random.Range(4f, 12f);           // it got away
+            }
+            else if ((_biteIn -= dt) <= 0)
+            {
+                _biteLeft = 1.6f;
+                Sfx.I?.PlayAt("splash", at, 0.6f, 1.2f);
+                Toast?.Invoke("A bite!");
+            }
+            else dip = Mathf.Sin(_fishClock * 2.4f) * 0.02f - (_biteIn < 1.2f ? 0.03f : 0);       // a nibble just before
+            _bobber.transform.position = new Vector3(at.x, cell.y + 0.86f - dip, at.z);
+        }
+
+        void Reel(bool pulled)
+        {
+            bool bite = _biteLeft > 0;
+            _fishing = false; _biteLeft = 0;
+            if (_bobber != null) _bobber.SetActive(false);
+            if (!pulled) return;
+            Sfx.I?.Play("swish", 0.4f, 1.3f);
+            if (!bite) return;
+            int total = 0; foreach (var (_, w) in Catch) total += w;
+            int roll = _rng.Next(total); string got = "raw_fish";
+            foreach (var (item, w) in Catch) { if (roll < w) { got = item; break; } roll -= w; }
+            Gain(got, 1);
+            P.AddXp(_rng.Next(1, 4));
+            Sfx.I?.Play("pickup", 0.4f, 1.2f);
+            if (!P.Creative && P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Fishing Rod broke"); }
+        }
 
         // The first fluid source (or anything solid) along the view, for buckets.
         bool FluidAim(out Vector3Int cell)
@@ -237,7 +329,7 @@ namespace Stratum.Game
                 {
                     _attackEvery = heldDef != null && heldDef.Tool == Tool.Sword ? 0.55f : heldDef != null && heldDef.Tool == Tool.Axe ? 0.9f : 0.5f;
                     _attackCool = _attackEvery;
-                    float dmg = heldDef?.Damage ?? 1;
+                    float dmg = (heldDef?.Damage ?? 1) + (P.Has(Player.Fx.Strength) ? 3 : 0);
                     if (!P.OnGround && P.Velocity.y < -1 && !P.InWater) { dmg *= 1.5f; Sfx.I?.Play("hit_hard", 0.6f, 1.3f); }
                     Link?.Strike(TargetMob, dmg);
                     Sfx.I?.Play(dmg >= 6 ? "hit_hard" : "hit", 0.7f);
@@ -248,6 +340,25 @@ namespace Stratum.Game
                 return;
             }
             if (mouse.leftButton.wasPressedThisFrame && !HasTarget) { _swing = 0; Sfx.I?.Play("swish", 0.3f); }
+
+            // A hound: bones make it a friend; a friend sits or comes when asked, and meat mends it. A camel that has
+            // been fed is climbed onto with an empty hand.
+            if (rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var pal))
+            {
+                bool friend = (pal.More & Mob.MTame) != 0;
+                if (pal.Kind == MobKind.Hound)
+                {
+                    if (!friend && heldDef != null && heldDef.Id == "bone") { Link?.UseMob(TargetMob, "bone"); if (!P.Creative) P.Inv.UseHeld(); _swing = 0; return; }
+                    if (friend)
+                    {
+                        bool meat = heldDef != null && heldDef.Food > 0 && (heldDef.Id.StartsWith("raw_") || heldDef.Id == "steak" || heldDef.Id.StartsWith("roast_"));
+                        if (meat && pal.Health < 0.99f) { Link?.UseMob(TargetMob, heldDef.Id); if (!P.Creative) P.Inv.UseHeld(); }
+                        else Link?.UseMob(TargetMob, "");
+                        _swing = 0; return;
+                    }
+                }
+                if (pal.Kind == MobKind.Camel && friend && heldDef == null && P.Riding == null) { Link?.Mount(TargetMob); _swing = 0; return; }
+            }
 
             // Feeding an animal its food (to breed it, or help a young one grow).
             if (heldDef != null && rmb && mouse.rightButton.wasPressedThisFrame && HasMob && Creatures != null && Creatures.TryGet(TargetMob, out var fed)
@@ -268,6 +379,19 @@ namespace Stratum.Game
                 && MobSim.Def(ride.Kind).Vehicle)
             {
                 Link?.Mount(TargetMob); _swing = 0;
+                return;
+            }
+            // A shield in the other hand comes up while the right button is held (with a tool, a sword or nothing in hand).
+            P.Blocking = rmb && P.Inv.HasShield && (heldDef == null || heldDef.Tool != Tool.None && heldDef.Tool != Tool.Hoe && heldDef.Tool != Tool.Shears) && !HasMob;
+            // Fishing: cast onto water, wait for the float to dip, pull in.
+            if (_fishing && (heldDef == null || heldDef.Id != "fishing_rod" || (_bobber.transform.position - P.EyePos).sqrMagnitude > 14 * 14)) Reel(false);
+            if (_fishing) FishTick(dt);
+            if (heldDef != null && heldDef.Id == "fishing_rod" && mouse.rightButton.wasPressedThisFrame)
+            {
+                _swing = 0;
+                if (_fishing) Reel(true);
+                else if (CastAim(out var fw)) Cast(fw);
+                else Toast?.Invoke("Cast onto water");
                 return;
             }
             if (heldDef != null && heldDef.Id == "boat" && mouse.rightButton.wasPressedThisFrame && P.Riding == null)
@@ -315,7 +439,7 @@ namespace Stratum.Game
                 {
                     _eat = 0;
                     P.Eat(heldDef);
-                    if (heldDef.Drink) { P.Burning = 0; SwapHeld("bucket"); }
+                    if (heldDef.Drink) { if (heldDef.Leaves == "bucket") P.Burning = 0; SwapHeld(heldDef.Leaves ?? "bucket"); }
                     else if (!P.Creative) P.Inv.UseHeld();
                     Sfx.I?.Play("burp", 0.4f);
                 }
@@ -366,7 +490,7 @@ namespace Stratum.Game
                 if (_mining != Target) { _mining = Target; Progress = 0; }
                 var b = Blocks.Get(World.Get(Target.x, Target.y, Target.z));
                 var held = Items.Get(P.Inv.Held.Item);
-                float time = Mining.Time(b, held, P.Creative);
+                float time = Mining.Time(b, held, P.Creative) * (P.Has(Player.Fx.Haste) ? 0.7f : 1);
                 if (float.IsInfinity(time)) { Progress = 0; }
                 else if (P.Creative)
                 {
@@ -396,7 +520,7 @@ namespace Stratum.Game
         static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
-            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -430,7 +554,7 @@ namespace Stratum.Game
             _swing = 0;
             // A plant on top goes with it.
             ushort above = World.Get(p.x, p.y + 1, p.z);
-            if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch)) Break(p + Vector3Int.up);
+            if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch && !Blocks.Get(above).OnWall)) Break(p + Vector3Int.up);
             if (P.Creative) { Unsupported(p); return; }
             var held = Items.Get(P.Inv.Held.Item);
             if (Mining.Drops(def, held))
@@ -438,17 +562,13 @@ namespace Stratum.Game
                 var (item, n) = Mining.Drop(def, held);
                 n = Mining.Bounty(def, held, _rng, n);
                 if (!P.Creative) P.AddXp(Mining.XpFor(def, _rng));
-                if (item != null)
-                {
-                    int left = Gain(item, n);
-                    if (left < n) Sfx.I?.Play("pickup", 0.35f, 1.4f);
-                }
+                if (item != null) Fall(p, item, n);
             }
             else if (def.TierNeeded > 0) Toast?.Invoke("Needs a better pickaxe");
             var bonus = Mining.Bonus(def, _rng);
-            if (bonus != null && Gain(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus != null) Fall(p, bonus, 1);
             var bonus2 = Mining.Bonus2(def, _rng);
-            if (bonus2 != null && Gain(bonus2, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus2 != null) Fall(p, bonus2, 1);
             Unsupported(p);
             if (held != null && held.Durability > 0 && def.Hardness > 0 && P.Inv.WearHeld())
             {
@@ -468,10 +588,11 @@ namespace Stratum.Game
             if (!sneak)
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
+                if (target == Blocks.BrewStand) { OpenStation?.Invoke("brewer"); return; }
                 if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }
-                if (tdef.Container && target != Blocks.Satchel) { OpenBox?.Invoke(Target); return; }
+                if (tdef.Container && target != Blocks.Satchel || target == Blocks.LootChest) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }
@@ -501,13 +622,30 @@ namespace Stratum.Game
                     Sfx.I?.Play("portal", 0.7f, 1.2f);
                     if (!P.Creative) P.Inv.WearHeld();
                 }
+                else if (target == Blocks.BlastKeg)
+                {
+                    // Lights the fuse.
+                    World.Set(Target.x, Target.y, Target.z, Blocks.KegLit);
+                    Sfx.I?.Play("sizzle", 0.6f, 1.3f);
+                    if (!P.Creative) P.Inv.WearHeld();
+                }
+                else if (target != 0 && (World.Get(spot.x, spot.y, spot.z) == 0 || Blocks.Get(World.Get(spot.x, spot.y, spot.z)).Replaceable && Blocks.Get(World.Get(spot.x, spot.y, spot.z)).Fluid == 0)
+                         && (Blocks.Get(target).Burns || Blocks.Get(World.Get(spot.x, spot.y - 1, spot.z)).Solid))
+                {
+                    // A flame on the ground, or against something that burns.
+                    if (World.Set(spot.x, spot.y, spot.z, Blocks.Fire))
+                    {
+                        Sfx.I?.Play("sizzle", 0.5f, 1.6f);
+                        if (!P.Creative) P.Inv.WearHeld();
+                    }
+                }
                 else Sfx.I?.Play("swish", 0.3f, 1.6f);
                 _swing = 0;
                 return;
             }
             if (item.Id == "bone_meal")
             {
-                bool works = tdef.BaseId == Blocks.Wheat && tdef.Variant < Blocks.WheatStages - 1 || tdef.Grows == 2 || target == Blocks.Grass && World.Get(Target.x, Target.y + 1, Target.z) == 0;
+                bool works = tdef.Grows == 1 && tdef.Variant < Blocks.WheatStages - 1 || tdef.Grows == 2 || target == Blocks.Grass && World.Get(Target.x, Target.y + 1, Target.z) == 0;
                 if (!works) return;
                 Link?.Fertilize(Target);
                 if (!P.Creative) P.Inv.UseHeld();
@@ -553,6 +691,12 @@ namespace Stratum.Game
             bool isFlowerPot = Blocks.Keys[def.BaseId].StartsWith("flower_pot");
             if (def.Shape == Shape.Cross && !isFlowerPot && !CanStand(id, at)) return;
             if (def.Shape == Shape.Cross && isFlowerPot && !Blocks.Get(below).Solid) return;
+            // A torch held against the side of something solid hangs on it.
+            if (id == Blocks.Torch && TargetNormal.y == 0 && target != 0 && Blocks.Get(target).Solid && at == Target + TargetNormal)
+            {
+                Place(at, (ushort)(Blocks.WallTorch + DirOf(-TargetNormal)), id);
+                return;
+            }
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
             if ((Carpet(def) || def.BaseId == Blocks.Candle) && below == 0) return;
             int f = DirOf(look);
@@ -626,6 +770,21 @@ namespace Stratum.Game
                 else if (TargetNormal.y == 0) place = (ushort)(Blocks.WallSign + DirOf(-TargetNormal));
                 else return;
             }
+            else if (def.Machine || def.Watcher)
+            {
+                // Pistons and dispensers face whoever puts them down; an observer looks the way they look.
+                var aim = P.Cam.transform.forward;
+                int ld = Mathf.Abs(aim.y) > 0.7f ? (aim.y > 0 ? 4 : 5) : DirOf(aim);
+                int dir = def.Watcher ? ld : ld < 4 ? (ld + 2) & 3 : ld == 4 ? 5 : 4;
+                place = (ushort)(id + dir * 2);
+            }
+            else if (def.Gauge)
+            {
+                // A comparator reads the container it is put down facing, and gives power back toward the player.
+                var bb = Blocks.Get(below);
+                if (!(bb.Solid && bb.Opaque && bb.Shape == Shape.Cube) && !Blocks.Slabs.Contains(below)) return;
+                place = (ushort)(id + ((DirOf(P.Cam.transform.forward) + 2) & 3) * 2);
+            }
             else place = Blocks.Facing(id, look.x, look.z);
             if (!World.Set(at.x, at.y, at.z, place)) return;
             Placed(id);
@@ -637,7 +796,7 @@ namespace Stratum.Game
         {
             ushort below = World.Get(at.x, at.y - 1, at.z);
             var bd = Blocks.Get(below);
-            if (id == Blocks.Wheat) return bd.BaseId == Blocks.Farmland;
+            if (Blocks.Get(id).Grows == 1) return bd.BaseId == Blocks.Farmland;
             if (id == Blocks.SugarCane)
             {
                 if (below == Blocks.SugarCane) return true;
@@ -651,7 +810,7 @@ namespace Stratum.Game
 
         static bool Carpet(BlockDef d) => d.Shape == Shape.Boxes && !d.Solid && Blocks.Keys[d.BaseId].StartsWith("carpet_");
         static bool NeedsFloor(ushort id, BlockDef d) =>
-            d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
+            d.Shape == Shape.Cross || d.Shape == Shape.Torch && !d.OnWall || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
             || Carpet(d) || d.BaseId == Blocks.Candle;
         static bool OnWall(BlockDef d) => d.OnWall || d.BaseId == Blocks.Ladder || d.BaseId == Blocks.WallSign || d.BaseId == Blocks.Button;
 
@@ -663,7 +822,7 @@ namespace Stratum.Game
             {
                 var q = p - Dir4[k];
                 var hung = Blocks.Get(World.Get(q.x, q.y, q.z));
-                if (hung.Id != 0 && OnWall(hung) && hung.Facing == k && World.Set(q.x, q.y, q.z, 0)) GiveDrop(hung);
+                if (hung.Id != 0 && OnWall(hung) && hung.Facing == k && World.Set(q.x, q.y, q.z, 0)) GiveDrop(hung, q);
             }
             for (int guard = 0; guard < 64; guard++)
             {
@@ -673,7 +832,7 @@ namespace Stratum.Game
                 if (id == 0 || !NeedsFloor(id, d)) return;
                 if (d.Door) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);
-                GiveDrop(d);
+                GiveDrop(d, up);
                 if (id != Blocks.SugarCane) return;
                 p = up;                      // a column of cane comes down together
             }
@@ -703,13 +862,20 @@ namespace Stratum.Game
             if (edit.Spent != null) P.Inv.Add(edit.Spent, 1);
         }
 
-        void GiveDrop(BlockDef d)
+        void GiveDrop(BlockDef d, Vector3Int at)
         {
             if (P.Creative) return;
             var (item, n) = Mining.Drop(d);
-            if (item != null && n > 0) Gain(item, n);
+            if (item != null && n > 0) Fall(at, item, n);
             var b2 = Mining.Bonus2(d, _rng);
-            if (b2 != null) Gain(b2, 1);
+            if (b2 != null) Fall(at, b2, 1);
+        }
+
+        // What a broken block gives falls out where it stood, to be walked over.
+        void Fall(Vector3Int at, string item, int n)
+        {
+            if (Link != null) Link.Spill(new Vector3(at.x + 0.5f, at.y + 0.35f, at.z + 0.5f), new Stack(item, n));
+            else Gain(item, n);
         }
 
         void Place(Vector3Int at, ushort block, ushort item)
@@ -799,6 +965,28 @@ namespace Stratum.Game
             _lightTimer -= dt;
             if (_lightTimer <= 0) { _lightTimer = 0.15f; _light = LightAt(P.EyePos); _heldBlockMat.SetVector("_LightOverride", new Vector4(_light.x, _light.y, 0, 1)); }
             _heldMr.enabled = !HideHeld;
+            // The shield, low on the left; raised across the view when blocking.
+            bool shield = P.Inv.HasShield && !HideHeld;
+            if (shield && _shield == null)
+            {
+                _shield = new GameObject("Shield");
+                _shield.transform.SetParent(P.Cam.transform, false);
+                _shield.AddComponent<MeshFilter>().sharedMesh = FlatQuad();
+                var smr = _shield.AddComponent<MeshRenderer>(); smr.shadowCastingMode = ShadowCastingMode.Off;
+                _shieldMat = new Material(_heldItemMat); _shieldMat.SetTexture("_BaseMap", Icons.TextureOf("shield"));
+                smr.sharedMaterial = _shieldMat;
+            }
+            if (_shield != null)
+            {
+                _shield.SetActive(shield);
+                _shieldUp = Mathf.MoveTowards(_shieldUp, P.Blocking ? 1 : 0, dt * 7);
+                _shield.transform.localPosition = Vector3.Lerp(new Vector3(-0.5f, -0.42f, 0.72f), new Vector3(-0.16f, -0.16f, 0.6f), _shieldUp);
+                _shield.transform.localRotation = Quaternion.Euler(0, Mathf.Lerp(60, 8, _shieldUp), Mathf.Lerp(-8, 0, _shieldUp));
+                _shield.transform.localScale = Vector3.one * Mathf.Lerp(0.5f, 0.62f, _shieldUp);
+                float sday = Sky != null ? Sky.DayFactor * 0.85f + 0.15f : 1;
+                float slit = Mathf.Max(Mathf.Pow(0.8f, (1 - _light.x) * 15) * sday, Mathf.Pow(0.8f, (1 - _light.y) * 15));
+                _shieldMat.SetColor("_BaseColor", new Color(slit, slit, slit, 1) * 1.1f);
+            }
             if (_held.activeSelf)
             {
                 _swing = Mathf.Min(1, _swing + dt * 4.5f);
@@ -861,6 +1049,22 @@ namespace Stratum.Game
                         if (l > best) best = l;
                     }
             return new Vector4(sky, best / 15f, 0, 1);
+        }
+
+        // A blast: smoke and sparks thrown out from the middle.
+        public void Puff(Vector3 at, float power)
+        {
+            if (_dust == null) return;
+            _dust.transform.position = at;
+            var ep = new ParticleSystem.EmitParams { applyShapeToPosition = true };
+            int n = Mathf.Clamp((int)(power * 26), 30, 160);
+            for (int i = 0; i < n; i++)
+            {
+                float k = Random.Range(0.25f, 1f);
+                ep.startColor = i % 4 == 0 ? new Color(1f, 0.6f + k * 0.3f, 0.2f, 1) : new Color(k * 0.8f, k * 0.78f, k * 0.75f, 1);
+                ep.velocity = Random.onUnitSphere * Random.Range(1.5f, 3.2f) * power + Vector3.up * 1.5f;
+                _dust.Emit(ep, 1);
+            }
         }
 
         void Burst(Vector3Int p, BlockDef def)

@@ -5,7 +5,9 @@ namespace Stratum.Core
 {
     public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Boat, Cart,
         // 0.12: more wildlife
-        Deer, Fox, Rabbit, Penguin, Goat, Camel, Count }
+        Deer, Fox, Rabbit, Penguin, Goat, Camel,
+        // 0.14
+        Bloat, Hound, Count }
 
     public sealed class MobDef
     {
@@ -41,9 +43,12 @@ namespace Stratum.Core
         public bool Kept;                     // fed or born here: stays when no one is about, saved with the world
         public byte Job;                      // villagers: farmer, smith, librarian, shepherd, butcher
         public float HomeX, HomeZ;            // villagers: the middle of their village
+        public bool Tame, Sit;                // a friend to someone; told to stay
+        public string OwnerKey = "";          // whose (their account, or "me" in a single-player world)
+        public float WayX, WayZ, WayAt; public bool HasWay;      // the next step of a path round what's in the way
 
-        public const byte MBaby = 1, MLove = 2, MRest = 32;       // MRest: bred a little while ago, not hungry yet
-        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2) | (BreedCool > 0 ? MRest : 0));
+        public const byte MBaby = 1, MLove = 2, MRest = 32, MTame = 64, MSit = 128;       // MRest: bred a little while ago, not hungry yet
+        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2) | (BreedCool > 0 ? MRest : 0) | (Tame ? MTame : 0) | (Sit ? MSit : 0));
         public static int JobOf(byte more) => (more >> 2) & 7;
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
@@ -58,6 +63,7 @@ namespace Stratum.Core
     {
         public int Id; public float X, Y, Z; public bool Sneaking, Creative, Alive, Sleeping;
         public string Held;
+        public string Key;                    // who they are between visits (pets know their owner by it)
     }
 
     // Every creature in a world: where they wander, who they chase and hit, when they appear and leave. One copy
@@ -79,7 +85,7 @@ namespace Stratum.Core
                 Drops = new[] { ("raw_chicken", 1, 1, 1f), ("feather", 0, 2, 1f) } });
             D(new MobDef { Kind = MobKind.Ghoul, Name = "Ghoul", Health = 20, Speed = 2.3f, HalfW = 0.3f, Height = 1.85f, Hostile = true, Burns = true,
                 Damage = 3, Reach = 1.7f, AttackEvery = 1.0f, Sight = 24, Xp = 5,
-                Drops = new[] { ("coal", 0, 2, 1f), ("bone", 0, 1, 1f), ("iron_ingot", 1, 1, 0.04f), ("copper_ingot", 1, 1, 0.06f) } });
+                Drops = new[] { ("coal", 0, 2, 1f), ("bone", 0, 1, 1f), ("iron_ingot", 1, 1, 0.04f), ("copper_ingot", 1, 1, 0.06f), ("carrot", 1, 1, 0.04f), ("potato", 1, 1, 0.04f) } });
             D(new MobDef { Kind = MobKind.BoneArcher, Name = "Bone Archer", Health = 20, Speed = 2.2f, HalfW = 0.3f, Height = 1.9f, Hostile = true, Burns = true,
                 Ranged = true, Damage = 3, Reach = 14, AttackEvery = 2.4f, Sight = 22, Xp = 5,
                 Drops = new[] { ("bone", 0, 2, 1f), ("arrow", 0, 3, 1f), ("bow", 1, 1, 0.06f) } });
@@ -107,6 +113,12 @@ namespace Stratum.Core
                 Drops = new[] { ("raw_mutton", 1, 2, 1f), ("hide", 0, 1, 1f) } });
             D(new MobDef { Kind = MobKind.Camel, Name = "Camel", Health = 16, Speed = 1.2f, HalfW = 0.5f, Height = 2.1f, Xp = 3,
                 Drops = new[] { ("hide", 1, 3, 1f) } });
+            // The Bloat: a swollen bog creature that creeps up without a sound, swells and bursts.
+            D(new MobDef { Kind = MobKind.Bloat, Name = "Bloat", Health = 20, Speed = 2.1f, HalfW = 0.4f, Height = 1.5f, Hostile = true,
+                Damage = 0, Reach = 2.6f, AttackEvery = 1, Sight = 16, Xp = 5,
+                Drops = new[] { ("blast_powder", 0, 2, 1f) } });
+            // The Hound: runs wild in the woods; a few bones make it a friend that follows, sits and fights.
+            D(new MobDef { Kind = MobKind.Hound, Name = "Hound", Health = 20, Speed = 2.5f, HalfW = 0.3f, Height = 0.85f, Damage = 3, Reach = 1.6f, Sight = 16, Xp = 2 });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -131,6 +143,10 @@ namespace Stratum.Core
         public event Action<int, float, float, float, Mob> HitPlayer;
         // A creature died: (it, the player who killed it, or 0).
         public event Action<Mob, int> Died;
+        // A hen laid an egg where it stands.
+        public event Action<Mob> Laid;
+        // A Bloat burst: the host makes the blast.
+        public event Action<Mob> Burst;
         // A creature made a sound worth hearing: (it, "hurt"/"die"/"say"/"shoot").
         public event Action<Mob, string> Sound;
 
@@ -148,6 +164,7 @@ namespace Stratum.Core
         float _villageTimer = 3;                                       // WeatherSim state: no sunburn in rain, storms are dark enough for monsters
 
         float Rand() => (float)_r.NextDouble();
+        readonly Dictionary<int, string> _keys = new Dictionary<int, string>();      // who each player is, as of the last tick
 
         public Mob Spawn(MobKind k, float x, float y, float z)
         {
@@ -167,7 +184,7 @@ namespace Stratum.Core
         public MobKind? Mount(int id, float px, float py, float pz, out float x, out float y, out float z, out float yaw)
         {
             x = y = z = yaw = 0;
-            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || !m.Def.Vehicle) return null;
+            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || !(m.Def.Vehicle || m.Tame && m.Kind == MobKind.Camel)) return null;
             float dx = m.X - px, dy = m.Y - py, dz = m.Z - pz;
             if (dx * dx + dy * dy + dz * dz > 7 * 7) return null;
             x = m.X; y = m.Y; z = m.Z; yaw = m.Yaw;
@@ -176,11 +193,12 @@ namespace Stratum.Core
         }
 
         // A boat or cart put down (from the hand, or got out of).
-        public Mob Park(MobKind kind, float x, float y, float z, float yaw)
+        public Mob Park(MobKind kind, float x, float y, float z, float yaw, string who = "")
         {
-            if (!Def(kind).Vehicle) return null;
+            if (!Def(kind).Vehicle && kind != MobKind.Camel) return null;
             var m = Spawn(kind, x, y, z);
             m.Yaw = yaw; m.Kept = true;
+            if (kind == MobKind.Camel) { m.Tame = true; m.OwnerKey = who ?? ""; }      // the camel someone rode here
             return m;
         }
 
@@ -191,6 +209,7 @@ namespace Stratum.Core
             float dx = m.X - px, dz = m.Z - pz, dy = m.Y + m.Def.Height / 2 - (py + 1.4f);
             float reach = 4.6f + m.Def.HalfW;
             if (dx * dx + dy * dy + dz * dz > reach * reach) return false;
+            if (m.Tame && _keys.TryGetValue(player, out var whose) && whose == m.OwnerKey) return false;     // nobody hits their own friend
             Hurt(m, damage, px, pz, player, 1);
             return true;
         }
@@ -203,8 +222,8 @@ namespace Stratum.Core
             m.FromX = fromX; m.FromZ = fromZ;
             float dx = m.X - fromX, dz = m.Z - fromZ, len = (float)Math.Sqrt(dx * dx + dz * dz);
             if (len > 0.01f && !m.Def.Boss) { m.VX += dx / len * 6 * knock; m.VZ += dz / len * 6 * knock; if (m.OnGround) m.VY = 4.5f * knock; }
-            if (!m.Def.Hostile) m.Flee = 5;
-            else if (player > 0) { m.Target = player; m.Angry = true; }
+            if (!m.Def.Hostile && m.Kind != MobKind.Hound) m.Flee = 5;
+            else if (player > 0 && !m.Tame) { m.Target = player; m.Angry = true; }      // a wild hound bites back
             if (m.Def.Vehicle) { m.VX = m.VZ = m.VY = 0; m.Flee = 0; }
             if (m.Health <= 0)
             {
@@ -214,6 +233,31 @@ namespace Stratum.Core
                 Died?.Invoke(m, player);
             }
             else Sound?.Invoke(m, "hurt");
+        }
+
+        // A blast at (x, y, z): everything near is thrown back and hurt, less the further away it stands.
+        public void Blast(float x, float y, float z, float power, List<Seen> players)
+        {
+            float reach = power * 2.2f;
+            var cause = new Mob { Kind = MobKind.Bloat, Def = Def(MobKind.Bloat), X = x, Y = y, Z = z };
+            for (int i = All.Count - 1; i >= 0; i--)
+            {
+                var m = All[i];
+                if (m.Dead > 0 || m.Kind == MobKind.Arrow) continue;
+                float dx = m.X - x, dy = m.Y + m.Def.Height / 2 - y, dz = m.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist > reach) continue;
+                m.Hurt = 0;
+                Hurt(m, (1 - dist / reach) * power * 6, x, z, 0, 1.6f);
+            }
+            if (players == null) return;
+            foreach (var p in players)
+            {
+                if (!p.Alive || p.Creative) continue;
+                float dx = p.X - x, dy = p.Y + 0.9f - y, dz = p.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist > reach) continue;
+                float dmg = (1 - dist / reach) * power * 5 * (Difficulty == 1 ? 0.6f : 1);
+                if (dmg >= 0.5f) HitPlayer?.Invoke(p.Id, dmg, x, z, cause);
+            }
         }
 
         // An arrow loosed by a player (or by a creature, owner < 0).
@@ -249,7 +293,7 @@ namespace Stratum.Core
         }
 
         // A player uses an item on a creature (shears on a sheep, food). Returns what they get, or null.
-        public (string item, int count)? Use(int id, string item, float px, float pz)
+        public (string item, int count)? Use(int id, string item, float px, float pz, string who = "")
         {
             if (!_byId.TryGetValue(id, out var m) || m.Dead > 0) return null;
             float dx = m.X - px, dz = m.Z - pz;
@@ -257,9 +301,24 @@ namespace Stratum.Core
             if (item != null && item == FoodOf(m.Kind))
             {
                 m.Kept = true;
+                if (m.Kind == MobKind.Camel && !m.Tame) { m.Tame = true; m.OwnerKey = who ?? ""; }      // a fed camel lets itself be ridden
                 if (m.Baby > 0) m.Baby = Math.Max(0, m.Baby - GrowUp * 0.1f);
                 else if (m.Love <= 0 && m.BreedCool <= 0) m.Love = LoveFor;
                 Sound?.Invoke(m, "eat");
+                return null;
+            }
+            if (m.Kind == MobKind.Hound)
+            {
+                if (!m.Tame)
+                {
+                    if (item != "bone") return null;
+                    Sound?.Invoke(m, "eat");
+                    if (Rand() < 0.34f) { m.Tame = true; m.Kept = true; m.OwnerKey = who ?? ""; m.Angry = false; m.Target = -1; m.Love = 1.2f; m.Health = m.Def.Health; }
+                    return null;
+                }
+                if (item != null && (item.StartsWith("raw_") || item == "steak" || item.StartsWith("roast_")) && m.Health < m.Def.Health)
+                { m.Health = Math.Min(m.Def.Health, m.Health + 6); m.Love = 0.8f; Sound?.Invoke(m, "eat"); return null; }
+                if ((who ?? "") == m.OwnerKey) m.Sit = !m.Sit;
                 return null;
             }
             if (item == "shears" && m.Kind == MobKind.Sheep && !m.Sheared)
@@ -307,6 +366,7 @@ namespace Stratum.Core
             if (dt <= 0) return;
             if (dt > 0.1f) dt = 0.1f;
             _clock += dt;
+            _keys.Clear(); foreach (var p in players) _keys[p.Id] = p.Key ?? "";
             for (int i = All.Count - 1; i >= 0; i--)
             {
                 var m = All[i];
@@ -336,6 +396,12 @@ namespace Stratum.Core
                 m.Hurt = Math.Max(0, m.Hurt - dt);
                 m.Cool = Math.Max(0, m.Cool - dt);
                 if (m.Sheared && (m.Regrow -= dt) <= 0) m.Sheared = false;
+                // A grown hen lays an egg every few minutes.
+                if (m.Kind == MobKind.Chicken && m.Baby <= 0)
+                {
+                    if (m.Regrow <= 0) m.Regrow = 120 + Rand() * 400;
+                    else if ((m.Regrow -= dt) <= 0) { Laid?.Invoke(m); m.Regrow = 300 + Rand() * 300; }
+                }
                 if (m.Baby > 0) m.Baby = Math.Max(0, m.Baby - dt);
                 if (m.BreedCool > 0) m.BreedCool = Math.Max(0, m.BreedCool - dt);
                 if (m.Love > 0) { m.Love = Math.Max(0, m.Love - dt); Mate(m); }
@@ -343,6 +409,11 @@ namespace Stratum.Core
                 Physics(m, dt);
                 Hazards(m, dt);
                 if (Despawn(m, players)) Remove(m);
+            }
+            if ((_cageTimer -= dt) <= 0)
+            {
+                _cageTimer = 4 + Rand() * 6;
+                if (Difficulty > 0 && Spawning) foreach (var p in players) if (p.Alive && !Ember.In(p.X)) Cages(p);
             }
             if (VillageNear != null && (_villageTimer -= dt) <= 0)
             {
@@ -420,7 +491,7 @@ namespace Stratum.Core
         // The animals worth keeping between visits: anything fed or born to a player.
         public void Write(System.IO.BinaryWriter w)
         {
-            w.Write(2);
+            w.Write(3);
             int n = 0; foreach (var m in All) if (m.Kept && m.Dead <= 0) n++;
             w.Write(n);
             foreach (var m in All)
@@ -429,13 +500,14 @@ namespace Stratum.Core
                 w.Write((byte)m.Kind); w.Write(m.X); w.Write(m.Y); w.Write(m.Z); w.Write(m.Yaw); w.Write(m.Health);
                 w.Write(m.Baby); w.Write(m.BreedCool); w.Write(m.Sheared); w.Write(m.Regrow);
                 w.Write(m.Job); w.Write(m.HomeX); w.Write(m.HomeZ);
+                w.Write(m.Tame); w.Write(m.Sit); w.Write(m.OwnerKey ?? "");
             }
         }
 
         public void Read(System.IO.BinaryReader r)
         {
             int ver = r.ReadInt32();
-            if (ver != 1 && ver != 2) return;
+            if (ver < 1 || ver > 3) return;
             int n = r.ReadInt32();
             for (int i = 0; i < n; i++)
             {
@@ -445,11 +517,39 @@ namespace Stratum.Core
                 bool sheared = r.ReadBoolean(); float regrow = r.ReadSingle();
                 byte job = 0; float homeX = 0, homeZ = 0;
                 if (ver >= 2) { job = r.ReadByte(); homeX = r.ReadSingle(); homeZ = r.ReadSingle(); }
+                bool tame = false, sit = false; string owner = "";
+                if (ver >= 3) { tame = r.ReadBoolean(); sit = r.ReadBoolean(); owner = r.ReadString(); }
                 if ((int)k < 0 || (int)k >= Defs.Length) continue;
                 var m = Spawn(k, x, y + 0.05f, z);
                 m.Yaw = yaw; m.Health = health; m.Baby = baby; m.BreedCool = breedCool;
                 m.Sheared = sheared; m.Regrow = regrow; m.Kept = true;
                 if (ver >= 2) { m.Job = job; m.HomeX = homeX; m.HomeZ = homeZ; }
+                m.Tame = tame; m.Sit = sit; m.OwnerKey = owner;
+            }
+        }
+
+        float _cageTimer = 3;
+        readonly List<(int x, int y, int z)> _cages = new List<(int, int, int)>();
+
+        // A monster cage with someone within sixteen blocks lets another creature out beside it (no more than four at once).
+        void Cages(in Seen p)
+        {
+            _cages.Clear();
+            Ruins.CagesNear(Seed, p.X, p.Z, 16, _cages);
+            foreach (var (x, y, z) in _cages)
+            {
+                if (Math.Abs(p.Y - y) > 10 || !Loaded(x, z) || _get(x, y, z) != Blocks.Cage) continue;
+                int near = 0;
+                foreach (var m in All) if (m.Def.Hostile && m.Dead <= 0 && Math.Abs(m.X - x) < 20 && Math.Abs(m.Z - z) < 20 && Math.Abs(m.Y - y) < 8) near++;
+                if (near >= 4) continue;
+                var kind = Ruins.CageKind(Seed, x, y, z);
+                for (int tries = 0; tries < 6; tries++)
+                {
+                    float sx = x + 0.5f + _r.Next(-3, 4), sz = z + 0.5f + _r.Next(-3, 4);
+                    if (Body.Blocked(_get, sx, y, sz, Def(kind).HalfW, Def(kind).Height) || !Blocks.Get(_get((int)Math.Floor(sx), y - 1, (int)Math.Floor(sz))).Solid) continue;
+                    Spawn(kind, sx, y, sz);
+                    break;
+                }
             }
         }
 
@@ -480,8 +580,10 @@ namespace Stratum.Core
             float wx = 0, wz = 0;                       // where it wants to go (a direction, not normalised)
             bool jumpy = false;
 
+            bool pet = m.Tame && m.Kind == MobKind.Hound;
+            if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
             Seen? target = null;
-            if (d.Hostile && Difficulty > 0 || m.Angry)
+            if (!pet && (d.Hostile && Difficulty > 0 || m.Angry))
             {
                 // Pick (or keep) someone to go after.
                 float best = float.MaxValue;
@@ -497,7 +599,8 @@ namespace Stratum.Core
                 if (target == null) m.Angry = false;
             }
 
-            if (target is Seen t)
+            if (pet) { }
+            else if (target is Seen t)
             {
                 float dx = t.X - m.X, dz = t.Z - m.Z, dist = (float)Math.Sqrt(dx * dx + dz * dz);
                 float dy = t.Y - m.Y;
@@ -523,9 +626,24 @@ namespace Stratum.Core
                         Sound?.Invoke(m, "shoot");
                     }
                 }
+                else if (m.Kind == MobKind.Bloat)
+                {
+                    // Close enough: it stops and swells; back off in time and it calms down again.
+                    wx = dx; wz = dz;
+                    bool close = dist < d.Reach && Math.Abs(dy) < 2.5f;
+                    if (close || m.Phase > 0 && dist < 5.5f)
+                    {
+                        if (m.Phase <= 0) Sound?.Invoke(m, "say");
+                        m.Phase += dt; wx = wz = 0;
+                        if (m.Phase >= 1.5f) { m.Dead = 0.05f; m.Health = 0; Burst?.Invoke(m); }
+                    }
+                    else m.Phase = Math.Max(0, m.Phase - dt * 2);
+                    m.Windup = m.Phase > 0 ? 0.2f : 0;
+                }
                 else
                 {
                     wx = dx; wz = dz;
+                    if (!d.Climbs && dist > 2.5f) Way(m, t.X, t.Y, t.Z, ref wx, ref wz);
                     if (m.Kind == MobKind.Crawler && dist < 4.5f && dist > 2 && m.OnGround && Rand() < dt * 2) { m.VY = 6; m.VX += dx / dist * 4; m.VZ += dz / dist * 4; }
                     if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2.2f && m.Cool <= 0)
                     {
@@ -617,6 +735,125 @@ namespace Stratum.Core
             if (m.InWater) m.VY = Math.Max(m.VY, d.Floats ? 1.5f : 1.0f);
         }
 
+        // A friend's turn: stay if told, see off anything hostile nearby, otherwise keep up with its owner.
+        void Pet(Mob m, float dt, List<Seen> players, ref float wx, ref float wz, ref float speed)
+        {
+            m.Flee = 0; m.Angry = false; m.Target = -1; m.HasGoal = false;
+            Seen? owner = null;
+            foreach (var p in players) if ((p.Key ?? "") == m.OwnerKey && p.Alive) owner = p;
+            if (m.Sit) return;
+            Mob foe = null; float best = 9 * 9;
+            if (owner != null)
+                foreach (var o in All)
+                {
+                    if (!o.Def.Hostile || o.Dead > 0 || o.Kind == MobKind.Bloat || o.Def.Boss || o.Kind == MobKind.Arrow) continue;
+                    float fx = o.X - m.X, fy = o.Y - m.Y, fz = o.Z - m.Z, d2 = fx * fx + fy * fy * 4 + fz * fz;
+                    if (d2 < best) { best = d2; foe = o; }
+                }
+            if (foe != null)
+            {
+                wx = foe.X - m.X; wz = foe.Z - m.Z; speed *= 1.5f;
+                m.Yaw = (float)(Math.Atan2(wx, wz) * 180 / Math.PI);
+                if (wx * wx + wz * wz > 6) Way(m, foe.X, foe.Y, foe.Z, ref wx, ref wz);
+                else if (m.Cool <= 0) { m.Cool = 1; m.Windup = 0.2f; Hurt(foe, m.Def.Damage + 1, m.X, m.Z, 0, 0.6f); }
+                return;
+            }
+            if (owner is Seen who)
+            {
+                float dx = who.X - m.X, dz = who.Z - m.Z, dist = (float)Math.Sqrt(dx * dx + dz * dz);
+                if ((dist > 22 || Math.Abs(who.Y - m.Y) > 12) && Loaded((int)Math.Floor(who.X), (int)Math.Floor(who.Z)))
+                {
+                    // Left far behind: it turns up at its owner's side.
+                    m.X = who.X + 0.8f; m.Y = who.Y + 0.1f; m.Z = who.Z + 0.8f; m.VX = m.VY = m.VZ = 0; m.HasWay = false;
+                }
+                else if (dist > 3.5f)
+                {
+                    wx = dx; wz = dz; speed *= dist > 8 ? 1.7f : 1.1f;
+                    Way(m, who.X, who.Y, who.Z, ref wx, ref wz);
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------ finding a way round
+        // Where to head next on the way to (tx, ty, tz): the next step of a path over ground that can be walked
+        // (up one block, down three), worked out a few times a second. With no path it stays the straight line.
+        const int PathReach = 18, PathMost = 320;
+        readonly Dictionary<long, (long from, int g)> _seenNodes = new Dictionary<long, (long, int)>();
+        readonly List<(long key, int f)> _open = new List<(long, int)>();
+
+        static long NodeKey(int x, int y, int z) => ((long)(x & 0x3FFFFFF) << 38) | ((long)(z & 0x3FFFFFF) << 12) | (long)(y & 0xFFF);
+        static (int x, int y, int z) NodeAt(long k)
+        {
+            int x = (int)(k >> 38); if (x >= 1 << 25) x -= 1 << 26;
+            int z = (int)((k >> 12) & 0x3FFFFFF); if (z >= 1 << 25) z -= 1 << 26;
+            return (x, (int)(k & 0xFFF), z);
+        }
+
+        bool Stand(int x, int y, int z, bool tall)
+        {
+            if (y < 1 || y >= Chunk.Height - 2) return false;
+            var here = Blocks.Get(_get(x, y, z));
+            if (here.Solid || Blocks.IsLava(here.Id) || here.Id == Blocks.Fire) return false;
+            if (tall && Blocks.Get(_get(x, y + 1, z)).Solid) return false;
+            var below = Blocks.Get(_get(x, y - 1, z));
+            return below.Solid || here.Fluid == 1;
+        }
+
+        void Way(Mob m, float tx, float ty, float tz, ref float wx, ref float wz)
+        {
+            if (m.WayAt > _clock)
+            {
+                if (m.HasWay) { wx = m.WayX - m.X; wz = m.WayZ - m.Z; if (wx * wx + wz * wz < 0.2f) m.WayAt = 0; }
+                return;
+            }
+            m.WayAt = _clock + 0.5f + Rand() * 0.4f; m.HasWay = false;
+            bool tall = m.Def.Height > 1.05f;
+            int sx = (int)Math.Floor(m.X), sy = (int)Math.Floor(m.Y + 0.3f), sz = (int)Math.Floor(m.Z);
+            int gx = (int)Math.Floor(tx), gy = (int)Math.Floor(ty + 0.3f), gz = (int)Math.Floor(tz);
+            if (Math.Abs(gx - sx) > PathReach || Math.Abs(gz - sz) > PathReach || !Loaded(gx, gz)) return;
+            // Standing in the air or the water: fall or float first.
+            if (!Stand(sx, sy, sz, tall)) { if (Stand(sx, sy - 1, sz, tall)) sy--; else return; }
+            _seenNodes.Clear(); _open.Clear();
+            long start = NodeKey(sx, sy, sz), found = -1;
+            _seenNodes[start] = (-1, 0); _open.Add((start, 0));
+            int looked = 0; long nearest = start; int nearestH = int.MaxValue;
+            while (_open.Count > 0 && looked++ < PathMost)
+            {
+                int bi = 0; for (int i = 1; i < _open.Count; i++) if (_open[i].f < _open[bi].f) bi = i;
+                long cur = _open[bi].key; _open.RemoveAt(bi);
+                var (x, y, z) = NodeAt(cur);
+                int h = Math.Abs(x - gx) + Math.Abs(z - gz) + Math.Abs(y - gy);
+                if (h < nearestH) { nearestH = h; nearest = cur; }
+                if (Math.Abs(x - gx) + Math.Abs(z - gz) <= 1 && Math.Abs(y - gy) <= 2) { found = cur; break; }
+                int g = _seenNodes[cur].g;
+                for (int d = 0; d < 4; d++)
+                {
+                    int nx = x + (d == 0 ? 1 : d == 1 ? -1 : 0), nz = z + (d == 2 ? 1 : d == 3 ? -1 : 0);
+                    if (Math.Abs(nx - sx) > PathReach || Math.Abs(nz - sz) > PathReach) continue;
+                    int ny = int.MinValue;
+                    // Up one (with room to jump), level, or down as far as three.
+                    if (Stand(nx, y + 1, nz, tall) && !Blocks.Get(_get(x, y + (tall ? 2 : 1), z)).Solid) ny = y + 1;
+                    if (Stand(nx, y, nz, tall)) ny = y;
+                    else if (ny == int.MinValue && !Blocks.Get(_get(nx, y, nz)).Solid && (!tall || !Blocks.Get(_get(nx, y + 1, nz)).Solid))
+                        for (int down = 1; down <= 3; down++) if (Stand(nx, y - down, nz, tall)) { ny = y - down; break; } else if (Blocks.Get(_get(nx, y - down, nz)).Solid) break;
+                    if (ny == int.MinValue) continue;
+                    long nk = NodeKey(nx, ny, nz);
+                    int ng = g + 10 + (ny > y ? 4 : 0) + (Blocks.Get(_get(nx, ny, nz)).Fluid == 1 ? 12 : 0);
+                    if (_seenNodes.TryGetValue(nk, out var old) && old.g <= ng) continue;
+                    _seenNodes[nk] = (cur, ng);
+                    _open.Add((nk, ng + (Math.Abs(nx - gx) + Math.Abs(nz - gz) + Math.Abs(ny - gy)) * 10));
+                }
+            }
+            if (found < 0) found = nearest;           // no way all the way: as near as can be reached
+            if (found == start) return;
+            // Walk back to the step after the start.
+            long step = found;
+            while (_seenNodes[step].from != start && _seenNodes[step].from != -1) step = _seenNodes[step].from;
+            var (wxi, _, wzi) = NodeAt(step);
+            m.WayX = wxi + 0.5f; m.WayZ = wzi + 0.5f; m.HasWay = true;
+            wx = m.WayX - m.X; wz = m.WayZ - m.Z;
+        }
+
         static float LerpAngle(float a, float b, float t)
         {
             float d = ((b - a) % 360 + 540) % 360 - 180;
@@ -692,6 +929,7 @@ namespace Stratum.Core
             bool burning = false;
             if (d.Burns && !Ember.In(m.X) && IsDay && Weather == 0 && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
             if (m.InLava && !d.Fireproof) burning = true;
+            if (!d.Fireproof && m.Y >= 0 && m.Y < Chunk.Height && _get((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 0.2f), (int)Math.Floor(m.Z)) == Blocks.Fire) burning = true;
             if (burning) m.Burn = 1.5f; else m.Burn = Math.Max(0, m.Burn - dt);
             if (m.Burn > 0 && !d.Fireproof && m.Hurt <= 0) Hurt(m, m.InLava ? 4 : 1, m.X + 0.01f, m.Z, 0, 0.1f);
             if (m.InWater && m.Kind == MobKind.EmberImp && m.Hurt <= 0) Hurt(m, 1, m.X, m.Z, 0, 0.1f);
@@ -850,10 +1088,10 @@ namespace Stratum.Core
             float k = Rand();
             switch (biome)
             {
-                case Biome.Taiga: kind = k < 0.35f ? MobKind.Sheep : k < 0.55f ? MobKind.Cow : k < 0.8f ? MobKind.Fox : MobKind.Deer; break;
+                case Biome.Taiga: kind = k < 0.3f ? MobKind.Sheep : k < 0.45f ? MobKind.Cow : k < 0.65f ? MobKind.Fox : k < 0.82f ? MobKind.Hound : MobKind.Deer; break;
                 case Biome.Tundra: kind = k < 0.5f ? MobKind.Penguin : k < 0.8f ? MobKind.Sheep : MobKind.Fox; break;
                 case Biome.Forest: case Biome.BirchWood:
-                    kind = k < 0.25f ? MobKind.Pig : k < 0.45f ? MobKind.Chicken : k < 0.6f ? MobKind.Cow : k < 0.85f ? MobKind.Deer : MobKind.Rabbit; break;
+                    kind = k < 0.22f ? MobKind.Pig : k < 0.4f ? MobKind.Chicken : k < 0.55f ? MobKind.Cow : k < 0.75f ? MobKind.Deer : k < 0.88f ? MobKind.Hound : MobKind.Rabbit; break;
                 case Biome.Desert: if (Rand() > 0.35f) return; kind = MobKind.Camel; break;
                 case Biome.Peaks: kind = MobKind.Goat; break;
                 case Biome.Beach: case Biome.Ocean: return;
@@ -885,7 +1123,8 @@ namespace Stratum.Core
                 if (BlockLight(x, y, z) > 3) continue;            // torches keep a place safe
                 if (!FarFromAll(x, y, z, players, 20)) continue;
                 float k = Rand();
-                var kind = k < 0.48f ? MobKind.Ghoul : k < 0.78f ? MobKind.BoneArcher : MobKind.Crawler;
+                var kind = k < 0.40f ? MobKind.Ghoul : k < 0.66f ? MobKind.BoneArcher : k < 0.84f ? MobKind.Crawler : MobKind.Bloat;
+                if (kind == MobKind.Bloat && Ember.In(x)) kind = MobKind.Ghoul;
                 if (kind == MobKind.Crawler && Body.Blocked(_get, x + 0.5f, y, z + 0.5f, 0.6f, 0.9f)) kind = MobKind.Ghoul;
                 if (Body.Blocked(_get, x + 0.5f, y, z + 0.5f, Def(kind).HalfW, Def(kind).Height)) continue;
                 Spawn(kind, x + 0.5f, y, z + 0.5f);

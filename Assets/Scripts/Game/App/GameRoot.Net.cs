@@ -129,10 +129,10 @@ namespace Stratum.Game
                 byte[] sealedLogin;
                 try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
                 catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
-                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             }
             else   // a server from before 0.8 has no key to seal to
-                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             net.Send(hello);
 
             Reader welcome = null; t = 0;
@@ -190,6 +190,7 @@ namespace Stratum.Game
             _keepInv = welcome.More && welcome.Bool();          // 0.5.1: the server's world lets players keep their things
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
+            _myName = name;
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
             yield return null;
 
@@ -216,6 +217,7 @@ namespace Stratum.Game
             _looseBack.Clear();
             for (int i = Inventory.Size; i < slots.Length; i++)
                 if (!slots[i].Empty && Items.Get(slots[i].Item) != null) _looseBack.Add(slots[i]);
+            TakeUpShield();
             if (!hasPos && creative) StarterCreative(_player.Inv);
             _player.Died = OnDied;
             _player.InputEnabled = false;
@@ -311,6 +313,7 @@ namespace Stratum.Game
             if (_player.Asleep) flags |= Net.Asleep;
             if (_player.Riding == MobKind.Boat) flags |= Net.InBoat;
             if (_player.Riding == MobKind.Cart) flags |= Net.InCart;
+            if (_player.Riding == MobKind.Camel) flags |= Net.InBoat | Net.InCart;      // both together: on a camel
             bool same = (f - _lastSentPos).sqrMagnitude < 0.0004f && Mathf.Abs(Mathf.DeltaAngle(_player.Yaw, _lastSentYaw)) < 0.5f &&
                         Mathf.Abs(_player.Pitch - _lastSentPitch) < 0.5f && flags == _lastSentFlags;
             if (same && !force) return;
@@ -433,6 +436,12 @@ namespace Stratum.Game
                 }
                 case Net.Msg.Mobs:
                     (_link as RemoteLink)?.Received(r);
+                    break;
+                case Net.Msg.Boom:
+                    _link?.Boomed?.Invoke(new Vector3(r.F32(), r.F32(), r.F32()), r.F32());
+                    break;
+                case Net.Msg.Drops:
+                    (_link as RemoteLink)?.ReceivedDrops(r);
                     break;
                 case Net.Msg.Arrived:
                     Land(new Vector3(r.F32(), r.F32() + 0.01f, r.F32()));

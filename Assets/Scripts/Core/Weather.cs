@@ -30,6 +30,21 @@ namespace Stratum.Core
         }
 
         public static string Name(int s) => s == Thunder ? "thunderstorm" : s == Rain ? "rain" : "clear";
+        // A time of day by name or as a count from 0 (sunrise) to 24000; -1 if it's neither. The answer is 0..1 with
+        // sunrise at 0.25.
+        public static float TimeOf(string s)
+        {
+            switch (s)
+            {
+                case "day": case "morning": case "sunrise": return 0.27f;
+                case "noon": return 0.5f;
+                case "night": case "sunset": return 0.8f;
+                case "midnight": return 0.0f;
+            }
+            if (int.TryParse(s, out int n) && n >= 0 && n <= 24000) return (0.25f + n / 24000f) % 1f;
+            return -1;
+        }
+
         public static int Parse(string s) => s == "rain" ? Rain : s == "thunder" || s == "storm" ? Thunder : s == "clear" || s == "sun" ? Clear : -1;
     }
 }

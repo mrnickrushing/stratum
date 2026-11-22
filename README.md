@@ -231,33 +231,33 @@ builds a sunstone pillar by the spawn, the guest finds it and breaks its top blo
 other and logs what it saw to `smoke.txt` (with `-voicetone`, a made-up voice instead of the microphone, and the voice
 frames sent and heard). `-connect host:port -name X -password P [-create]` alone logs in straight from the command line.
 
+## Since 0.14
+
+- **Things on the ground** (`Core/Drops.cs`, `Game/World/DropViews.cs`): mined blocks, creature loot and a broken chest's
+  contents fall as items; walking over them picks them up, Q throws what is held (Ctrl: the stack). The server only
+  lets something "fall from a block" beside a block that player really just broke. Games before 0.14 don't see drops
+  (feature bit 16) and are handed their loot directly as before.
+- **Loose blocks** fall (`Water.Fall`: sand, gravel); **leaves** go when their whole trunk is cut (`Core/Decay.cs`);
+  **torches** hang on walls (`Blocks.WallTorch`).
+- **Fire and blasts** (`Core/Fire.cs`): fire eats what `BlockDef.Burns` marks and only spreads in survival worlds that
+  aren't peaceful. Blast kegs (fire striker, fire, spark power, another blast) and the Bloat use `Blasts.Explode`.
+- **Farming and food**: carrots and potatoes (`Grows == 1`, planted as themselves), eggs, fishing (client side, like
+  eating), potions at a brewing stand (`Items.Potions`, `Player.Fx`).
+- **Gear**: starstone tools and armour (tier 5), a shield in the off-hand slot (`Inventory.OffHand`, saved as the last
+  loose stack so old saves and servers are untouched).
+- **Creatures**: the Bloat (bursts), the Hound (befriended with bones; `Mob.Tame/Sit/OwnerKey`, saved in creatures.bin
+  version 3), camels ridden once fed, and `MobSim.Way` (A* over walkable ground) for chasers and friends.
+- **Spark machines** (`Signal.Push`, `Core/Machines.cs`): pistons, sticky pistons, dispenser, observer, comparator. A
+  machine's block number is direction * 2 + on.
+- **Under the ground** (`Core/Ruins.cs`): vaults with a monster cage and dusty chests, and old workings.
+- **Commands and goals**: /give, /gamemode, /time set (single player; `STRATUM_OPS` names who may /give and set the
+  time on a server). G lists goals; Tab shows who is here; F5 changes the view; hearts and loaves replace the bars.
+
 ## Next
 
-What is planned, in the order it will be done. Names and art stay Stratum's own throughout.
-
-**Small things left from the 0.13 review**
-- Five wrong passwords lock password login for that name for a minute, and anyone can trigger it (`Accounts.cs`).
-- A tree refused by its own chunk still has its canopy drawn by the neighbour (`WorldGen.BaseOk`): floating leaf slices.
-- `Math.Pow` in the height function can differ by one block between the game's runtime and the server's.
-- A portal room carved over a container leaves its contents orphaned in `containers.bin` (`Ember.Arrive`).
-
-**Mechanics, most noticeable first**
-1. Items on the ground: Q to drop, pick up by walking over, mined blocks and creature loot fall as items.
-2. Sand and gravel fall; leaves decay once the trunk is cut.
-3. Torches on walls.
-4. An exploding creature, a blast block and explosions.
-5. Fire: a fire block, spread, burning wood, lightning that sets things alight.
-6. Fishing; more crops and foods; chickens lay eggs.
-7. Hearts and food icons instead of bars; third-person view (F5); sprint and sneak keys as players expect.
-8. Shield and an off-hand slot; a tool tier above iron.
-9. Taming and pets; animals to ride.
-10. Creatures that find their way round obstacles.
-11. Pistons, then dispensers, observers and comparators.
-12. Potions and status effects.
-13. Dungeons, mineshafts and other places with loot in chests; spawners.
-14. `/give`, `/gamemode`, `/time set`; goals to tick off; a player list on Tab.
-15. More creatures (teleporting, bouncing, water) and more biomes.
-16. A third dimension and a final boss.
+**Mechanics still to come**
+1. More creatures (teleporting, bouncing, water) and more biomes.
+2. A third dimension and a final boss.
 
 **Only if measurements say so**
 - Merging flat runs of faces in the mesher, and a longer view distance (take an F4 report on the slowest computer first).

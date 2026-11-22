@@ -13,6 +13,7 @@ namespace Stratum.Server
     //   STRATUM_MOTD / --motd          a line shown when joining
     //   STRATUM_MAX_PLAYERS / --max    players at once (default 10)
     //   STRATUM_PASSWORD / --password  invite code needed to make an account (blank: anyone who has the address can)
+    //   STRATUM_OPS / --ops            names, comma separated, who may use /give, /time set, /day and /night
     //   STRATUM_RESET / --reset        "Name1,Name2": clears those accounts' passwords once; each owner's next login
     //                                  sets a new one (for a forgotten password; everything they own is kept)
     //   STRATUM_CREATIVE / --creative  1 for creative mode
@@ -59,6 +60,7 @@ namespace Stratum.Server
             c.Motd = Get("STRATUM_MOTD", "--motd") ?? "";
             if (int.TryParse(Get("STRATUM_MAX_PLAYERS", "--max"), out int max)) c.MaxPlayers = Math.Clamp(max, 1, 64);
             c.Password = Get("STRATUM_PASSWORD", "--password") ?? "";
+            foreach (var op in (Get("STRATUM_OPS", "--ops") ?? "").Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)) c.Ops.Add(op.Trim().ToLowerInvariant());
             c.Reset = Get("STRATUM_RESET", "--reset") ?? "";
             var cr = Get("STRATUM_CREATIVE", "--creative");
             c.Creative = cr == "1" || string.Equals(cr, "true", StringComparison.OrdinalIgnoreCase);

@@ -20,6 +20,7 @@ namespace Stratum.Server
         public string Motd = "";
         public int MaxPlayers = 10;
         public string Password = "";               // invite code needed to make an account (blank: anyone can)
+        public HashSet<string> Ops = new HashSet<string>();     // names (lower case) who may /give and set the time
         public string Reset = "";                  // account names whose passwords to clear once (STRATUM_RESET)
         public bool Creative;
         public int MaxView = 10;
@@ -293,6 +294,7 @@ namespace Stratum.Server
         public const int KnowsTransfers = 4;    // 0.7.2: says what it saw in a slot before changing it (needed for furnaces)
         long _order;
         public const int KnowsKinds = 1;        // 0.4: Sky Islands and the themed worlds
+        public const int KnowsDrops = 16;       // 0.14: shows things lying on the ground and picks them up
         public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 

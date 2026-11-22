@@ -308,7 +308,9 @@ namespace Stratum.Core
                     if (u == 3) { P(ch, bx, bz, p, u, f - 1, v, Blocks.Water); P(ch, bx, bz, p, u, f - 2, v, Blocks.Dirt); continue; }
                     P(ch, bx, bz, p, u, f - 1, v, Blocks.FarmlandWet);
                     int stage = (int)((h >> ((u * 9 + v) % 24)) % 4);
-                    P(ch, bx, bz, p, u, f, v, (ushort)(Blocks.Wheat + stage));
+                    // Wheat on one side of the ditch; carrots or potatoes on the other.
+                    ushort crop = u < 3 ? Blocks.Wheat : (h & 1) == 0 ? Blocks.Carrot : Blocks.Potato;
+                    P(ch, bx, bz, p, u, f, v, (ushort)(crop + stage));
                 }
         }
 

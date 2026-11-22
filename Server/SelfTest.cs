@@ -534,15 +534,15 @@ namespace Stratum.Server
                     Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
                     int unmade = 0; string which = "";
                     foreach (var id in Blocks.Palette)
-                        if (id >= Blocks.ByKey["orange_wool"] && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
-                    Check(unmade == 0, "every block of the 0.11 building set can be crafted" + which);
+                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                    Check(unmade == 0, "every block added since the 0.11 building set can be crafted (ores are dug)" + which);
                 }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
                 {
                     int shaped = 0, wrong = 0; string firstWrong = "";
                     foreach (var rc in Items.Recipes)
                     {
-                        if (rc.Station == "furnace") continue;
+                        if (rc.Station == "furnace" || rc.Station == "brewer") continue;
                         if (rc.Shape != null) shaped++;
                         var cells = Crafting.Layout(rc); var grid = new Stack[9];
                         for (int i = 0; i < 9; i++) if (cells[i] != null) grid[i] = new Stack(cells[i] == "@planks" ? "oak_planks" : cells[i] == "@log" ? "oak_log" : cells[i], 1);
@@ -884,6 +884,38 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
+                    // Things on the ground, for a game that knows about them.
+                    using (var d = new Bot(port) { Features = 31 })
+                    {
+                        d.Create("Dot", "dot-password", world: "");
+                        Check(d.Welcome(), "Dot joins with a game that shows things on the ground");
+                        d.Move(px + 0.5f, py + 1, pz + 2.5f);
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.Toss).Str("gold_ingot").U16(1).U16(0).F32(px + 0.5f).F32(py + 3).F32(pz + 2.5f).F32(0).F32(0).F32(0).Bool(true));
+                        d.Send(new Packet(Net.Msg.Toss).Str("cobble").U16(4).U16(0).F32(px + 0.5f).F32(py + 3).F32(pz + 2.5f).F32(0).F32(0).F32(0).Bool(false));
+                        int dropId = 0; bool gold = false;
+                        Check(d.Wait(Net.Msg.Drops, r =>
+                        {
+                            int n = r.U16(); bool any = false;
+                            for (int i = 0; i < n; i++) { int id = r.I32(); string it = r.Str(); int c = r.U16(); float qx = r.F32(), qy = r.F32(), qz = r.F32(); if (it == "cobble" && c == 4) { dropId = id; any = true; } if (it == "gold_ingot") gold = true; }
+                            return any;
+                        }, 3000) != null && !gold, "what she throws down lies on the ground for everyone; something said to have fallen from a block she never broke does not appear");
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        Check(d.Wait(Net.Msg.Give, null, 500) == null, "it can't be picked up the instant it leaves the hand");
+                        Thread.Sleep(1500);
+                        float lx = 0, ly = 0, lz = 0;
+                        // The newest word on where it lies (it was still falling in the first ones).
+                        for (int k = 0; k < 40; k++)
+                            d.Wait(Net.Msg.Drops, r => { int n = r.U16(); for (int i = 0; i < n; i++) { int id = r.I32(); r.Str(); r.U16(); float qx = r.F32(), qy = r.F32(), qz = r.F32(); if (id == dropId) { lx = qx; ly = qy; lz = qz; } } return true; }, 120);
+                        d.Move(lx, ly, lz);
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        string gotIt = null; int gotN = 0;
+                        d.Wait(Net.Msg.Give, r => { gotIt = r.Str(); gotN = r.U16(); return true; }, 2000);
+                        Check(gotIt == "cobble" && gotN == 4, $"a moment later she picks it up (got {gotN} {gotIt}, it lay at {lx:0.0} {ly:0.0} {lz:0.0}, she stood by {px} {py} {pz})");
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        Check(d.Wait(Net.Msg.Give, null, 400) == null, "and only once");
+                    }
                     // A chest: Ada fills a slot, Bea sees it, breaking it hands the things to Ada.
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Chest).U16(0));
                     Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Chest) != null, "Ada places a chest");
@@ -1121,6 +1153,7 @@ namespace Stratum.Server
                 using (var a = new Bot(srv4.Port)) { a.Login("\u212Ait", "other-password"); Check(a.Refused() != null, "nor log in as Kit without Kit's password"); }
                 srv4.Stop();
                 ReviewChecks();
+                MechanicsChecks();
                 EmberChecks();
                 WorldChecks(Path.Combine(dir, "worlds-test"));
                 KindChecks(Path.Combine(dir, "kinds-test"));
@@ -1129,6 +1162,207 @@ namespace Stratum.Server
             finally { try { Directory.Delete(dir, true); } catch { } }
             Console.WriteLine(_fails == 0 ? "ALL PASSED" : $"{_fails} FAILED");
             return _fails == 0 ? 0 : 1;
+        }
+
+        // A little world in a dictionary for trying rules out: stone up to y = 10, air above.
+        sealed class Patch
+        {
+            public readonly Dictionary<(int, int, int), ushort> Cells = new Dictionary<(int, int, int), ushort>();
+            public ushort Get(int x, int y, int z) => Cells.TryGetValue((x, y, z), out var b) ? b : y <= 10 ? Blocks.Stone : (ushort)0;
+            public void Set(int x, int y, int z, ushort id) => Cells[(x, y, z)] = id;
+        }
+
+        // 0.14: things on the ground, loose blocks, leaves without a trunk.
+        static void MechanicsChecks()
+        {
+            var w = new Patch();
+            var drops = new DropSim(w.Get);
+            drops.Toss("cobble", 3, 0, 0.5f, 14, 0.5f, 2, 1, 0);
+            drops.Toss("cobble", 2, 0, 0.5f, 14, 0.5f, 2, 1, 0);
+            for (int i = 0; i < 200; i++) drops.Tick(0.05f);
+            Check(drops.All.Count == 1 && drops.All[0].Count == 5 && Math.Abs(drops.All[0].Y - 11) < 0.05f && drops.All[0].Rest,
+                $"things thrown down land on the ground, lie still and pile together ({drops.All.Count} stacks, y {(drops.All.Count > 0 ? drops.All[0].Y : 0):0.00})");
+            int id = drops.All[0].Id; float dx = drops.All[0].X;
+            Check(drops.Take(id, dx + 30, 11, 0.5f) == null, "they can't be picked up from far away");
+            var got = drops.Take(id, dx, 11, 0.5f);
+            Check(got is (string it, int n, int _) && it == "cobble" && n == 5 && drops.All.Count == 0, "walking over them picks the whole stack up, once");
+            Check(drops.Take(id, dx, 11, 0.5f) == null, "and a second taker gets nothing");
+            drops.Toss("cobble", 1, 0, 0.5f, 12, 0.5f, 0, 0, 0);
+            for (int i = 0; i < 20 * 301; i++) drops.Tick(0.05f);
+            Check(drops.All.Count == 0, "what nobody picks up is gone after five minutes");
+
+            // Sand with nothing under it falls, and what was on top follows.
+            var water = new Water(w.Get, w.Set);
+            w.Set(3, 20, 3, Blocks.Sand); w.Set(3, 21, 3, Blocks.Sand);
+            water.Wake(3, 20, 3);
+            for (int i = 0; i < 400 && water.Busy; i++) water.Tick(0.05f);
+            Check(w.Get(3, 11, 3) == Blocks.Sand && w.Get(3, 12, 3) == Blocks.Sand && w.Get(3, 20, 3) == 0 && w.Get(3, 21, 3) == 0, "sand with nothing under it falls to the ground, and the sand on top of it follows");
+
+            // A tree: cut the trunk and the leaves go; leaves by another trunk stay.
+            var t = new Patch();
+            for (int y = 11; y <= 14; y++) t.Set(0, y, 0, Blocks.OakLog);
+            for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == 0) t.Set(x, y, z, Blocks.OakLeaves);
+            for (int y = 11; y <= 14; y++) t.Set(20, y, 0, Blocks.OakLog);
+            t.Set(21, 14, 0, Blocks.OakLeaves);
+            var decay = new Decay(t.Get, t.Set); int fell = 0; decay.Fell = (x, y, z, d) => fell++;
+            for (int y = 11; y <= 13; y++) { t.Set(0, y, 0, 0); decay.LogBroken(0, y, 0); }
+            for (int i = 0; i < 200; i++) decay.Tick(0.05f);
+            Check(fell == 0, "leaves stay while any of the trunk is left");
+            t.Set(0, 14, 0, 0); decay.LogBroken(0, 14, 0);
+            for (int i = 0; i < 200; i++) decay.Tick(0.05f);
+            int left = 0; for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == Blocks.OakLeaves) left++;
+            Check(left == 0 && fell == 49 && t.Get(21, 14, 0) == Blocks.OakLeaves, $"with the whole trunk cut the leaves fall away, and another tree's leaves stay ({left} left, {fell} fell)");
+            // A ghoul finds its way round a wall it can't climb.
+            {
+                var pw = new Patch();
+                for (int z = -4; z <= 4; z++) for (int y = 11; y <= 13; y++) pw.Set(4, y, z, Blocks.Stone);
+                var sim = new MobSim(pw.Get, 5) { Spawning = false, Time01 = 0.9f };
+                var ghoul = sim.Spawn(MobKind.Ghoul, 0.5f, 11, 0.5f);
+                ghoul.Target = 1;                      // it has already seen them (a wall hides them now)
+                var seen = new List<Seen> { new Seen { Id = 1, X = 8.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                bool hit = false; sim.HitPlayer += (id, dmg, fx, fz, from) => hit = true;
+                for (int i = 0; i < 20 * 25 && !hit; i++) sim.Tick(0.05f, seen);
+                Check(hit, $"a ghoul walks round a wall to reach someone (it got to {ghoul.X:0.0}, {ghoul.Z:0.0})");
+
+                // A hound takes a few bones to befriend, then keeps up with its owner, sits when told and stays.
+                var hs = new MobSim(new Patch().Get, 9) { Spawning = false, Time01 = 0.3f };
+                var hound = hs.Spawn(MobKind.Hound, 0.5f, 11, 0.5f);
+                var owner = new List<Seen> { new Seen { Id = 1, X = 1.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                int bones = 0; while (!hound.Tame && bones < 60) { hs.Use(hound.Id, "bone", 1.5f, 0.5f, "kid"); bones++; }
+                Check(hound.Tame && hound.OwnerKey == "kid", $"a hound is befriended with bones ({bones})");
+                owner[0] = new Seen { Id = 1, X = 15.5f, Y = 11, Z = 3.5f, Alive = true, Key = "kid" };
+                for (int i = 0; i < 20 * 15; i++) hs.Tick(0.05f, owner);
+                float hd = (float)Math.Sqrt((hound.X - 15.5f) * (hound.X - 15.5f) + (hound.Z - 3.5f) * (hound.Z - 3.5f));
+                Check(hd < 5, $"it keeps up with its owner ({hd:0.0} away)");
+                Check(!hs.Strike(hound.Id, 1, 5, 15.5f, 11, 3.5f) || hound.Health == hound.Def.Health, "its owner can't hurt it by mistake");
+                hs.Use(hound.Id, "", 15.5f, 3.5f, "kid");
+                owner[0] = new Seen { Id = 1, X = 1.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" };
+                float sx = hound.X, sz = hound.Z;
+                for (int i = 0; i < 20 * 8; i++) hs.Tick(0.05f, owner);
+                Check(hound.Sit && Math.Abs(hound.X - sx) < 1 && Math.Abs(hound.Z - sz) < 1, "told to sit, it stays where it is");
+                // Kept across a save.
+                var ms = new System.IO.MemoryStream();
+                using (var bw2 = new System.IO.BinaryWriter(ms, System.Text.Encoding.UTF8, true)) hs.Write(bw2);
+                var hs2 = new MobSim(new Patch().Get, 9) { Spawning = false };
+                ms.Position = 0; using (var br2 = new System.IO.BinaryReader(ms)) hs2.Read(br2);
+                Check(hs2.All.Count == 1 && hs2.All[0].Tame && hs2.All[0].Sit && hs2.All[0].OwnerKey == "kid", "a friend is still a friend, still sitting, after a save");
+
+                // A fed camel can be ridden, and is left where its rider gets off.
+                var camel = hs.Spawn(MobKind.Camel, 3.5f, 11, 0.5f);
+                Check(hs.Mount(camel.Id, 1.5f, 11, 0.5f, out _, out _, out _, out _) == null, "a wild camel can't be ridden");
+                hs.Use(camel.Id, "wheat", 1.5f, 0.5f, "kid");
+                Check(hs.Mount(camel.Id, 1.5f, 11, 0.5f, out _, out _, out _, out _) == MobKind.Camel, "a fed camel can");
+                var parked = hs.Park(MobKind.Camel, 9.5f, 11, 0.5f, 0, "kid");
+                Check(parked != null && parked.Tame && parked.Kept, "and waits where its rider got off");
+            }
+
+            // A vault: found from the seed, it has its cage and two dusty chests, and a dusty chest has things in it.
+            {
+                int seed = 20261122; var gen = new WorldGen(seed, WorldKind.Normal);
+                int vx = 0, vy = 0, vz = 0; bool any = false;
+                for (int c = 0; c < 40 && !any; c++) any = Ruins.Vault(seed, c, 0, out vx, out vy, out vz);
+                var vc = new Chunk(vx >> 4, vz >> 4); gen.Generate(vc);
+                ushort mid = vc.Get(vx & 15, vy, vz & 15);
+                int chests = 0;
+                foreach (var (ox, oz) in new[] { (-3, 0), (3, 1) })
+                {
+                    var cc = new Chunk((vx + ox) >> 4, (vz + oz) >> 4); gen.Generate(cc);
+                    if (cc.Get((vx + ox) & 15, vy, (vz + oz) & 15) == Blocks.LootChest) chests++;
+                }
+                Check(any && mid == Blocks.Cage && chests == 2, $"a vault has a monster cage in the middle and two dusty chests ({Blocks.Get(mid).Name}, {chests})");
+                var loot = Ruins.Roll(seed, vx - 3, vy, vz); int stacks = 0; foreach (var st in loot) if (!st.Empty && Items.Get(st.Item) != null) stacks++;
+                var again = Ruins.Roll(seed, vx - 3, vy, vz); bool same = true; for (int i = 0; i < loot.Length; i++) if (loot[i].Item != again[i].Item || loot[i].Count != again[i].Count) same = false;
+                Check(stacks >= 3 && same, $"a dusty chest holds several things, the same whoever opens it first ({stacks} stacks)");
+                // The cage lets monsters out while someone is near, four at most.
+                var who = new List<Seen> { new Seen { Id = 1, X = vx + 6.5f, Y = vy, Z = vz + 0.5f, Alive = true, Creative = true, Key = "kid" } };
+                ushort CageWorld(int x, int y, int z) => x == vx && y == vy && z == vz ? Blocks.Cage : y < vy || y > vy + 4 ? Blocks.Stone : (ushort)0;      // a cave with a roof
+                var cs2 = new MobSim(CageWorld, 3) { Time01 = 0.3f, Seed = seed, HostileCap = 0, PassiveCap = 0 };      // nothing but what the cage lets out
+                int most = 0;
+                for (int i = 0; i < 20 * 90; i++) { cs2.Tick(0.05f, who); int now = 0; foreach (var m in cs2.All) if (m.Def.Hostile && m.Dead <= 0) now++; most = Math.Max(most, now); }
+                int out2 = most;
+                Check(out2 >= 2 && out2 <= 4, $"a vault's cage lets its monsters out while someone is near, four at most ({out2})");
+            }
+
+            // Spark machines.
+            {
+                var mw = new Patch(); Signal sig = null;
+                sig = new Signal(mw.Get, (x, y, z, id) => { mw.Set(x, y, z, id); sig.Wake(x, y, z); });
+                void Put(int x, int y, int z, ushort id) { mw.Set(x, y, z, id); sig.Wake(x, y, z); }
+                void Run(float secs) { for (int i = 0; i < secs * 20; i++) sig.Tick(0.05f, null); }
+                // A lever beside a piston that faces +X, a stone in front of it.
+                Put(1, 11, 0, (ushort)(Blocks.Piston + 1 * 2)); Put(2, 11, 0, Blocks.Cobble); Put(0, 11, 0, Blocks.Lever);
+                Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Cobble, "a piston with no power leaves things be");
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(Blocks.Get(mw.Get(1, 11, 0)).Piston && (Blocks.Get(mw.Get(1, 11, 0)).Variant & 1) == 1 && Blocks.Get(mw.Get(2, 11, 0)).Arm && mw.Get(3, 11, 0) == Blocks.Cobble,
+                    "with power it pushes the block in front along and puts its arm out");
+                Put(0, 11, 0, Blocks.Lever); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == 0 && mw.Get(3, 11, 0) == Blocks.Cobble && mw.Get(1, 11, 0) == Blocks.Piston + 2, "without power the arm goes back and the block stays where it was pushed");
+                // A sticky one brings it back.
+                Put(1, 11, 0, (ushort)(Blocks.StickyPiston + 1 * 2)); Put(2, 11, 0, Blocks.Cobble); Put(3, 11, 0, 0);
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Put(0, 11, 0, Blocks.Lever); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Cobble && mw.Get(3, 11, 0) == 0, "a sticky piston pulls the block back");
+                // Obsidian can't be pushed; thirteen blocks are one too many.
+                Put(2, 11, 0, Blocks.Obsidian); Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(mw.Get(2, 11, 0) == Blocks.Obsidian && mw.Get(3, 11, 0) == 0, "obsidian can't be pushed");
+                Put(0, 11, 0, Blocks.Lever); Run(0.3f);
+                for (int i = 0; i < 13; i++) Put(2 + i, 11, 0, Blocks.Cobble);
+                Put(0, 11, 0, (ushort)(Blocks.Lever + 1)); Run(0.5f);
+                Check(mw.Get(15, 11, 0) == 0 && mw.Get(2, 11, 0) == Blocks.Cobble, "thirteen blocks in a row are one too many to push");
+
+                // An observer looking at a cell blinks when the block there changes, and lights a lamp behind it.
+                Put(0, 11, 5, (ushort)(Blocks.Observer + 1 * 2));          // its eye looks toward +X
+                Put(-1, 11, 5, Blocks.SparkLamp);
+                Run(0.3f);
+                bool lit = false;
+                Put(1, 11, 5, Blocks.Cobble);
+                for (int i = 0; i < 12; i++) { sig.Tick(0.05f, null); if (mw.Get(-1, 11, 5) == Blocks.SparkLamp + 1) lit = true; }
+                Run(1);
+                Check(lit && mw.Get(-1, 11, 5) == Blocks.SparkLamp && mw.Get(0, 11, 5) == Blocks.Observer + 2, "an observer blinks when the block it watches changes, and the lamp behind it flashes");
+
+                // A comparator is on while the container behind it holds something; a dispenser fires once per switch.
+                bool full = false; int fired = 0;
+                sig.Holds = (x, y, z) => full && x == 0 && y == 11 && z == 9;
+                sig.Fired = (x, y, z, dir) => fired++;
+                Put(1, 11, 9, (ushort)(Blocks.Comparator + 1 * 2));        // reads (0,11,9), gives power toward +X
+                Put(2, 11, 9, Blocks.SparkLamp);
+                Run(0.5f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp, "a comparator by an empty chest gives nothing");
+                full = true; sig.Wake(0, 11, 9); Run(0.6f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp + 1, "with something in the chest it lights the lamp in front of it");
+                full = false; sig.Wake(0, 11, 9); Run(0.6f);
+                Check(mw.Get(2, 11, 9) == Blocks.SparkLamp, "and stops when the chest is emptied");
+                Put(1, 11, 13, (ushort)(Blocks.Dispenser + 0)); Put(0, 11, 13, Blocks.Lever);
+                Run(0.3f);
+                Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f); Put(0, 11, 13, Blocks.Lever); Run(0.4f); Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f);
+                Check(fired == 2, $"a dispenser goes off once each time power arrives ({fired})");
+            }
+
+            // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.
+            var bw = new Patch(); int booms = 0, broke = 0;
+            var blasts = new Blasts(bw.Get, bw.Set) { Boom = (x, y, z, p) => booms++, Broke = (x, y, z, d) => broke++ };
+            bw.Set(0, 11, 0, Blocks.KegLit); bw.Set(2, 11, 0, Blocks.BlastKeg); bw.Set(0, 9, 0, Blocks.Obsidian);
+            blasts.Prime(0, 11, 0);
+            for (int i = 0; i < 20 * 7; i++) blasts.Tick(0.05f);
+            Check(booms == 2 && broke > 20 && bw.Get(0, 10, 0) == 0 && bw.Get(0, 9, 0) == Blocks.Obsidian && bw.Get(2, 11, 0) == 0 && bw.Get(0, 3, 0) == Blocks.Stone,
+                $"a lit keg blows a hole in the ground, sets off the keg beside it, and obsidian stands ({booms} blasts, {broke} blocks)");
+
+            // Fire eats a wooden hut and then goes out; in a world where fire doesn't spread it only burns where lit.
+            foreach (bool spreads in new[] { true, false })
+            {
+                var fw = new Patch();
+                for (int x = 0; x < 4; x++) for (int y = 11; y < 14; y++) for (int z = 0; z < 4; z++) fw.Set(x, y, z, Blocks.OakPlanks);
+                var fire = new Fire(fw.Get, fw.Set) { Spreads = spreads };
+                Check(fire.Light(-1, 11, 1), "a fire is lit beside a wooden hut");
+                for (int i = 0; i < 20 * 400; i++) fire.Tick(0.05f);
+                int planks = 0, burning = 0;
+                foreach (var kv in fw.Cells) { if (kv.Value == Blocks.OakPlanks) planks++; if (kv.Value == Blocks.Fire) burning++; }
+                if (spreads) Check(planks < 10 && burning == 0 && fire.Count == 0, $"it eats the hut and goes out ({planks} planks left, {burning} still burning)");
+                else Check(planks == 48 && burning == 0 && fire.Count == 0, $"where fire doesn't spread the hut stands and the fire dies ({planks} planks left)");
+            }
+            Check(Items.Recipes.Exists(r => r.Out == "blast_keg") && Items.Get("blast_powder") != null, "a blast keg can be made");
+            Check(Blocks.Get((ushort)(Blocks.WallTorch + 2)).OnWall && Mining.Drop(Blocks.Get((ushort)(Blocks.WallTorch + 2))).item == "torch", "a torch on a wall gives a torch back");
         }
 
         // Things a read through the code turned up (0.13).
