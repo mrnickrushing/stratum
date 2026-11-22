@@ -101,7 +101,7 @@ namespace Stratum.Core
                 Damage = 3, Reach = 1.7f, AttackEvery = 1.0f, Sight = 24, Xp = 5,
                 Drops = new[] { ("coal", 0, 2, 1f), ("bone", 0, 1, 1f), ("iron_ingot", 1, 1, 0.04f), ("copper_ingot", 1, 1, 0.06f), ("carrot", 1, 1, 0.04f), ("potato", 1, 1, 0.04f) } });
             D(new MobDef { Kind = MobKind.BoneArcher, Name = "Bone Archer", Health = 20, Speed = 2.2f, HalfW = 0.3f, Height = 1.9f, Hostile = true, Burns = true,
-                Ranged = true, Damage = 3, Reach = 14, AttackEvery = 2.4f, Sight = 22, Xp = 5,
+                Ranged = true, Damage = 3, Reach = 14, AttackEvery = 3.0f, Sight = 22, Xp = 5,
                 Drops = new[] { ("bone", 0, 2, 1f), ("arrow", 0, 3, 1f), ("bow", 1, 1, 0.06f) } });
             D(new MobDef { Kind = MobKind.Crawler, Name = "Crawler", Health = 16, Speed = 3.6f, HalfW = 0.6f, Height = 0.8f, Hostile = true, Climbs = true,
                 Damage = 2, Reach = 1.9f, AttackEvery = 0.9f, Sight = 18, Xp = 5,
@@ -725,6 +725,9 @@ namespace Stratum.Core
             if (best > far * far) return true;
             // Night creatures far from anyone drift away by day.
             if (m.Def.Hostile && !Ember.In(m.X) && !Quiet.In(m.X) && IsDay && best > 32 * 32 && m.Age > 30 && Rand() < 0.002f) return true;
+            // By night too, one that is after nobody and far from everyone moves on: otherwise those shut in caves
+            // out of reach are counted against the few there may be, and the open night stays empty.
+            if (m.Def.Hostile && !Ember.In(m.X) && !Quiet.In(m.X) && m.Target < 0 && !m.Angry && best > 32 * 32 && m.Age > 20 && Rand() < 0.0015f) return true;
             return Difficulty == 0 && m.Def.Hostile;
         }
 

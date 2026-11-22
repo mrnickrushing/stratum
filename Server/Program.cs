@@ -29,12 +29,33 @@ namespace Stratum.Server
         public static int Main(string[] args)
         {
             if (Array.IndexOf(args, "--selftest") >= 0) return SelfTest.Run();
+            if (Array.IndexOf(args, "--balance") >= 0) return Balance.Run();
             var cfg = Read(args);
             var server = new GameServer(cfg);
             server.Start();
 
             var done = new ManualResetEventSlim(false);
-            void Shutdown() { if (done.IsSet) return; Log.Info("stopping..."); server.Stop(); done.Set(); }
+            // Asked to stop (a new version is going up): anyone playing is told first and given a moment to get
+            // somewhere safe. STRATUM_STOP_WARNING is how many seconds (20 unless set; 0 for none).
+            int gate = 0;
+            void Shutdown()
+            {
+                if (done.IsSet || Interlocked.Exchange(ref gate, 1) != 0) { done.Wait(); return; }
+                int warn = int.TryParse(Environment.GetEnvironmentVariable("STRATUM_STOP_WARNING"), out int w) ? Math.Clamp(w, 0, 300) : 20;
+                if (warn > 0 && server.Online > 0)
+                {
+                    Log.Info($"stopping in {warn} s: {server.Online} playing have been told");
+                    server.Announce($"The server is restarting for an update in {warn} seconds. Everything is saved. You can log in again about a minute later.");
+                    for (int left = warn; left > 0 && server.Online > 0; left--)
+                    {
+                        if (left == 5) server.Announce("Restarting in 5 seconds...");
+                        Thread.Sleep(1000);
+                    }
+                }
+                Log.Info("stopping...");
+                server.Stop();
+                done.Set();
+            }
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; Shutdown(); };
             using var term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; Shutdown(); });
             AppDomain.CurrentDomain.ProcessExit += (_, _) => Shutdown();

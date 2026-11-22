@@ -311,4 +311,10 @@ screen and says so in chat. Things a player's own game moves between pack and wo
 falling) are kept in `Player.Transit` until its next backpack update, and a lost connection is settled from it
 (`WorldHost.Settle`). A fallen player stays fallen until Respawn (`Player.Dead`), also across a reconnect.
 
+0.16.5: the server warns before it restarts (`STRATUM_STOP_WARNING` seconds, 20 unless set; Railway's
+`RAILWAY_DEPLOYMENT_DRAINING_SECONDS` must be longer). Golden tools sit between iron and starstone like the armour.
+`StratumServer --balance` prints mining times, fights, armour and whole simulated nights at each level of gear; read it
+after changing a tool, a creature or the spawning. From it: night creatures far from anyone and after nobody now move on
+(those shut in caves used to fill the limit and leave the open night empty), and Bone Archers shoot every 3 s, not 2.4.
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.
