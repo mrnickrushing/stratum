@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Stratum.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -205,6 +206,7 @@ namespace Stratum.Game
         int Gain(string item, int n)
         {
             int left = P.Inv.Add(item, n);
+            if (_edit != null && n > left) _edit.Got.Add((item, n - left));
             if (left > 0) { if (Spill != null) Spill(item, left, 0); else Toast?.Invoke("Your pack is full"); }
             return left;
         }
@@ -252,7 +254,7 @@ namespace Stratum.Game
                 && MobSim.FoodOf(fed.Kind) == heldDef.Id)
             {
                 bool baby = (fed.More & Mob.MBaby) != 0, love = (fed.More & Mob.MLove) != 0;
-                if (baby || !love)
+                if (baby || !love && (fed.More & Mob.MRest) == 0)
                 {
                     Link?.UseMob(TargetMob, heldDef.Id);
                     if (!P.Creative) P.Inv.UseHeld();
@@ -350,7 +352,11 @@ namespace Stratum.Game
             if (rmb && HasMob && _repeat <= 0)
             {
                 _repeat = 0.3f;
-                if (heldDef != null && heldDef.Tool == Tool.Shears) { Link?.UseMob(TargetMob, heldDef.Id); _swing = 0; if (!P.Creative) P.Inv.WearHeld(); }
+                if (heldDef != null && heldDef.Tool == Tool.Shears)
+                {
+                    if (Creatures != null && Creatures.TryGet(TargetMob, out var woolly) && woolly.Kind == MobKind.Sheep && (woolly.Flags & Mob.FSheared) == 0 && (woolly.More & Mob.MBaby) == 0)
+                    { Link?.UseMob(TargetMob, heldDef.Id); _swing = 0; if (!P.Creative && P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke(heldDef.Name + " broke"); } }
+                }
                 else if (Creatures != null && Creatures.TryGet(TargetMob, out var who) && who.Kind == MobKind.Villager) OpenTrade?.Invoke(TargetMob, Mob.JobOf(who.More));
                 return;
             }
@@ -399,6 +405,13 @@ namespace Stratum.Game
             var def = Blocks.Get(id);
             if (id == 0 || def.Hardness < 0 && !P.Creative) return;
             if (!World.Set(p.x, p.y, p.z, 0)) return;
+            bool outer = _edit == null;
+            if (outer) _edit = Remember(p, 0);
+            try { Broke(p, id, def); } finally { if (outer) _edit = null; }
+        }
+
+        void Broke(Vector3Int p, ushort id, BlockDef def)
+        {
             // A door goes as a whole.
             if (def.Door)
             {
@@ -418,11 +431,11 @@ namespace Stratum.Game
             // A plant on top goes with it.
             ushort above = World.Get(p.x, p.y + 1, p.z);
             if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch)) Break(p + Vector3Int.up);
-            if (P.Creative) return;
+            if (P.Creative) { Unsupported(p); return; }
             var held = Items.Get(P.Inv.Held.Item);
             if (Mining.Drops(def, held))
             {
-                var (item, n) = Mining.Drop(def);
+                var (item, n) = Mining.Drop(def, held);
                 n = Mining.Bounty(def, held, _rng, n);
                 if (!P.Creative) P.AddXp(Mining.XpFor(def, _rng));
                 if (item != null)
@@ -537,8 +550,11 @@ namespace Stratum.Game
             if (at.y < 1 || at.y >= Chunk.Height) return;
             if (def.Solid && P.Overlaps(at.x, at.y, at.z)) return;
             ushort below = World.Get(at.x, at.y - 1, at.z);
-            if (def.Shape == Shape.Cross && !CanStand(id, at)) return;
+            bool isFlowerPot = Blocks.Keys[def.BaseId].StartsWith("flower_pot");
+            if (def.Shape == Shape.Cross && !isFlowerPot && !CanStand(id, at)) return;
+            if (def.Shape == Shape.Cross && isFlowerPot && !Blocks.Get(below).Solid) return;
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
+            if ((Carpet(def) || def.BaseId == Blocks.Candle) && below == 0) return;
             int f = DirOf(look);
             if (id == Blocks.Bed)
             {
@@ -633,22 +649,58 @@ namespace Stratum.Game
             return below == Blocks.Grass || below == Blocks.Dirt || below == Blocks.SnowyGrass || bd.BaseId == Blocks.Farmland;
         }
 
-        // Things that stand on a block go when it does (plants, torches, signs, doors, ladders on their wall).
+        static bool Carpet(BlockDef d) => d.Shape == Shape.Boxes && !d.Solid && Blocks.Keys[d.BaseId].StartsWith("carpet_");
+        static bool NeedsFloor(ushort id, BlockDef d) =>
+            d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
+            || Carpet(d) || d.BaseId == Blocks.Candle;
+        static bool OnWall(BlockDef d) => d.OnWall || d.BaseId == Blocks.Ladder || d.BaseId == Blocks.WallSign || d.BaseId == Blocks.Button;
+
+        // Things that stand on a block go when it does (plants, torches, signs, doors, carpets), and so do the
+        // things hung on its sides (ladders, pictures, buttons).
         void Unsupported(Vector3Int p)
         {
+            for (int k = 0; k < 4; k++)
+            {
+                var q = p - Dir4[k];
+                var hung = Blocks.Get(World.Get(q.x, q.y, q.z));
+                if (hung.Id != 0 && OnWall(hung) && hung.Facing == k && World.Set(q.x, q.y, q.z, 0)) GiveDrop(hung);
+            }
             for (int guard = 0; guard < 64; guard++)
             {
                 var up = p + Vector3Int.up;
                 ushort id = World.Get(up.x, up.y, up.z);
                 var d = Blocks.Get(id);
-                bool needs = d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id);
-                if (id == 0 || !needs) return;
+                if (id == 0 || !NeedsFloor(id, d)) return;
                 if (d.Door) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);
                 GiveDrop(d);
                 if (id != Blocks.SugarCane) return;
                 p = up;                      // a column of cane comes down together
             }
+        }
+
+        // What each of the last few edits gave or cost, so one the server refuses can be undone.
+        sealed class Edit { public Vector3Int At; public float When; public ushort Set; public string Spent; public readonly List<(string item, int n)> Got = new List<(string, int)>(); }
+        readonly List<Edit> _edits = new List<Edit>();
+        Edit _edit;
+
+        Edit Remember(Vector3Int at, ushort set)
+        {
+            _edits.RemoveAll(e => Time.unscaledTime - e.When > 6);
+            var edit = new Edit { At = at, When = Time.unscaledTime, Set = set };
+            _edits.Add(edit);
+            return edit;
+        }
+
+        // The server put a block back: if that undoes an edit of ours, hand back what it cost or take what it gave.
+        public void Corrected(Vector3Int at, ushort now)
+        {
+            int i = _edits.FindLastIndex(e => e.At == at && Time.unscaledTime - e.When <= 6);
+            if (i < 0) return;
+            var edit = _edits[i]; _edits.RemoveAt(i);
+            if (edit.Set == now || P.Creative) return;
+            foreach (var (item, n) in edit.Got) P.Inv.Take(item, n);
+            if (edit.Spent != null) P.Inv.Add(edit.Spent, 1);
         }
 
         void GiveDrop(BlockDef d)
@@ -664,6 +716,7 @@ namespace Stratum.Game
         {
             if (P.Overlaps(at.x, at.y, at.z) && Blocks.Get(block).Solid && !Blocks.Slabs.Contains(World.Get(at.x, at.y, at.z))) return;
             if (!World.Set(at.x, at.y, at.z, block)) return;
+            if (!P.Creative && P.Inv.Held.Item != null) Remember(at, block).Spent = P.Inv.Held.Item;
             Placed(item);
         }
 

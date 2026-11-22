@@ -39,6 +39,7 @@ namespace Stratum.Server
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public long NextPortal;                      // when they may next ask for a portal to be found or built
             public bool HasSafe; public float SX, SY, SZ;  // where they last stood on something (a satchel after a fall into the sky goes there)
             public bool Alive => (Flags & Net.Dead) == 0;
             public bool Asleep => (Flags & Net.Asleep) != 0;
@@ -82,7 +83,14 @@ namespace Stratum.Server
             World = new ServerWorld(cfg.Dir, cfg.Seed, cfg.Kind);
             World.Changed += (x, y, z, id) => Broadcast(BlockPacket(x, y, z, id, 0));
             try { _boxes.Load(BoxFile); }
-            catch (Exception e) { Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message); try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { } }
+            catch (Exception e)
+            {
+                Log.Warn("containers.bin unreadable, keeping it aside: " + e.Message);
+                try { System.IO.File.Copy(BoxFile, BoxFile + ".bad", true); } catch { }
+                string stamp = Backups.Recover(BoxFile, cand => _boxes.Load(cand));
+                if (stamp != null) { _boxes.Dirty = true; Log.Warn("containers.bin restored from backup " + stamp); }
+                else Log.Warn("no backup of containers.bin could be read: chests start empty");
+            }
             _furnaces = new Furnaces(_boxes);
             _furnaces.WakeSaved();
             // Whoever has the furnace open watches it work.
@@ -204,9 +212,20 @@ namespace Stratum.Server
                 double sleep = Tick - (clock.Elapsed.TotalSeconds - now);
                 if (sleep > 0) Thread.Sleep(TimeSpan.FromSeconds(sleep));
             }
-            foreach (var p in _players.Values.ToList()) { if (p.Joined) SavePlayer(p); p.Conn.Close("server stopping"); }
-            SaveAll(true);
-            World.Stop();
+            foreach (var p in _players.Values.ToList())
+            {
+                try
+                {
+                    // A boat or cart being ridden is left where it is, as if they had stepped out.
+                    if (p.Joined && (p.Flags & Net.InBoat) != 0) _mobs.Park(MobKind.Boat, p.X, p.Y, p.Z, p.Yaw);
+                    if (p.Joined && (p.Flags & Net.InCart) != 0) _mobs.Park(MobKind.Cart, p.X, p.Y, p.Z, p.Yaw);
+                    if (p.Joined) SavePlayer(p);
+                }
+                catch (Exception e) { Log.Warn($"could not save {p.Name} on the way out: {e.Message}"); }
+                p.Conn.Close("server stopping");
+            }
+            try { SaveAll(true); } catch (Exception e) { Log.Warn("last save failed: " + e); }
+            try { World.Stop(); } catch (Exception e) { Log.Warn("closing the world failed: " + e); }
             Log.Info("world saved, server stopped");
             _stopped.Set();
         }
@@ -224,7 +243,7 @@ namespace Stratum.Server
         {
             World.Maintain(Needed, false);
             World.Meta.weather = _weather.State; World.Meta.weatherLeft = _weather.Left;
-            World.SaveMeta();
+            try { World.SaveMeta(); } catch (Exception e) { Log.Warn("could not save world.json: " + e.Message); }
             try { _mobs.SaveFile(MobFile); } catch (Exception e) { Log.Warn("could not save creatures: " + e.Message); }
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
             foreach (var p in _players.Values) if (p.Joined) SavePlayer(p);
@@ -234,7 +253,11 @@ namespace Stratum.Server
         {
             long now = Environment.TickCount64;
             foreach (var p in _players.Values.ToList())
+            {
+                // A connection that closed while it was being handed to this world never sends its goodbye here.
+                if (!p.Conn.Open) { Leave(p.Conn, "connection closed"); continue; }
                 if (now - p.Conn.LastHeard > (p.Joined ? 30000 : 10000)) p.Conn.Close(p.Joined ? "timed out" : "never said hello");
+            }
         }
 
         // ------------------------------------------------------------------ messages
@@ -415,8 +438,8 @@ namespace Stratum.Server
         void SetBlock(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(), old = (ushort)r.U16();
-            if (++p.Edits > 40) return;
             if (!World.IsLoaded(x, z) || (uint)y >= Chunk.Height) return;
+            if (++p.Edits > 40) { p.Conn.Send(BlockPacket(x, y, z, World.Get(x, y, z), 0)); return; }      // too fast: show them it didn't happen
             ushort cur = World.Get(x, y, z);
             // Edits must be in reach, of a real block, by a known rule, and agree on what was there.
             float dx = x + 0.5f - p.X, dy = y + 0.5f - (p.Y + 1.6f), dz = z + 0.5f - p.Z;
@@ -440,6 +463,8 @@ namespace Stratum.Server
             World.Water.Wake(x, y, z);
             World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
+            if (Blocks.Get(cur).Container && !Blocks.Get(id).Container)
+                foreach (var o in _players.Values) if (o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.HasBox = false;
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
                 foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty && !Smelting.Hidden(st.Item)) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
         }
@@ -448,7 +473,12 @@ namespace Stratum.Server
         bool InUse(Player p, int x, int y, int z, out string who)
         {
             foreach (var o in _players.Values)
-                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z) { who = o.Name; return true; }
+                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == y && o.BZ == z)
+                {
+                    // Someone who walked off with the screen still open (or whose game never said it closed) lets go.
+                    if (!InReach(o, x, y, z)) { o.HasBox = false; continue; }
+                    who = o.Name; return true;
+                }
             who = null; return false;
         }
 
@@ -577,6 +607,7 @@ namespace Stratum.Server
             int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
             bool hasSeen = r.More; var seen = hasSeen ? r.Slot() : default;       // 0.7.2: what the player saw in the slot before changing it
             if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
+            if (!InReach(p, x, y, z)) { p.HasBox = false; return; }
             if (!Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
@@ -654,6 +685,10 @@ namespace Stratum.Server
             if (toEmber != Ember.In(tx)) return;
             for (int dz = -48; dz <= 48; dz += 16) for (int dx = -48; dx <= 48; dx += 16) if (!World.IsLoaded(tx + dx, tz + dz)) { World.Want((tx + dx) >> 4, (tz + dz) >> 4); }
             if (!World.IsLoaded(tx, tz)) return;
+            // Finding or building a portal reads a great many blocks: once every few seconds is plenty.
+            long tick = Environment.TickCount64;
+            if (tick < p.NextPortal) return;
+            p.NextPortal = tick + 3000;
             surface = Math.Clamp(surface, 1, Chunk.Height - 8);
             var (x, y, z) = Ember.Arrive(World.Get, World.Put, tx, tz, toEmber, surface);
             p.Conn.Send(new Packet(Net.Msg.Arrived).F32(x).F32(y).F32(z));

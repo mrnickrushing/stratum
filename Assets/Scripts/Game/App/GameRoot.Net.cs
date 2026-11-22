@@ -341,7 +341,7 @@ namespace Stratum.Game
             }
             if (_net == null) return;
             if (!_net.Open) { LeaveServer(_net.Error ?? "Lost the connection to the server."); return; }
-            _sinceHeard += dt;
+            _sinceHeard += Mathf.Min(dt, 0.25f);
             if (_sinceHeard > 30) { LeaveServer("The server stopped answering."); return; }
 
             _moveTimer -= dt; _keepTimer -= dt; _pingTimer -= dt; _forceMove -= dt;
@@ -365,6 +365,7 @@ namespace Stratum.Game
                     int x = r.I32(), y = r.I32(), z = r.I32(); ushort id = (ushort)r.U16(); int by = r.I32();
                     if (by == _myId) break;                    // our own edit coming back: already here
                     _world.ApplyRemote(x, y, z, id);
+                    if (by == 0) _act?.Corrected(new Vector3Int(x, y, z), id);
                     // The chest or furnace on screen has just been broken or replaced: what the screen shows is no
                     // longer there to take.
                     if (_hud != null && _hud.BoxOpen && _hud.BoxAt == new Vector3Int(x, y, z) && !Blocks.Get(id).Container)

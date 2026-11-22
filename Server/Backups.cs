@@ -11,7 +11,7 @@ namespace Stratum.Server
     {
         public const int Keep = 6;
 
-        public static void Take(string dir)
+        public static void Take(string dir, TimeSpan? notWithin = null)
         {
             try
             {
@@ -19,6 +19,14 @@ namespace Stratum.Server
                 string root = Path.Combine(dir, "backups");
                 string dest = Path.Combine(root, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss"));
                 if (Directory.Exists(dest)) return;
+                // Several restarts in an afternoon mustn't push every older backup out: one every few hours is enough.
+                if (notWithin != null && Directory.Exists(root))
+                {
+                    string newest = Directory.GetDirectories(root).Where(d => !d.EndsWith(".part")).Select(d => Path.GetFileName(d)).OrderByDescending(n => n, StringComparer.Ordinal).FirstOrDefault();
+                    if (newest != null && DateTime.TryParseExact(newest, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var at)
+                        && DateTime.UtcNow - at < notWithin.Value && DateTime.UtcNow >= at) return;
+                }
                 int files = Copy(dir, dest + ".part", true);
                 Directory.Move(dest + ".part", dest);
                 var all = Directory.GetDirectories(root).Where(d => !d.EndsWith(".part")).OrderByDescending(d => Path.GetFileName(d), StringComparer.Ordinal).ToList();

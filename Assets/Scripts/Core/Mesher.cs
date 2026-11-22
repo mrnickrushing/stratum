@@ -272,7 +272,7 @@ namespace Stratum.Core
             {
                 int i = (x + z * 16) * 4;
                 int r = c.Tint[i], g = c.Tint[i + 1], b = c.Tint[i + 2];
-                if (id == Blocks.OakLeaves) { float k = c.Tint[i + 3] / 255f * 0.82f; r = (int)(r * k); g = (int)(g * k); b = (int)(b * k); }
+                if (id == Blocks.OakLeaves || id == Blocks.Hedge) { float k = c.Tint[i + 3] / 255f * 0.82f; r = (int)(r * k); g = (int)(g * k); b = (int)(b * k); }
                 rgb = (uint)r | ((uint)g << 8) | ((uint)b << 16);
             }
             return rgb | ((uint)flags << 24);

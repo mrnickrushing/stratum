@@ -480,7 +480,8 @@ namespace Stratum.Game
         public bool OnMainOrSub => _main.activeSelf || _worlds.activeSelf || _new.activeSelf || _join.activeSelf || _settings.activeSelf && _settingsBack == (Action)ShowMain;
         public void Back()
         {
-            if (_controls.activeSelf) { if (_binding >= 0) { _binding = -1; RefreshControls(); } else ShowSettings(_settingsBack); }
+            if (_maker != null && _maker.activeSelf) { CustomLook.SaveMine(); _extraTab = 2; ShowExtras(); }
+            else if (_controls.activeSelf) { if (_binding >= 0) { _binding = -1; RefreshControls(); } else ShowSettings(_settingsBack); }
             else if (_extras.activeSelf || _backups.activeSelf) { if (_backups.activeSelf) ShowWorlds(); else ShowMain(); }
             else if (_settings.activeSelf) { PlayerPrefs.Save(); _settingsBack?.Invoke(); }
             else if (_new.activeSelf) ShowWorlds();

@@ -133,7 +133,12 @@ namespace Stratum.Game
 
         // Renders every block item as a small three-quarter view cube and paints the rest.
         // After the look changes: draw every picture again.
-        public static void Rebuild(Material blockMat) { _icons.Clear(); _sprites.Clear(); Build(blockMat); }
+        public static void Rebuild(Material blockMat)
+        {
+            foreach (var t in _icons.Values) if (t != null) Object.Destroy(t);
+            foreach (var s in _sprites.Values) if (s != null) Object.Destroy(s);
+            _icons.Clear(); _sprites.Clear(); Build(blockMat);
+        }
 
         public static void Build(Material blockMat)
         {
@@ -169,7 +174,16 @@ namespace Stratum.Game
             foreach (var item in Items.Order)
             {
                 if (item.Block == 0) continue;
-                if (Blocks.Get(item.Block).FlatIcon) { _icons[item.Id] = item.Id == "ladder" ? Flat(Tex.Ladder) : item.Id == "rail" ? Flat(Tex.Rail) : item.Id == "booster_rail" ? Flat(Tex.BoosterRail) : item.Id == "repeater" ? Flat(Tex.RepeaterOn) : ItemArt.Paint(item); continue; }
+                var flat = Blocks.Get(item.Block);
+                if (flat.FlatIcon)
+                {
+                    // Painted by hand where there is a painting; otherwise the block's own face, a door as both halves.
+                    _icons[item.Id] = item.Id == "ladder" ? Flat(Tex.Ladder) : item.Id == "rail" ? Flat(Tex.Rail) : item.Id == "booster_rail" ? Flat(Tex.BoosterRail) : item.Id == "repeater" ? Flat(Tex.RepeaterOn)
+                        : ItemArt.Paints(item.Id) ? ItemArt.Paint(item)
+                        : flat.Door ? FlatDoor(flat.Side, Blocks.Get((ushort)(item.Block + 1)).Side)
+                        : Flat(flat.Shape == Shape.Cross ? flat.Top : flat.Side);
+                    continue;
+                }
                 if (BlockMesh.IsFlat(item.Block)) { _icons[item.Id] = Flat(Blocks.Get(item.Block).Top); continue; }
                 mf.sharedMesh = BlockMesh.Cube(item.Block);
                 cam.Render();
@@ -199,6 +213,25 @@ namespace Stratum.Game
             for (int i = 0; i < px.Length; i++)
                 if (px[i].r < 3 && px[i].g < 3 && px[i].b < 3) px[i].a = 0;
             t.SetPixels32(px);
+        }
+
+        // A door as it stands: the upper picture over the lower one, half as wide as it is tall.
+        static Texture2D FlatDoor(Tex lower, Tex upper)
+        {
+            int n = Paint.S;
+            var lo = BlockTextures.Pixels(lower); var up = BlockTextures.Pixels(upper);
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+            var px = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int sx = (x - n / 4) * 2, sy = y * 2;
+                    if (sx < 0 || sx >= n) continue;
+                    px[x + y * n] = sy < n ? lo[sx + sy * n] : up[sx + (sy - n) * n];
+                }
+            t.SetPixels(px);
+            t.Apply();
+            return t;
         }
 
         static Texture2D Flat(Tex layer)

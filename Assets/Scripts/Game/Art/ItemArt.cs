@@ -250,6 +250,11 @@ namespace Stratum.Game
                     }
                     break;
                 }
+                case "candle":
+                    c.Poly(new[] { new Vector2(38, 10), new Vector2(58, 10), new Vector2(58, 58), new Vector2(38, 58) }, (x, y) => Color.Lerp(Hex(0xd8cdb0), Hex(0xfff6e0), Mathf.Clamp01((x - 38) / 20f * 0.7f + (y - 10) / 48f * 0.3f)));
+                    c.Line(new Vector2(48, 58), new Vector2(48, 66), 2.5f, (t, ss) => Hex(0x2a2420));
+                    c.Poly(new[] { new Vector2(48, 90), new Vector2(57, 72), new Vector2(48, 62), new Vector2(39, 72) }, (x, y) => Color.Lerp(Hex(0xff8a1e), Hex(0xfff0a0), Mathf.Clamp01(1 - Mathf.Abs(x - 48) / 7f - (y - 62) / 60f)));
+                    break;
                 case "lever":
                     c.Poly(new[] { new Vector2(22, 30), new Vector2(74, 30), new Vector2(70, 14), new Vector2(26, 14) }, (x, y) => Color.Lerp(Hex(0x5c5d62), Hex(0x9a9ba0), (y - 14) / 16f));
                     c.Line(new Vector2(48, 26), new Vector2(64, 82), 7, (t, ss) => Color.Lerp(Hex(0x6a4a2a), Hex(0xb08a5a), ss));
@@ -371,6 +376,9 @@ namespace Stratum.Game
             }
             return c.Done();
         }
+
+        // Block items this file paints a picture for (anything else flat shows its own face).
+        public static bool Paints(string id) => id == "oak_door" || id == "sign" || id == "lever" || id == "button" || id == "spark" || id == "candle";
 
         static Color Shade(Color c, float k) => new Color(c.r * k, c.g * k, c.b * k, c.a);
 
