@@ -27,6 +27,7 @@ namespace Stratum.Server
             public List<string> tokens { get; set; } = new List<string>();
             public int fails { get; set; }
             public long lockedUntil { get; set; }
+            public bool op { get; set; }                    // may /give, set the time, and make others operators
             [System.Text.Json.Serialization.JsonIgnore] public long nextTry;
         }
 
@@ -109,7 +110,8 @@ namespace Stratum.Server
                         if (a != null) return new Result($"There's already an account called {a.name}. Pick another name, or log in.");
                         if (secret.Length < MinPassword || secret.Length > MaxPassword) return new Result($"Passwords are {MinPassword}-{MaxPassword} characters.");
                         if (_store.accounts.Count >= MaxAccounts) return new Result("This server can't take any more accounts.");
-                        a = new Account { name = name, created = now };
+                        // Whoever makes the first account runs the place.
+                        a = new Account { name = name, created = now, op = _store.accounts.Count == 0 };
                         SetPassword(a, secret);
                         _store.accounts.Add(a);
                         Log.Info($"account made: {name} ({_store.accounts.Count} in all)");
@@ -146,6 +148,25 @@ namespace Stratum.Server
                 return new Result("Unknown login.");
             }
         }
+
+        public bool IsOp(string name) { lock (_lock) { var a = Find(name ?? ""); return a != null && a.op; } }
+
+        // Makes someone an operator or takes it away. Null if done, else why not (the last operator can't step down).
+        public string SetOp(string name, bool on)
+        {
+            lock (_lock)
+            {
+                var a = Find((name ?? "").Trim());
+                if (a == null) return $"There's no account called {name}.";
+                if (a.op == on) return on ? $"{a.name} is already an operator." : $"{a.name} isn't an operator.";
+                if (!on && _store.accounts.Count(x => x.op) <= 1) return "There has to be one operator left.";
+                a.op = on; Save();
+                Log.Info($"{a.name} {(on ? "is now" : "is no longer")} an operator");
+                return null;
+            }
+        }
+
+        public List<string> Ops() { lock (_lock) return _store.accounts.Where(x => x.op).Select(x => x.name).ToList(); }
 
         Result Finish(Account a, string token, long now)
         {

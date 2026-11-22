@@ -298,6 +298,11 @@ namespace Stratum.Server
         public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
+        // Operators: named in the settings (STRATUM_OPS), or made one (the first account, and whoever an operator names).
+        public bool IsOp(string name) => _cfg.Ops.Contains((name ?? "").ToLowerInvariant()) || _accounts.IsOp(name);
+        public string SetOp(string name, bool on) => _accounts.SetOp(name, on);
+        public List<string> OpNames() => _accounts.Ops();
+
         const int MaxConnections = 96;
         int _live;                                   // connections open right now
 

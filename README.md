@@ -250,8 +250,8 @@ frames sent and heard). `-connect host:port -name X -password P [-create]` alone
 - **Spark machines** (`Signal.Push`, `Core/Machines.cs`): pistons, sticky pistons, dispenser, observer, comparator. A
   machine's block number is direction * 2 + on.
 - **Under the ground** (`Core/Ruins.cs`): vaults with a monster cage and dusty chests, and old workings.
-- **Commands and goals**: /give, /gamemode, /time set (single player; `STRATUM_OPS` names who may /give and set the
-  time on a server). G lists goals; Tab shows who is here; F5 changes the view; hearts and loaves replace the bars.
+- **Commands and goals**: /give, /gamemode, /time set (single player). On a server they are for operators: whoever makes
+  the first account, anyone an operator names with `/op <name>` (`/deop`, `/ops`), and the names in `STRATUM_OPS`. G lists goals; Tab shows who is here; F5 changes the view; hearts and loaves replace the bars.
 
 ## Since 0.15
 
