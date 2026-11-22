@@ -44,14 +44,14 @@ namespace Stratum.Game
             using (var net = new NetClient(host, port))
             {
                 float t = 0;
-                while (net.Connected == null && t < 6) { t += Time.unscaledDeltaTime; yield return null; }
+                while (net.Connected == null && t < 6) { t += Mathf.Min(Time.unscaledDeltaTime, 0.25f); yield return null; }
                 if (net.Connected != true) { _menus.SetWorlds(address, null, "Couldn't reach this server to see its worlds."); yield break; }
                 net.Send(new Packet(Net.Msg.Ping).F64(Time.realtimeSinceStartupAsDouble));
                 t = 0;
                 while (t < 6)
                 {
                     var r = net.Poll();
-                    if (r == null) { if (!net.Open) break; t += Time.unscaledDeltaTime; yield return null; continue; }
+                    if (r == null) { if (!net.Open) break; t += Mathf.Min(Time.unscaledDeltaTime, 0.25f); yield return null; continue; }
                     if (r.Type != Net.Msg.Pong) continue;
                     _menus.SetWorlds(address, ReadWorlds(r), null);
                     net.Close();
@@ -95,7 +95,7 @@ namespace Stratum.Game
             float t = 0;
             while (net.Connected == null)
             {
-                t += Time.unscaledDeltaTime;
+                t += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
                 if (t > 10) { net.Dispose(); _pendingNet = null; _menus.ShowJoin("The server didn't answer. Check the address and that it's running."); yield break; }
                 yield return null;
             }
@@ -110,7 +110,7 @@ namespace Stratum.Game
                 if (pr == null)
                 {
                     if (!net.Open) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "The server closed the connection."); yield break; }
-                    t += Time.unscaledDeltaTime;
+                    t += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
                     if (t > 8) { net.Dispose(); _pendingNet = null; _menus.ShowJoin("The server didn't answer. Try again."); yield break; }
                     yield return null;
                     continue;
@@ -142,7 +142,7 @@ namespace Stratum.Game
                 if (r == null)
                 {
                     if (!net.Open) { _pendingNet = null; _menus.ShowJoin(net.Error ?? "The server closed the connection."); yield break; }
-                    t += Time.unscaledDeltaTime;
+                    t += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
                     if (t > 12) { net.Dispose(); _pendingNet = null; _menus.ShowJoin("The server didn't let us in (no answer)."); yield break; }
                     yield return null;
                     continue;
@@ -244,7 +244,7 @@ namespace Stratum.Game
                 float p = _world.Progress(3);
                 _menus.SetLoading(p, p < 0.5f ? "Fetching the land from " + _serverName : p < 0.95f ? "Growing the forests" : "Lighting the world");
                 if (p >= 1 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;
-                t += Time.unscaledDeltaTime;
+                t += Mathf.Min(Time.unscaledDeltaTime, 0.25f);
                 if (t > 45 && _world.IsMeshed(Mathf.FloorToInt(feet.x), Mathf.FloorToInt(feet.z))) break;      // enough to stand on: the rest arrives as we play
                 if (t > 90) { LeaveServer("The server is taking too long to send the world. Check your connection and try again."); yield break; }
                 if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) { LeaveServer(null); yield break; }
@@ -561,7 +561,7 @@ namespace Stratum.Game
             SmokeNote($"mptest {role} as {name} to {address}{(create ? " (new account)" : "")}");
             StartCoroutine(EnterRemote(address, create ? Menus.ModeCreate : Menus.ModeLogin, name, password, ""));
             while (_state != State.Playing && Time.realtimeSinceStartup - t0 < 120) yield return null;
-            SmokeNote($"joined: {_state == State.Playing} in {Time.realtimeSinceStartup - t0:0.0} s, {_net?.BytesIn / 1024 ?? 0} KB in");
+            SmokeNote($"joined: {_state == State.Playing} in {Time.realtimeSinceStartup - t0:0.0} s, {_net?.BytesIn / 1024 ?? 0} KB in{(_state != State.Playing ? " (" + _menus.LastJoinNote + ")" : "")}");
             if (_state != State.Playing) { Finish(); yield break; }
             SetCursor(false);
             _sky.Time01 = 0.42f;

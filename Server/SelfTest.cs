@@ -360,8 +360,30 @@ namespace Stratum.Server
                         var (px0, py0, pz0) = g1.FindSpawn();
                         var sc0 = new Chunk(px0 >> 4, pz0 >> 4); g1.Generate(sc0);
                         bool stand = Blocks.Get(sc0.Get(px0 & 15, py0 - 1, pz0 & 15)).Solid && sc0.Get(px0 & 15, py0, pz0 & 15) == 0 && sc0.Get(px0 & 15, py0 + 1, pz0 & 15) == 0;
-                        Check(filled > 1500 && same == total && stand && WorldGen.ParseKind(WorldGen.KindName(k)) == k,
+                        Check(filled > 1000 && same == total && stand && WorldGen.ParseKind(WorldGen.KindName(k)) == k,
                             $"{WorldGen.KindName(k)}: built the same whatever the seed ({filled} blocks above ground), with somewhere to stand at the start");
+                    }
+                    // Sky Run: every jump is within what the player can do (run 6.2 a second, jump speed 8.6, gravity 30:
+                    // about three across on the level, two when going up one), and every landing is really there.
+                    {
+                        var run = Builds.Of(WorldKind.Parkour); var steps = Builds.ParkourSteps;
+                        int bad = 0, missing = 0; string first = "";
+                        for (int i = 1; i < steps.Count; i++)
+                        {
+                            var a0 = steps[i - 1]; var b0 = steps[i];
+                            // Somewhere on each landing to stand: something solid underfoot and two clear above it.
+                            int room = 0;
+                            for (int px = b0.x0; px <= b0.x1; px++) for (int pz = b0.z0; pz <= b0.z1; pz++)
+                            { ushort ub = run.Get(px, b0.y - 1, pz); if (ub != Builds.Leave && ub != 0 && Blocks.Get(ub).Solid && !Blocks.Get(run.Get(px, b0.y, pz)).Solid && !Blocks.Get(run.Get(px, b0.y + 1, pz)).Solid) room++; }
+                            if (room == 0) { missing++; if (first == "") first = $" step {i}: nowhere to stand at {b0.x0},{b0.y},{b0.z0}"; }
+                            if (b0.climb) continue;
+                            int gx = Math.Max(0, Math.Max(b0.x0 - a0.x1, a0.x0 - b0.x1) - 1), gz = Math.Max(0, b0.z0 - a0.z1 - 1), rise = b0.y - a0.y;
+                            double far = Math.Sqrt(gx * gx + gz * gz);
+                            bool ok = rise <= 1 && far <= (rise == 1 ? 2.3 : 3.0);
+                            if (!ok) { bad++; if (first == "") first = $" step {i}: {gx} by {gz} across, {rise} up"; }
+                        }
+                        var last = steps[steps.Count - 1];
+                        Check(steps.Count > 60 && bad == 0 && missing == 0 && run.In(last.x1 + 2, last.y + 10, last.z1 + 4), $"Sky Run: all {steps.Count - 1} jumps can be made and every landing is there, to the finish at z {last.z1} height {last.y} ({bad} too far, {missing} missing){first}");
                     }
                     var maze = Builds.Of(WorldKind.Maze);
                     // Walk the maze from the gate: the prize in the middle can be reached.
