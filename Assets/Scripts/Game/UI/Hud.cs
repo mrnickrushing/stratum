@@ -274,7 +274,7 @@ namespace Stratum.Game
             MobState boss = default; bool any = false;
             if (Link != null)
                 foreach (var b in Link.Mobs)
-                    if (b.Kind == MobKind.Colossus && (b.Pos - P.Feet).sqrMagnitude < 80 * 80) { boss = b; any = true; break; }
+                    if (MobSim.Def(b.Kind).Boss && (b.Pos - P.Feet).sqrMagnitude < 80 * 80) { boss = b; any = true; break; }
             _bossName.gameObject.SetActive(show && any); _bossBack.gameObject.SetActive(show && any);
             if (any) { _bossName.text = MobSim.Def(boss.Kind).Name; _bossBar.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, boss.Health), 1); }
         }

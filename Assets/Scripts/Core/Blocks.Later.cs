@@ -102,6 +102,10 @@ namespace Stratum.Core
             b = Add("dusty_chest", "Dusty Chest", Tex.DustyTop, Tex.DustySide, Tex.DustyTop); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 1; b.Hardness = 2.5f; b.Tool = Tool.Axe; b.Sound = Sound.Wood;
             b.Boxes = new[] { Box.Px(1, 0, 1, 15, 14, 15) }; b.DropItem = "chest"; b.Creative = false; Palette.Remove(b.Id); LootChest = b.Id;
 
+            // The Quiet's pale stone, and the gate stone that carries whoever touches it there and back.
+            b = Rock("stillstone", "Stillstone", Tex.Stillstone, 2.5f, 1); Stillstone = b.Id;
+            b = Add("gate_stone", "Gate Stone", Tex.GateStone); b.Hardness = 6; b.Tool = Tool.Pickaxe; b.TierNeeded = 4; b.Sound = Sound.Stone; b.Emit = 9; GateStone = b.Id;
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

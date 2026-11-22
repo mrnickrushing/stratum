@@ -192,7 +192,7 @@ namespace Stratum.Game
             float atk = Mathf.Sin(Mathf.Clamp01(1 - v.Attack) * Mathf.PI) * (v.Attack > 0 ? 1 : 0);
             if (m.ArmL != null)
             {
-                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus;
+                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus || s.Kind == MobKind.King;
                 float baseX = s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0;
                 m.ArmL.localRotation = Quaternion.Euler(baseX - sw * 0.7f - atk * 70, 0, -4);
                 m.ArmR.localRotation = Quaternion.Euler((s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0) + sw * 0.7f - atk * 90, 0, 4);
@@ -223,6 +223,7 @@ namespace Stratum.Game
                 m.Body.localRotation = Quaternion.Euler(-28 * v.Sat, 0, 0);
                 m.Body.localPosition = new Vector3(0, 0.42f - 0.12f * v.Sat, -0.06f * v.Sat);
             }
+            if (s.Kind == MobKind.King && m.Body != null) m.Body.localPosition = new Vector3(0, 0.6f + Mathf.Sin(Time.time * 1.4f) * 0.16f, 0);
             if (s.Kind == MobKind.Glob) { int size = Mob.JobOf(s.More); scale *= size == 0 ? 1 : size == 1 ? 0.62f : 0.36f; }
             // A swimmer wags its tail end as it goes.
             if (s.Kind == MobKind.Snapper && m.Body != null) m.Body.localRotation = Quaternion.Euler(0, Mathf.Sin(Time.time * 9 + s.Id) * 10, 0);
@@ -342,6 +343,7 @@ namespace Stratum.Game
                 case MobKind.Glob: Glob(m); break;
                 case MobKind.Shade: Shade(m); break;
                 case MobKind.Snapper: Snapper(m); break;
+                case MobKind.King: King(m); break;
             }
             return m;
         }
@@ -504,6 +506,31 @@ namespace Stratum.Game
             B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
             Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
             foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
+        }
+
+        // The Hollow King: a towering figure in a tattered dark robe that doesn't reach the ground, a pale mask for a
+        // face, long hands, and a crown of gold that glows.
+        void King(Model m)
+        {
+            Color robe = Hex(0x1c1626), trim = Hex(0x4a2e7a), mask = Hex(0xe6e0d2), gold = Hex(0xffd24a), eye = Hex(0xd8a8ff);
+            m.Body = Pivot(m.Root, new Vector3(0, 0.6f, 0));
+            B(m, m.Body, 0, 1.6f, 0, 1.3f, 1.8f, 0.8f, robe);                              // shoulders and chest
+            B(m, m.Body, 0, 0.55f, 0, 1.0f, 1.1f, 0.66f, robe);                            // the robe narrowing
+            for (int i = -2; i <= 2; i++) B(m, m.Body, i * 0.2f, -0.1f - (i & 1) * 0.16f, 0, 0.16f, 0.5f, 0.5f, robe);      // tatters
+            B(m, m.Body, 0, 1.6f, 0.405f, 0.2f, 1.7f, 0.02f, trim, 0.4f, false);           // a stripe down the front
+            B(m, m.Body, 0, 2.42f, 0, 1.5f, 0.14f, 0.9f, trim);                            // a collar
+            m.ArmL = Pivot(m.Body, new Vector3(-0.8f, 2.3f, 0));
+            B(m, m.ArmL, 0, -0.75f, 0, 0.3f, 1.5f, 0.3f, robe); B(m, m.ArmL, 0, -1.62f, 0, 0.2f, 0.34f, 0.2f, mask);
+            m.ArmR = Pivot(m.Body, new Vector3(0.8f, 2.3f, 0));
+            B(m, m.ArmR, 0, -0.75f, 0, 0.3f, 1.5f, 0.3f, robe); B(m, m.ArmR, 0, -1.62f, 0, 0.2f, 0.34f, 0.2f, mask);
+            m.Head = Pivot(m.Root, new Vector3(0, 3.2f, 0));
+            B(m, m.Head, 0, 0.36f, -0.04f, 0.74f, 0.8f, 0.7f, robe);                       // hood
+            B(m, m.Head, 0, 0.32f, 0.32f, 0.5f, 0.6f, 0.04f, mask);                        // the mask
+            Eyes(m, m.Head, 0.12f, 0.4f, 0.345f, 0.1f, eye, 1.2f);
+            B(m, m.Head, 0, 0.82f, 0, 0.82f, 0.12f, 0.78f, gold, 0.8f);                    // crown band
+            foreach (var (cx, cz) in new[] { (-0.34f, 0.32f), (0.34f, 0.32f), (-0.34f, -0.32f), (0.34f, -0.32f), (0f, 0.34f) })
+                B(m, m.Head, cx, 1.0f, cz, 0.12f, 0.26f, 0.12f, gold, 0.8f);
+            m.Swing = 24;
         }
 
         // The Glob: a cube of green jelly with a darker heart and two wide eyes.

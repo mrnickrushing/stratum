@@ -31,6 +31,7 @@ namespace Stratum.Game
         {
             if (_player == null || _world == null) return;
             _sky.Deep = Ember.In(_player.Feet.x);
+            _sky.Still = Quiet.In(_player.Feet.x);
             if (_arrive != null) { HoldArrival(dt); return; }
             var f = _player.Feet;
             int x = Mathf.FloorToInt(f.x), z = Mathf.FloorToInt(f.z);

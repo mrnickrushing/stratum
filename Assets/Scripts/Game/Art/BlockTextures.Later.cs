@@ -27,6 +27,8 @@ namespace Stratum.Game
                 case Tex.CageSide: CageSide(p); return 3f;
                 case Tex.DustyFront: case Tex.DustySide: Chest(p, false); Dust(p); return 3f;
                 case Tex.DustyTop: Planks(p, Hex(0x8a6a44), 4); Dust(p); return 2f;
+                case Tex.Stillstone: Rock(p, Hex(0xd9d4c4), Hex(0xb9b6ac), 0.1f, true); return 3f;
+                case Tex.GateStone: GateStone(p); return 3f;
                 case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
@@ -214,6 +216,19 @@ namespace Stratum.Game
                     float film = 0.25f + p.Fbm(x, y, 8, 3) * 0.3f + (y > 50 ? 0.15f : 0);
                     var c = Color.Lerp(p.C[i], new Color(0.62f, 0.6f, 0.56f, 1), Mathf.Clamp01(film)); c.a = 1;
                     p.C[i] = c;
+                }
+        }
+
+        // Dark stone with a ring and a mark in it that glow violet.
+        static void GateStone(Paint p)
+        {
+            Rock(p, Hex(0x2a2434), Hex(0x18141e), 0.18f, true); Frame(p, Hex(0x100c16), 3);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float dx = x - 31.5f, dy = y - 31.5f, r = Mathf.Sqrt(dx * dx + dy * dy);
+                    bool ring = Mathf.Abs(r - 20) < 2.2f, mark = Mathf.Abs(dx) < 2 && Mathf.Abs(dy) < 11 || Mathf.Abs(dy - 4) < 2 && Mathf.Abs(dx) < 7 || r < 3.2f;
+                    if (ring || mark) { var c = Color.Lerp(Hex(0x8a4ae0), Hex(0xe0c0ff), p.V(x, y, 16)); c.a = 1; p.Set(x, y, c, 0.9f); }
                 }
         }
 

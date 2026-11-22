@@ -24,6 +24,7 @@ namespace Stratum.Game
         public bool Islands;                    // a Sky Islands world: a sea of clouds far below
         Transform _lowClouds;
         public bool Deep;                       // in the Ember Deep: no sun or weather, a red haze, the rock glowing faintly
+        public bool Still;                      // in the Quiet: no sun or weather, stars in a violet dark, pale light on everything
         public int Day = 1;
         public int Weather;                     // WeatherSim state
         public float Rain { get; private set; } // 0..1, eased toward the weather
@@ -136,7 +137,7 @@ namespace Stratum.Game
 
         void Update()
         {
-            float wantRain = Weather == 0 || Deep ? 0 : Weather == 2 ? 1 : 0.75f;
+            float wantRain = Weather == 0 || Deep || Still ? 0 : Weather == 2 ? 1 : 0.75f;
             Rain = Mathf.MoveTowards(Rain, wantRain, UnityEngine.Time.deltaTime / 12f);
             Flash = Mathf.Max(0, Flash - UnityEngine.Time.deltaTime * 3.5f);
             if (!Frozen)
@@ -216,6 +217,21 @@ namespace Stratum.Game
             }
             if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f - overcast * (Weather == 2 ? 0.75f : 0.5f) + Flash * 0.8f;
             Shader.SetGlobalColor(CaveGlow, Deep ? new Color(0.46f, 0.20f, 0.11f) : Color.black);
+            if (Still)
+            {
+                var dark = new Color(0.035f, 0.025f, 0.075f);
+                Shader.SetGlobalColor(SkyZenith, dark * 0.6f); Shader.SetGlobalColor(SkyHorizon, dark * 1.6f);
+                Shader.SetGlobalColor(SunGlow, Color.black); Shader.SetGlobalFloat(Night, 1);
+                Shader.SetGlobalColor(SkyAmbient, new Color(0.46f, 0.43f, 0.6f));
+                Sun.intensity = 0;
+                RenderSettings.fogColor = dark * 1.4f;
+                RenderSettings.fogStartDistance = 40; RenderSettings.fogEndDistance = Mathf.Max(120, ViewDistanceMeters);
+                if (_grade != null) _grade.postExposure.value = 0.3f;
+                if (_cloudPlane != null) _cloudPlane.gameObject.SetActive(false);
+                if (_lowClouds != null) _lowClouds.gameObject.SetActive(false);
+                var c1 = Camera.main; if (c1 != null) c1.backgroundColor = dark;
+                return;
+            }
             if (Deep)
             {
                 var haze = new Color(0.20f, 0.06f, 0.035f);

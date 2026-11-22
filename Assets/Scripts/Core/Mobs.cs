@@ -9,7 +9,7 @@ namespace Stratum.Core
         // 0.14
         Bloat, Hound,
         // 0.15
-        Glob, Shade, Snapper, Count }
+        Glob, Shade, Snapper, King, Count }
 
     public sealed class MobDef
     {
@@ -132,6 +132,10 @@ namespace Stratum.Core
             // The Snapper: a toothy fish of deep water that goes for swimmers.
             D(new MobDef { Kind = MobKind.Snapper, Name = "Snapper", Health = 12, Speed = 3.6f, HalfW = 0.4f, Height = 0.5f, Hostile = true, Swims = true,
                 Damage = 3, Reach = 1.5f, AttackEvery = 1.0f, Sight = 14, Xp = 4, Drops = new[] { ("raw_fish", 1, 2, 1f) } });
+            // The Hollow King: lord of the Quiet. He steps through the air, calls Shades to him and, wounded, throws bolts.
+            D(new MobDef { Kind = MobKind.King, Name = "Hollow King", Health = 400, Speed = 3.0f, HalfW = 0.8f, Height = 4.2f, Hostile = true, Boss = true, Blinks = true,
+                Fireproof = true, Damage = 8, Reach = 3.2f, AttackEvery = 1.4f, Sight = 70, Xp = 500,
+                Drops = new[] { ("hollow_crown", 1, 1, 1f), ("starstone", 4, 8, 1f), ("shade_shard", 6, 10, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -248,10 +252,10 @@ namespace Stratum.Core
                         var piece = Spawn(MobKind.Glob, m.X + (i == 0 ? 0.3f : -0.3f), m.Y + 0.2f, m.Z + (i == 0 ? -0.3f : 0.3f));
                         piece.Job = (byte)(m.Job + 1); piece.Health = m.Job == 0 ? 6 : 2; piece.VY = 4; piece.Target = m.Target;
                     }
-                if (m.Kind == MobKind.Colossus) _bossBack[((int)m.HomeX, (int)m.HomeZ)] = _clock + 1200;
+                if (m.Def.Boss) _bossBack[((int)m.HomeX, (int)m.HomeZ)] = _clock + 1200;
                 Died?.Invoke(m, player);
             }
-            else { Sound?.Invoke(m, "hurt"); if (m.Def.Blinks) Blink(m, m.X, m.Z, 6, 14); }
+            else { Sound?.Invoke(m, "hurt"); if (m.Def.Blinks && (!m.Def.Boss || Rand() < 0.3f)) Blink(m, m.X, m.Z, 6, 14); }
         }
 
         // A blast at (x, y, z): everything near is thrown back and hurt, less the further away it stands.
@@ -435,10 +439,10 @@ namespace Stratum.Core
                 _cageTimer = 4 + Rand() * 6;
                 if (Difficulty > 0 && Spawning) foreach (var p in players) if (p.Alive && !Ember.In(p.X)) { Cages(p); Waters(p); }
             }
-            if (VillageNear != null && (_villageTimer -= dt) <= 0)
+            if ((_villageTimer -= dt) <= 0)
             {
                 _villageTimer = 5;
-                foreach (var p in players) if (Ember.In(p.X)) Keeper(p); else Villagers(p);
+                foreach (var p in players) if (Ember.In(p.X)) Keeper(p); else if (Quiet.In(p.X)) King(p); else if (VillageNear != null) Villagers(p);
             }
             if (Spawning && players.Count > 0 && (_spawnTimer -= dt) <= 0)
             {
@@ -625,7 +629,7 @@ namespace Stratum.Core
             float far = m.Def.Hostile ? 72 : 110;
             if (best > far * far) return true;
             // Night creatures far from anyone drift away by day.
-            if (m.Def.Hostile && !Ember.In(m.X) && IsDay && best > 32 * 32 && m.Age > 30 && Rand() < 0.002f) return true;
+            if (m.Def.Hostile && !Ember.In(m.X) && !Quiet.In(m.X) && IsDay && best > 32 * 32 && m.Age > 30 && Rand() < 0.002f) return true;
             return Difficulty == 0 && m.Def.Hostile;
         }
 
@@ -637,7 +641,7 @@ namespace Stratum.Core
             bool jumpy = false;
 
             // A Shade caught out in daylight slips away for good.
-            if (d.Blinks && IsDay && !Ember.In(m.X) && Rand() < dt * 0.2f && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 1), (int)Math.Floor(m.Z))) { m.Health = 0; m.Dead = 0.01f; return; }
+            if (d.Blinks && !d.Boss && IsDay && !Ember.In(m.X) && !Quiet.In(m.X) && Rand() < dt * 0.2f && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 1), (int)Math.Floor(m.Z))) { m.Health = 0; m.Dead = 0.01f; return; }
             bool pet = m.Tame && m.Kind == MobKind.Hound;
             if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
             Seen? target = null;
@@ -717,6 +721,20 @@ namespace Stratum.Core
                 {
                     wx = dx; wz = dz;
                     if (d.Blinks && (m.InWater || dist > 8 && (m.Phase -= dt) <= 0)) { m.Phase = 2.5f + Rand() * 3; Blink(m, t.X, t.Z, 2, 5); }
+                    if (m.Kind == MobKind.King && (m.Idle -= dt) <= 0)
+                    {
+                        m.Idle = 7 + Rand() * 4;
+                        Sound?.Invoke(m, "say");
+                        // He calls Shades to his side (four at most), and once half his strength is gone throws a fan of bolts.
+                        int shades = 0; foreach (var o in All) if (o.Kind == MobKind.Shade && o.Dead <= 0 && Math.Abs(o.X - m.X) < 40 && Math.Abs(o.Z - m.Z) < 40) shades++;
+                        for (int i = shades; i < Math.Min(4, shades + 2); i++) { var sh = Spawn(MobKind.Shade, m.X, m.Y, m.Z); if (!Blink(sh, t.X, t.Z, 4, 9)) { sh.Health = 0; sh.Dead = 0.01f; } else sh.Target = t.Id; }
+                        if (m.Health < d.Health * 0.5f && dist > 3)
+                            for (int i = -2; i <= 2; i++)
+                            {
+                                float ang = (float)Math.Atan2(dx, dz) + i * 0.16f, ey = m.Y + d.Height * 0.7f, flat = Math.Max(1, dist);
+                                Shoot(-m.Id, m.X, ey, m.Z, (float)Math.Sin(ang) * 22, (t.Y + 1.2f - ey) / (flat / 22) + 10 * (flat / 22), (float)Math.Cos(ang) * 22, 5);
+                            }
+                    }
                     if (!d.Climbs && dist > 2.5f) Way(m, t.X, t.Y, t.Z, ref wx, ref wz);
                     if (m.Kind == MobKind.Crawler && dist < 4.5f && dist > 2 && m.OnGround && Rand() < dt * 2) { m.VY = 6; m.VX += dx / dist * 4; m.VZ += dz / dist * 4; }
                     if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2.2f && m.Cool <= 0)
@@ -1095,6 +1113,21 @@ namespace Stratum.Core
                 if (m.Def.Hostile) hostile++; else passive++;
             }
             int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : HostileCap;
+            if (Quiet.In(p.X))
+            {
+                // Only Shades walk the Quiet, by day or night.
+                if (hostile < 5 && Difficulty > 0)
+                {
+                    float qa = Rand() * 6.283f, qr = 16 + Rand() * 20;
+                    int qx = (int)Math.Floor(p.X + Math.Cos(qa) * qr), qz = (int)Math.Floor(p.Z + Math.Sin(qa) * qr);
+                    if (Loaded(qx, qz))
+                    {
+                        int qy = Ground(qx, qz, (int)p.Y + 14, 40, out ushort qf);
+                        if (qy != int.MinValue && qf == Blocks.Stillstone && !Body.Blocked(_get, qx + 0.5f, qy, qz + 0.5f, 0.3f, 2.6f)) Spawn(MobKind.Shade, qx + 0.5f, qy, qz + 0.5f);
+                    }
+                }
+                return;
+            }
             if (Ember.In(p.X)) { if (hostile < hostileCap) TrySpawnEmber(p, players); return; }
             if (passive < PassiveCap && Rand() < 0.35f) TrySpawnAnimals(p, players);
             if (hostile < hostileCap) TrySpawnMonster(p, players);
@@ -1147,6 +1180,19 @@ namespace Stratum.Core
         public int Seed;
         float _clock;
         readonly Dictionary<(int, int), float> _bossBack = new Dictionary<(int, int), float>();
+
+        // The Hollow King stands at his throne whenever someone comes near (and comes back twenty minutes after a fall).
+        void King(in Seen p)
+        {
+            if (Difficulty == 0) return;
+            var (kx, ky, kz) = Quiet.Throne;
+            if (Math.Abs(p.X - kx) > 70 || Math.Abs(p.Z - kz) > 70 || !Loaded(kx, kz)) return;
+            foreach (var m in All) if (m.Kind == MobKind.King && m.Dead <= 0) return;
+            if (_bossBack.TryGetValue((kx, kz), out float back) && back > _clock) return;
+            var king = Spawn(MobKind.King, kx + 0.5f, ky, kz + 0.5f);
+            king.HomeX = kx; king.HomeZ = kz; king.Idle = 6;
+            Sound?.Invoke(king, "say");
+        }
 
         void Keeper(in Seen p)
         {

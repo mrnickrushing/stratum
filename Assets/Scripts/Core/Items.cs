@@ -151,6 +151,7 @@ namespace Stratum.Core
             foreach (var (key, name, effect, secs, with) in Potions)
                 Add(new ItemDef { Id = "potion_" + key, Name = "Potion of " + name, MaxStack = 16, Drink = true, Leaves = "bottle", Effect = effect, EffectSecs = secs });
             Add(new ItemDef { Id = "jelly", Name = "Glob Jelly" });
+            Add(new ItemDef { Id = "hollow_crown", Name = "Hollow Crown", MaxStack = 1, ArmourSlot = 0, Armour = 3, Durability = 600 });
             Add(new ItemDef { Id = "shade_shard", Name = "Shade Shard" });
             Add(new ItemDef { Id = "shield", Name = "Shield", MaxStack = 1, Durability = 300 });
             Add(new ItemDef { Id = "fishing_rod", Name = "Fishing Rod", MaxStack = 1, Durability = 64 });
@@ -242,6 +243,7 @@ namespace Stratum.Core
             R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
             R("fishing_rod", 1, "workbench", ("stick", 3), ("thread", 2));
             R("bottle", 3, "workbench", ("glass", 3));
+            R("gate_stone", 1, "workbench", ("obsidian", 4), ("shade_shard", 4), ("starstone", 1));
             R("brewing_stand", 1, "workbench", ("cobble", 3), ("ember", 1));
             foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));
             R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));

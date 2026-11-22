@@ -140,6 +140,7 @@ namespace Stratum.Core
 
         public void Generate(Chunk ch)
         {
+            if (Quiet.InChunk(ch.X)) { Quiet.Generate(ch, Seed); ch.Ready = true; return; }
             if (Ember.InChunk(ch.X)) { Ember.Generate(ch, _cave1, _cave2, Seed); ch.RecalcMaxY(); ch.Ready = true; return; }
             var cols = _cols ??= new Column[W * W];
             if (Kind == WorldKind.Sky) { GenerateSky(ch, cols); return; }

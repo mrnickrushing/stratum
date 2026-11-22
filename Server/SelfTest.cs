@@ -534,7 +534,7 @@ namespace Stratum.Server
                     Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
                     int unmade = 0; string which = "";
                     foreach (var id in Blocks.Palette)
-                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && id != Blocks.Stillstone && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
                     Check(unmade == 0, "every block added since the 0.11 building set can be crafted (ores are dug)" + which);
                 }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
@@ -1281,6 +1281,35 @@ namespace Stratum.Server
                 for (int i = 0; i < 20 * 90; i++) { cs2.Tick(0.05f, who); int now = 0; foreach (var m in cs2.All) if (m.Def.Hostile && m.Dead <= 0) now++; most = Math.Max(most, now); }
                 int out2 = most;
                 Check(out2 >= 2 && out2 <= 4, $"a vault's cage lets its monsters out while someone is near, four at most ({out2})");
+            }
+
+            // The Quiet: somewhere to land, the way home, and the King at his throne.
+            {
+                int seed = 77; var gen = new WorldGen(seed, WorldKind.Normal);
+                var land = Quiet.Landing; var gate = Quiet.HomeGate; var throne = Quiet.Throne;
+                ushort At(int x, int y, int z) { var c = new Chunk(x >> 4, z >> 4); gen.Generate(c); return c.Get(x & 15, y, z & 15); }
+                int lx = (int)Math.Floor(land.x), ly = (int)land.y, lz = (int)Math.Floor(land.z);
+                Check(Blocks.Get(At(lx, ly - 1, lz)).Solid && At(lx, ly, lz) == 0 && At(lx, ly + 1, lz) == 0, "the Quiet has solid ground to land on, with room to stand");
+                Check(At(gate.x, gate.y, gate.z) == Blocks.GateStone, "and a gate stone there for the way home");
+                Check(At(throne.x, throne.y - 1, throne.z) == Blocks.Obsidian && At(Quiet.Mid + 300, 20, 300) != Blocks.Stone, "a throne on the great island, and no ordinary ground anywhere");
+                Check(Items.Recipes.Exists(r => r.Out == "gate_stone"), "a gate stone can be made");
+                ushort Flat(int x, int y, int z) => y <= Quiet.Top ? Blocks.Stillstone : (ushort)0;
+                var qs = new MobSim(Flat, 4) { Time01 = 0.5f, Seed = seed, PassiveCap = 0 };
+                var who = new List<Seen> { new Seen { Id = 1, X = Quiet.Mid + 20.5f, Y = Quiet.Top + 1, Z = 0.5f, Alive = true, Key = "kid" } };
+                for (int i = 0; i < 20 * 12; i++) qs.Tick(0.05f, who);
+                Mob king = null; foreach (var m in qs.All) if (m.Kind == MobKind.King) king = m;
+                Check(king != null, "the Hollow King is at his throne when someone comes near");
+                bool hurt = false; qs.HitPlayer += (id, dmg, fx, fz, from) => hurt = true;
+                for (int i = 0; i < 20 * 40 && !hurt; i++) qs.Tick(0.05f, who);
+                int shades = 0; foreach (var m in qs.All) if (m.Kind == MobKind.Shade) shades++;
+                Check(hurt && shades >= 1, $"he comes for them and calls Shades to his side ({shades})");
+
+                // A Glob breaks into two smaller ones, and those into two smaller still.
+                var gs = new MobSim(new Patch().Get, 6) { Spawning = false };
+                var glob = gs.Spawn(MobKind.Glob, 0.5f, 11, 0.5f);
+                gs.Strike(glob.Id, 1, 50, 1.5f, 11, 0.5f);
+                int alive = 0; foreach (var m in gs.All) if (m.Kind == MobKind.Glob && m.Dead <= 0) alive++;
+                Check(alive == 2 && gs.Loot(glob).Count == 0, $"a Glob breaks into two smaller ones and leaves nothing itself ({alive})");
             }
 
             // Spark machines.
