@@ -280,8 +280,11 @@ namespace Stratum.Game
             return w.Kind == Core.WorldKind.Normal || w.Name.IndexOf(kind, StringComparison.OrdinalIgnoreCase) >= 0 ? mode : kind + " · " + mode;
         }
 
+        public string LastJoinNote;             // what the join screen last said (the reason a join didn't happen)
+
         public void ShowJoin(string status)
         {
+            LastJoinNote = status;
             Show(_join, true);
             _findAt = Time.unscaledTime + 0.5f;     // ask again (who is in which world changes), once a world we just left has noticed
             _joining = false;

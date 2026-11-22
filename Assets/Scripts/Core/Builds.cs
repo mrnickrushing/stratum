@@ -330,18 +330,24 @@ namespace Stratum.Core
         }
 
         // ------------------------------------------------------------------------------------------ parkour
+        // Every place to stand on the run, in order (x from..to, z from..to, the height of the feet, and whether it
+        // is reached by climbing the ladder before it), so a test can check each jump can be made.
+        public static readonly List<(int x0, int x1, int z0, int z1, int y, bool climb)> ParkourSteps = new List<(int, int, int, int, int, bool)>();
         // Six stages of jumps over water, each its own colour and a little harder, with a gold landing between
         // stages and a tower at the end. Every jump is one the castaway can make: at most three across on the level,
         // two when it also goes up one.
         static Canvas Parkour()
         {
-            var c = new Canvas(-26, -3, -4, 26, 60, 230); Pad(c);
+            const int End = 340;                                                 // the far end of the pool; the run finishes short of it
+            var c = new Canvas(-34, -3, -4, 34, 72, End); Pad(c);
             // The pool underneath: fall in, swim back, try again.
-            c.Fill(-26, -2, 6, 26, -1, 230, Blocks.Water); c.Fill(-26, -3, 6, 26, -3, 230, "sand");
-            c.Fill(-26, 0, 6, 26, 60, 230, 0);
-            c.Walls(-26, -1, 6, 26, -1, 230, "polished_stone");
+            c.Fill(-34, -2, 6, 34, -1, End, Blocks.Water); c.Fill(-34, -3, 6, 34, -3, End, "sand");
+            c.Fill(-34, 0, 6, 34, 72, End, 0);
+            c.Walls(-34, -1, 6, 34, -1, End, "polished_stone");
             c.Fill(-3, -1, 2, 3, -1, 8, "polished_stone"); c.Set(-3, 0, 8, "lamp_post"); c.Set(3, 0, 8, "lamp_post");
 
+            ParkourSteps.Clear();
+            ParkourSteps.Add((-3, 3, 2, 8, 0, false));
             var dice = new Dice(2024);
             string[] colour = { "lime_wool", "yellow_wool", "orange_wool", "red_wool", "light_blue_wool", "purple_wool" };
             int x = 0, y = 0, z = 8;                                             // the far edge of what we stand on
@@ -362,20 +368,25 @@ namespace Stratum.Core
                     if (stage == 2 && j % 3 == 2)
                     {
                         // A ladder tower: climb four, step off the top.
-                        c.Fill(x, y - 1, z, x, y + 3, z, block);
+                        // The ladder stands one rung above the top, so the climb ends over the ledge.
+                        c.Fill(x, y - 1, z, x, y + 2, z, block);
                         for (int k = 0; k <= 3; k++) c.Turned(x, y + k, z - 1, "ladder", 0);
                         c.Set(x, y - 1, z - 1, block);
-                        y += 4; z += 0;
+                        ParkourSteps.Add((x, x, z - 1, z - 1, y, false));
+                        y += 3;
+                        ParkourSteps.Add((x, x, z, z, y, true));
                         continue;
                     }
                     ushort use = stage == 4 ? B("ice") : stage == 5 && (j & 1) == 1 ? B("glass") : block;
                     c.Fill(x - wide, y - 1, z, x + wide, y - 1, z + len - 1, use);
+                    ParkourSteps.Add((x - wide, x + wide, z, z + len - 1, y, false));
                     if (stage == 3 && j % 4 == 1) c.Set(x, y - 1, z, "stone_brick_slab");     // a low step: mind your footing
                     z += len - 1;
                 }
                 // The landing between stages: gold corners, lamps, a chest of snacks.
                 z += 3;
                 c.Fill(x - 2, y - 1, z, x + 2, y - 1, z + 4, "polished_stone");
+                ParkourSteps.Add((x - 2, x + 2, z, z + 4, y, false));
                 foreach (int sx in new[] { -2, 2 }) { c.Set(x + sx, y - 1, z, "gold_block"); c.Set(x + sx, y - 1, z + 4, "gold_block"); c.Set(x + sx, y, z + 2, "lamp_post"); }
                 c.Set(x - 2, y, z + 4, "chest"); c.Set(x + 2, y, z, block);
                 // A ladder down to the water for whoever wants out, and one up from it.
@@ -386,6 +397,7 @@ namespace Stratum.Core
             // The finish: a tower with a gold floor, a roof, chandeliers and the prize chests.
             z += 3;
             c.Fill(x - 4, y - 1, z, x + 4, y - 1, z + 8, "gold_block");
+            ParkourSteps.Add((x - 4, x + 4, z, z + 8, y, false));
             c.Fill(x - 3, y - 1, z + 1, x + 3, y - 1, z + 7, "tiles_white");
             foreach (int sx in new[] { -4, 4 }) foreach (int dz in new[] { 0, 8 }) c.Fill(x + sx, y, z + dz, x + sx, y + 4, z + dz, "stone_pillar");
             for (int i = 0; i < 5; i++) c.Fill(x - 5 + i, y + 5 + i, z - 1 + i, x + 5 - i, y + 5 + i, z + 9 - i, i == 0 ? B("gold_block") : B("roof_tiles"));
