@@ -1198,6 +1198,24 @@ namespace Stratum.Server
         // 0.14: things on the ground, loose blocks, leaves without a trunk.
         static void MechanicsChecks()
         {
+            foreach (int seed in new[] { 4242, 1119, 7, 419773523, 90210 })
+            {
+                var g = new WorldGen(seed, WorldKind.Normal);
+                var (sx, sy, sz) = g.FindSpawn();
+                var near = new Dictionary<(int, int), Chunk>();
+                ushort At(int x, int y, int z) { var k = (x >> 4, z >> 4); if (!near.TryGetValue(k, out var c)) { c = new Chunk(k.Item1, k.Item2); g.Generate(c); near[k] = c; } return c.Get(x & 15, y, z & 15); }
+                bool open = Blocks.Get(At(sx, sy - 1, sz)).Solid;
+                for (int y = sy; y < Chunk.Height && open; y++) if (Blocks.Get(At(sx, y, sz)).Solid) open = false;
+                for (int oz = -1; oz <= 1 && open; oz++) for (int ox = -1; ox <= 1; ox++) if (!Blocks.Get(At(sx + ox, sy - 1, sz + oz)).Solid || Blocks.Get(At(sx + ox, sy, sz + oz)).Solid) open = false;
+                Check(open, $"seed {seed}: the start ({sx} {sy} {sz}) is level ground under open sky");
+            }
+            {
+                var ask = Items.Ask("Oak Planks 20", out int askN, out string askSay);
+                Check(ask != null && ask.Id == "oak_planks" && askN == 20, "/give understands a thing's name and a count");
+                Check(Items.Ask("torch", out askN, out askSay)?.Id == "torch" && askN == 1, "/give torch is the torch, though other things have torch in their names");
+                Check(Items.Ask("planks 5", out askN, out askSay) == null && askSay.StartsWith("Which one? Oak Planks"), "/give planks asks which planks: " + askSay);
+                Check(Items.Ask("zzz", out askN, out askSay) == null && askSay.Contains("nothing called"), "/give of nothing says so");
+            }
             var w = new Patch();
             var drops = new DropSim(w.Get);
             drops.Toss("cobble", 3, 0, 0.5f, 14, 0.5f, 2, 1, 0);

@@ -619,9 +619,8 @@ namespace Stratum.Server
                 var a = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 if (a[0] == "/give")
                 {
-                    var d = a.Length > 1 ? Items.Get(a[1].ToLowerInvariant()) : null;
-                    int n = a.Length > 2 && int.TryParse(a[2], out int gn) ? Math.Clamp(gn, 1, 640) : 1;
-                    if (d == null || !d.Creative) { p.Conn.Send(SaidPacket("", "/give <thing> [how many], for example /give torch 16")); return; }
+                    var d = Items.Ask(text.Substring(5), out int n, out string say);
+                    if (d == null) { p.Conn.Send(SaidPacket("", say)); return; }
                     for (int left = n; left > 0; left -= d.MaxStack) p.Conn.Send(new Packet(Net.Msg.Give).Str(d.Id).U16(Math.Min(left, d.MaxStack)).U16(0));
                     Log.Info($"{p.Name} gave themselves {n} {d.Id}");
                     p.Conn.Send(SaidPacket("", $"Given {n} {d.Name}."));
@@ -634,7 +633,7 @@ namespace Stratum.Server
                 Broadcast(SaidPacket("", $"{p.Name} set the time."));
                 return;
             }
-            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>  (operators: /give  /time set  /day  /night  /op  /deop  /ops)")); return; }
+            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>  /ops   Operators: /give <thing> [how many]  /time set <day|night>  /day  /night  /tp <x> <y> <z>  /op <name>  /deop <name>")); return; }
             Broadcast(SaidPacket(p.Name, text));
             Log.Info($"<{p.Name}> {text}");
         }

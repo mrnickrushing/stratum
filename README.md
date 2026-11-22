@@ -292,4 +292,8 @@ Since 0.16.1 the earlier shortcuts are gone: what lies on the ground is saved (`
 caves (`_CaveGlow`), a shield shows on other players (a "~s" on the end of what they hold), and goals and statistics
 are kept with the account on a server (`PlayerRecord.notes`).
 
+0.16.2 is polish from trying things by hand: new players start on level open ground (`WorldGen.OpenGround`), chat has a dark
+panel behind it, the backpack is solid and the shield slot has a row of its own, `/give` takes names and part names
+(`Items.Ask`), and the Windows build was run under Wine (`wine Builds/Windows/Stratum.exe -smoketest <dir>`).
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

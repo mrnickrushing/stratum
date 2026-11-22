@@ -412,7 +412,10 @@ namespace Stratum.Game
             {
                 case "/help":
                 case "/?":
-                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night  /time set <day|noon|night|midnight>  /give <thing> [how many]  /gamemode <survival|creative>");
+                    _hud.AddChat("", Online
+                        ? "Commands: /spawn  /home  /tp <name>  /list  /weather <clear|rain|thunder>  /ops"
+                        : "Commands: /spawn  /home  /keep <on|off>  /tp <x> <y> <z>  /weather <clear|rain|thunder>  /day  /night  /time set <day|noon|night|midnight>  /give <thing> [how many]  /gamemode <survival|creative>");
+                    if (Online) _hud.AddChat("", "Operators only: /give <thing> [how many]  /day  /night  /time set <day|noon|night|midnight>  /tp <x> <y> <z>  /op <name>  /deop <name>");
                     return true;
                 case "/keep":
                     if (Online) { _hud.AddChat("", _keepInv ? "This world lets you keep your things when you fall." : "In this world your things drop in a satchel when you fall. The server decides."); return true; }
@@ -463,11 +466,8 @@ namespace Stratum.Game
                 case "/give":
                 {
                     if (Online) return false;               // the server decides who may
-                    var ga = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    string what = ga.Length > 0 ? ga[0].ToLowerInvariant() : "";
-                    int many = ga.Length > 1 && int.TryParse(ga[1], out int gn) ? Mathf.Clamp(gn, 1, 640) : 1;
-                    var gd = FindItem(what);
-                    if (gd == null) { _hud.AddChat("", ga.Length == 0 ? "/give <thing> [how many], for example /give torch 16" : $"There's nothing called \"{what}\"."); return true; }
+                    var gd = Items.Ask(arg, out int many, out string gsay);
+                    if (gd == null) { _hud.AddChat("", gsay); return true; }
                     Give(gd.Id, many, 0);
                     _hud.AddChat("", $"Given {many} {gd.Name}.");
                     return true;
@@ -521,16 +521,6 @@ namespace Stratum.Game
         }
 
         // A thing by its key or its name ("oak_planks", "Oak Planks", "oak planks").
-        static ItemDef FindItem(string what)
-        {
-            if (string.IsNullOrEmpty(what)) return null;
-            var d = Items.Get(what);
-            if (d != null && d.Creative) return d;
-            string spaced = what.Replace('_', ' ');
-            foreach (var it in Items.Order) if (it.Creative && string.Equals(it.Name, spaced, StringComparison.OrdinalIgnoreCase)) return it;
-            return null;
-        }
-
         void Teleport(Vector3 to, string what)
         {
             if (_player.Asleep) WakeUp();

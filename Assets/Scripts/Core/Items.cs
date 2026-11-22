@@ -400,6 +400,33 @@ namespace Stratum.Core
         }
 
         public static int DerivedCount { get { lock (Derived) return Derived.Count; } }
+
+        // What "/give <words> [how many]" means: the thing and the count, or a line to say instead (what else it
+        // could be, or that nothing is called that). Ids and names both work, in any case: "oak_planks", "Oak Planks".
+        public static ItemDef Ask(string words, out int many, out string say)
+        {
+            many = 1; say = "/give <thing> [how many], for example /give torch 16";
+            var w = new List<string>((words ?? "").ToLowerInvariant().Replace('_', ' ').Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+            if (w.Count > 1 && int.TryParse(w[w.Count - 1], out int n)) { many = Math.Clamp(n, 1, 640); w.RemoveAt(w.Count - 1); }
+            if (w.Count == 0) return null;
+            string q = string.Join(" ", w);
+            var close = new List<ItemDef>();
+            foreach (var it in Order)
+            {
+                if (!it.Creative) continue;
+                string id = it.Id.Replace('_', ' '), name = it.Name.ToLowerInvariant();
+                if (id == q || name == q) return it;
+                bool all = true;
+                foreach (var part in w) if (id.IndexOf(part, StringComparison.Ordinal) < 0 && name.IndexOf(part, StringComparison.Ordinal) < 0) { all = false; break; }
+                if (all) close.Add(it);
+            }
+            if (close.Count == 1) return close[0];
+            if (close.Count == 0) { say = $"There's nothing called \"{q}\"."; return null; }
+            var names = new List<string>();
+            for (int i = 0; i < close.Count && i < 6; i++) names.Add(close[i].Name);
+            say = "Which one? " + string.Join(", ", names) + (close.Count > 6 ? $" and {close.Count - 6} more" : "");
+            return null;
+        }
         public static ItemDef Get(string id)
         {
             if (id == null) return null;

@@ -456,7 +456,10 @@ namespace Stratum.Game
                 // The other hand: a shield.
                 {
                     var v = SlotView.Make(_invGrid, S);
-                    v.GetComponent<RectTransform>().Place(0, 1, 5 * (S + G), -468, S, S);
+                    // On a row of its own: beside the armour it sat on top of the crafting grid.
+                    v.GetComponent<RectTransform>().Place(0, 1, 0, -592, S, S);
+                    var ol = UIKit.Label(_invGrid, "Other hand\n<size=18>a shield</size>", 22, UIKit.Dim, TextAnchor.MiddleLeft);
+                    ol.rectTransform.Place(0, 1, S + 14, -592, 240, S);
                     v.Click = b =>
                     {
                         if (!_cursor.Empty && _cursor.Item != "shield") { Toast("Only a shield goes in the other hand"); return; }
@@ -466,7 +469,7 @@ namespace Stratum.Game
                     _armSlots.Add(v);
                 }
                 _armText = UIKit.Label(_invGrid, "", 22, UIKit.Dim);
-                _armText.rectTransform.Place(0, 1, 0, -558, 340, 30);
+                _armText.rectTransform.Place(0, 1, 0, -554, 340, 30);
             }
             LayoutGrid();
             // A chest's slots take the crafting panel's place.

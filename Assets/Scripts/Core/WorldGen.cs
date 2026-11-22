@@ -677,6 +677,7 @@ namespace Stratum.Core
         {
             if (Kind == WorldKind.Sky) return SkySpawn();
             if (Builds.Is(Kind)) return Builds.Spawn(Kind);
+            (int x, int y, int z)? first = null; int tried = 0;
             for (int ring = 0; ring < 4096; ring += 16)
                 for (int a = 0; a < 16; a++)
                 {
@@ -688,9 +689,51 @@ namespace Stratum.Core
                     if (col.Height > Chunk.SeaLevel + 1 && col.Height < (Kind == WorldKind.OnlyPeaks ? 150 : 110)
                         && (anyBiome || bio != (Kind == WorldKind.Dunes ? Biome.Ocean : Biome.Desert) && bio != Biome.Peaks && bio != Biome.Beach)
                         && (Kind != WorldKind.Islands || Roomy(x, z)))
-                        return (x, (int)col.Height + 1, z);
+                    {
+                        if (first == null) first = (x, (int)col.Height + 1, z);
+                        if (++tried > 24) return first.Value;
+                        var open = OpenGround(x, z);
+                        if (open != null) return open.Value;
+                    }
                 }
-            return (0, 100, 0);
+            return first ?? (0, 100, 0);
+        }
+
+        // The nearest place in this piece of the world to stand in the open: level ground underfoot, nothing
+        // overhead (not under a tree or wedged against a cliff), no water. Null if there isn't one.
+        (int x, int y, int z)? OpenGround(int wx, int wz)
+        {
+            var ch = new Chunk(wx >> 4, wz >> 4);
+            Generate(ch);
+            int Top(int x, int z)           // the highest thing that isn't air, grass or a flower
+            {
+                int y = Chunk.Height - 1;
+                while (y > 0) { var t = Blocks.Get(ch.Get(x, y, z)); if (t.Solid || t.Fluid != 0) break; y--; }
+                return y;
+            }
+            int cx = wx & 15, cz = wz & 15;
+            // A clearing five across if there is one, else three across (hill country has few wide ledges).
+            for (int reach = 2; reach >= 1; reach--)
+            {
+                int best = int.MaxValue; (int x, int y, int z)? found = null;
+                for (int z = 2; z < 14; z++)
+                    for (int x = 2; x < 14; x++)
+                    {
+                        int d = (x - cx) * (x - cx) + (z - cz) * (z - cz);
+                        if (d >= best) continue;
+                        int y = Top(x, z);
+                        var b = Blocks.Get(ch.Get(x, y, z));
+                        if (!b.Solid || b.Fluid != 0 || b.Sound == Sound.Leaves || b.Shape != Shape.Cube || y <= Chunk.SeaLevel || y + 3 >= Chunk.Height) continue;
+                        bool level = true;
+                        for (int dz = -reach; dz <= reach && level; dz++)
+                            for (int dx = -reach; dx <= reach; dx++)
+                                if (Top(x + dx, z + dz) != y) { level = false; break; }
+                        if (!level) continue;
+                        best = d; found = ((ch.X << 4) + x, y + 1, (ch.Z << 4) + z);
+                    }
+                if (found != null) return found;
+            }
+            return null;
         }
     }
 }
