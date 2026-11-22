@@ -230,3 +230,37 @@ mounted at `/data`, and a TCP proxy to port 25600. Players join at the proxy's
 builds a sunstone pillar by the spawn, the guest finds it and breaks its top block, and each takes screenshots of the
 other and logs what it saw to `smoke.txt` (with `-voicetone`, a made-up voice instead of the microphone, and the voice
 frames sent and heard). `-connect host:port -name X -password P [-create]` alone logs in straight from the command line.
+
+## Next
+
+What is planned, in the order it will be done. Names and art stay Stratum's own throughout.
+
+**Small things left from the 0.13 review**
+- Five wrong passwords lock password login for that name for a minute, and anyone can trigger it (`Accounts.cs`).
+- A tree refused by its own chunk still has its canopy drawn by the neighbour (`WorldGen.BaseOk`): floating leaf slices.
+- `Math.Pow` in the height function can differ by one block between the game's runtime and the server's.
+- A portal room carved over a container leaves its contents orphaned in `containers.bin` (`Ember.Arrive`).
+
+**Mechanics, most noticeable first**
+1. Items on the ground: Q to drop, pick up by walking over, mined blocks and creature loot fall as items.
+2. Sand and gravel fall; leaves decay once the trunk is cut.
+3. Torches on walls.
+4. An exploding creature, a blast block and explosions.
+5. Fire: a fire block, spread, burning wood, lightning that sets things alight.
+6. Fishing; more crops and foods; chickens lay eggs.
+7. Hearts and food icons instead of bars; third-person view (F5); sprint and sneak keys as players expect.
+8. Shield and an off-hand slot; a tool tier above iron.
+9. Taming and pets; animals to ride.
+10. Creatures that find their way round obstacles.
+11. Pistons, then dispensers, observers and comparators.
+12. Potions and status effects.
+13. Dungeons, mineshafts and other places with loot in chests; spawners.
+14. `/give`, `/gamemode`, `/time set`; goals to tick off; a player list on Tab.
+15. More creatures (teleporting, bouncing, water) and more biomes.
+16. A third dimension and a final boss.
+
+**Only if measurements say so**
+- Merging flat runs of faces in the mesher, and a longer view distance (take an F4 report on the slowest computer first).
+
+**Held off on purpose**
+- The server owning inventory, health and movement; encrypting the whole session.
