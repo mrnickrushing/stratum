@@ -49,7 +49,7 @@ namespace Stratum.Game
             _goalsText.rectTransform.Place(0, 1, 40, -96, 540, 640); _goalsText.supportRichText = true;
             _goalsText2 = UIKit.Label(_goalsPanel.transform, "", 23, Color.white, TextAnchor.UpperLeft);
             _goalsText2.rectTransform.Place(0, 1, 610, -96, 540, 640); _goalsText2.supportRichText = true;
-            var hint = UIKit.Label(_goalsPanel.transform, "G or Esc closes this", 20, UIKit.Dim, TextAnchor.LowerCenter);
+            var hint = UIKit.Label(_goalsPanel.transform, "G turns the page (goals, statistics); Esc closes", 20, UIKit.Dim, TextAnchor.LowerCenter);
             hint.rectTransform.Place(0.5f, 0, 0, 14, 600, 30);
             _goalsPanel.transform.SetAsLastSibling();
             _goalsPanel.gameObject.SetActive(false);
@@ -76,6 +76,14 @@ namespace Stratum.Game
             }
             _goalsText.text = a.ToString(); _goalsText2.text = b.ToString();
             _goalsTitle.text = $"Goals  {n} of {Goals.Length}";
+        }
+
+        public void ShowStats(string text)
+        {
+            if (_goalsPanel == null) BuildGoals();
+            _goalsPanel.gameObject.SetActive(true);
+            _goalsTitle.text = "Statistics";
+            _goalsText.text = text; _goalsText2.text = "";
         }
 
         // Who is in this world, while Tab is held.

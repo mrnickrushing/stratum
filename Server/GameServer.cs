@@ -72,7 +72,7 @@ namespace Stratum.Server
                 var w = new WorldDef { Id = id, Name = Part(1) != "" ? Part(1) : f[0], Desc = Part(5) };
                 w.Creative = Part(2).StartsWith("c", StringComparison.OrdinalIgnoreCase);
                 string d = Part(3).ToLowerInvariant();
-                w.Difficulty = d.StartsWith("p") || d == "0" ? 0 : d.StartsWith("e") || d == "1" ? 1 : 2;
+                w.Difficulty = d.StartsWith("p") || d == "0" ? 0 : d.StartsWith("e") || d == "1" ? 1 : d.StartsWith("h") || d == "3" ? 3 : 2;
                 if (Part(4) != "") w.Seed = seedFrom(Part(4));
                 w.Kind = WorldGen.ParseKind(Part(6));
                 w.Keep = Part(7).StartsWith("keep", StringComparison.OrdinalIgnoreCase);

@@ -19,12 +19,12 @@ namespace Stratum.Game
         bool _hasBed; Vector3Int _bed;
         float _sleptFor;
 
-        public static readonly string[] DifficultyNames = { "Peaceful", "Easy", "Normal" };
+        public static readonly string[] DifficultyNames = { "Peaceful", "Easy", "Normal", "Hard", "Hardcore" };       // Hardcore plays as Hard, with one life
 
         void SetupSurvival(Link link, int difficulty)
         {
-            _link = link; _difficulty = Mathf.Clamp(difficulty, 0, 2);
-            _player.Difficulty = _difficulty;
+            _link = link; _difficulty = Mathf.Clamp(difficulty, 0, 4);
+            _player.Difficulty = Mathf.Min(_difficulty, 3);
             _player.Toast = s => _hud?.Toast(s);
             _creatures = Creatures.Create(_world, _cam.transform);
             _dropViews = DropViews.Create(_world, _blockMat);
@@ -55,6 +55,7 @@ namespace Stratum.Game
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
             _player.Trampled = (at, def) => _act.DropFor(def, at);
+            _act.Stat = name => Stat(name);
             // A gate stone carries whoever touches it to the Quiet, and the one there carries them home (their bed, or the spawn).
             _act.Travel = () =>
             {
@@ -114,6 +115,7 @@ namespace Stratum.Game
         void TeardownSurvival()
         {
             _waiting.Clear(); _waitTold = false;          // saved with the player before this; the next world has its own
+            SaveStats();
             if (_creatures != null) Destroy(_creatures.gameObject);
             if (_dropViews != null) Destroy(_dropViews.gameObject);
             if (_self != null) Destroy(_self.gameObject);
@@ -176,7 +178,7 @@ namespace Stratum.Game
         // Walking over something that fits in the pack picks it up; Q throws what's in the hand (Ctrl: the whole stack).
         void PickUp(Keyboard kb)
         {
-            if (_player.Health <= 0 || _state != State.Playing) return;
+            if (_player.Health <= 0 || _state != State.Playing || _player.Spectator) return;
             float now = Time.unscaledTime;
             var body = _player.Feet + Vector3.up * 0.9f;
             foreach (var d in _link.Drops)
@@ -220,7 +222,7 @@ namespace Stratum.Game
         void Give(string item, int count, int wear)
         {
             if (_player == null || Items.Get(item) == null || count <= 0) return;
-            if (item == "xp") { _player.AddXp(count); return; }
+            if (item == "xp") { _player.AddXp(count); Stat("kills"); return; }
             int left = count;
             if (wear > 0)
             {
@@ -474,8 +476,16 @@ namespace Stratum.Game
                 {
                     if (Online) { _hud.AddChat("", "On a server the world's mode is set by whoever runs it."); return true; }
                     string gm = arg.ToLowerInvariant();
+                    if (_meta.dead) { _hud.AddChat("", "This was a hardcore world: it can only be looked at now."); return true; }
+                    if (gm == "spectator" || gm == "sp" || gm == "3")
+                    {
+                        Spectate(true);
+                        _hud.AddChat("", "Spectator: you fly through everything and touch nothing. /gamemode survival to come back.");
+                        return true;
+                    }
                     bool? want = gm == "creative" || gm == "c" || gm == "1" ? true : gm == "survival" || gm == "s" || gm == "0" ? false : (bool?)null;
-                    if (want == null) { _hud.AddChat("", "/gamemode survival or /gamemode creative"); return true; }
+                    if (want == null) { _hud.AddChat("", "/gamemode survival, /gamemode creative or /gamemode spectator"); return true; }
+                    Spectate(false);
                     _player.Creative = _meta.creative = want.Value;
                     if (!want.Value) _player.Flying = false;
                     Save();
@@ -500,6 +510,14 @@ namespace Stratum.Game
                     return true;
             }
             return false;
+        }
+
+        // Looking on: flying through everything, touching nothing, seen by nothing.
+        void Spectate(bool on)
+        {
+            _player.Spectator = on;
+            if (on) { _player.Flying = true; _player.Velocity = Vector3.zero; if (_player.Riding != null) _player.GetOut(); }
+            else if (!_player.Creative) _player.Flying = false;
         }
 
         // A thing by its key or its name ("oak_planks", "Oak Planks", "oak planks").

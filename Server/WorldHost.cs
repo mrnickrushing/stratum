@@ -204,7 +204,7 @@ namespace Stratum.Server
             _loop = new Thread(Loop) { Name = "world " + Def.Id };
             _loop.Start();
             Log.Info($"world \"{Def.Name}\" ({Def.Id}): {System.IO.Path.GetFullPath(_cfg.Dir)}, seed {World.Meta.seed}, " +
-                     $"{WorldGen.KindName(World.Gen.Kind)}, {(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal" }[Math.Clamp(_cfg.Difficulty, 0, 2)]}");
+                     $"{WorldGen.KindName(World.Gen.Kind)}, {(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal", "hard" }[Math.Clamp(_cfg.Difficulty, 0, 3)]}");
         }
 
         // A logged-in player chose this world.

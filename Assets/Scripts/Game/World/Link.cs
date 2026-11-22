@@ -154,7 +154,7 @@ namespace Stratum.Game
         public override void Tick(float dt)
         {
             _seen.Clear();
-            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item, Key = "me" });
+            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative || _player.Spectator, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item, Key = "me" });
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);

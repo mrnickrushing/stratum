@@ -11,7 +11,7 @@ namespace Stratum.Core
         // 0.15
         Glob, Shade, Snapper, King,
         // 0.16
-        ChestCart, Count }
+        ChestCart, Guard, Count }
 
     public sealed class MobDef
     {
@@ -146,6 +146,8 @@ namespace Stratum.Core
             D(new MobDef { Kind = MobKind.King, Name = "Hollow King", Health = 400, Speed = 3.0f, HalfW = 0.8f, Height = 4.2f, Hostile = true, Boss = true, Blinks = true,
                 Fireproof = true, Damage = 8, Reach = 3.2f, AttackEvery = 1.4f, Sight = 70, Xp = 500,
                 Drops = new[] { ("hollow_crown", 1, 1, 1f), ("starstone", 4, 8, 1f), ("shade_shard", 6, 10, 1f) } });
+            // The Village Guard: slow, heavy and on the villagers' side. It sees off whatever comes for them.
+            D(new MobDef { Kind = MobKind.Guard, Name = "Village Guard", Health = 60, Speed = 1.7f, HalfW = 0.45f, Height = 2.5f, Damage = 7, Reach = 2.2f, Sight = 16 });
             D(new MobDef { Kind = MobKind.ChestCart, Name = "Chest Cart", Health = 4, HalfW = 0.5f, Height = 1.2f, Vehicle = true, Drops = new[] { ("chest_cart", 1, 1, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
@@ -161,7 +163,8 @@ namespace Stratum.Core
 
         public Func<int, int, bool> Loaded = (x, z) => true;      // is the ground there (columns, world coords)
         public Func<int, int, Biome> BiomeAt;
-        public int Difficulty = 2;                                // 0 peaceful, 1 easy, 2 normal
+        public int Difficulty = 2;                                // 0 peaceful, 1 easy, 2 normal, 3 hard
+        float Hits => Difficulty == 1 ? 0.6f : Difficulty >= 3 ? 1.5f : 1;     // how hard creatures hit
         public float Time01 = 0.3f;                               // time of day (0.25 sunrise, 0.75 sunset)
         public bool Spawning = true;
         public string Dimension = "";                             // "" the overworld, "ember" the Ember Deep
@@ -356,7 +359,7 @@ namespace Stratum.Core
                 if (!p.Alive || p.Creative) continue;
                 float dx = p.X - x, dy = p.Y + 0.9f - y, dz = p.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
                 if (dist > reach) continue;
-                float dmg = (1 - dist / reach) * power * 5 * (Difficulty == 1 ? 0.6f : 1);
+                float dmg = (1 - dist / reach) * power * 5 * Hits;
                 if (dmg >= 0.5f) HitPlayer?.Invoke(p.Id, dmg, x, z, cause);
             }
         }
@@ -731,8 +734,9 @@ namespace Stratum.Core
 
             // A Shade caught out in daylight slips away for good.
             if (d.Blinks && !d.Boss && IsDay && !Ember.In(m.X) && !Quiet.In(m.X) && Rand() < dt * 0.2f && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 1), (int)Math.Floor(m.Z))) { m.Health = 0; m.Dead = 0.01f; return; }
-            bool pet = m.Tame && m.Kind == MobKind.Hound;
-            if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
+            bool pet = m.Tame && m.Kind == MobKind.Hound || m.Kind == MobKind.Guard;
+            if (m.Kind == MobKind.Guard) Watch(m, dt, ref wx, ref wz, ref speed, ref pet);
+            else if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
             Seen? target = null;
             if (!pet && (d.Hostile && Difficulty > 0 || m.Angry))
             {
@@ -773,7 +777,7 @@ namespace Stratum.Core
                         float vy = ty / Math.Max(0.1f, time) + 10 * time;      // lift for the fall
                         float spread = (3 - Difficulty) * 0.5f;
                         Shoot(-m.Id, ex, ey, ez, tx / flat * v + (Rand() - 0.5f) * spread, vy, tz / flat * v + (Rand() - 0.5f) * spread,
-                            d.Damage * (Difficulty == 1 ? 0.6f : 1));
+                            d.Damage * Hits);
                         Sound?.Invoke(m, "shoot");
                     }
                 }
@@ -801,7 +805,7 @@ namespace Stratum.Core
                         if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2 && m.Cool <= 0)
                         {
                             m.Cool = d.AttackEvery; m.Windup = 0.2f;
-                            HitPlayer?.Invoke(t.Id, d.Damage * (Difficulty == 1 ? 0.6f : 1), m.X, m.Z, m);
+                            HitPlayer?.Invoke(t.Id, d.Damage * Hits, m.X, m.Z, m);
                         }
                     }
                     else { m.Target = -1; m.SwimVY = -0.6f; }
@@ -838,7 +842,7 @@ namespace Stratum.Core
                             m.Cool = d.AttackEvery;
                             if (dist < d.Reach + 0.6f && Math.Abs(dy) < 2.4f)
                             {
-                                float dmg = d.Damage * (Difficulty == 1 ? 0.6f : 1) * (m.Kind == MobKind.Glob ? (m.Job == 0 ? 1 : m.Job == 1 ? 0.6f : 0.2f) : 1);
+                                float dmg = d.Damage * Hits * (m.Kind == MobKind.Glob ? (m.Job == 0 ? 1 : m.Job == 1 ? 0.6f : 0.2f) : 1);
                                 HitPlayer?.Invoke(t.Id, dmg, m.X, m.Z, m);
                             }
                         }
@@ -874,7 +878,7 @@ namespace Stratum.Core
                         float a = Rand() * 6.283f, r = 3 + Rand() * 7;
                         m.GoalX = m.X + (float)Math.Cos(a) * r; m.GoalZ = m.Z + (float)Math.Sin(a) * r; m.HasGoal = true;
                         // Villagers stay about their village.
-                        if (m.Kind == MobKind.Villager && (m.X - m.HomeX) * (m.X - m.HomeX) + (m.Z - m.HomeZ) * (m.Z - m.HomeZ) > 22 * 22)
+                        if ((m.Kind == MobKind.Villager || m.Kind == MobKind.Guard) && (m.X - m.HomeX) * (m.X - m.HomeX) + (m.Z - m.HomeZ) * (m.Z - m.HomeZ) > 22 * 22)
                         { m.GoalX = m.HomeX + (Rand() - 0.5f) * 12; m.GoalZ = m.HomeZ + (Rand() - 0.5f) * 12; }
                     }
                     else m.HasGoal = false;
@@ -929,6 +933,26 @@ namespace Stratum.Core
                 if (jumpy && m.OnGround && Rand() < dt * 1.2f) m.VY = 6;
             }
             if (m.InWater && !d.Swims) m.VY = Math.Max(m.VY, d.Floats ? 1.5f : 1.0f);
+        }
+
+        // A village guard goes for the nearest hostile thing within reach of its village; otherwise it walks its rounds
+        // like a villager (so the wandering below is left to carry on).
+        void Watch(Mob m, float dt, ref float wx, ref float wz, ref float speed, ref bool busy)
+        {
+            m.Flee = 0; m.Angry = false; m.Target = -1;
+            Mob foe = null; float best = 14 * 14;
+            foreach (var o in All)
+            {
+                if (!o.Def.Hostile || o.Dead > 0 || o.Def.Boss || o.Kind == MobKind.Arrow || o.Kind == MobKind.Bloat) continue;
+                float fx = o.X - m.X, fy = o.Y - m.Y, fz = o.Z - m.Z, d2 = fx * fx + fy * fy * 4 + fz * fz;
+                if (d2 < best) { best = d2; foe = o; }
+            }
+            if (foe == null) { busy = false; return; }
+            m.HasGoal = false;
+            wx = foe.X - m.X; wz = foe.Z - m.Z; speed *= 1.6f;
+            m.Yaw = (float)(Math.Atan2(wx, wz) * 180 / Math.PI);
+            if (wx * wx + wz * wz > 5) Way(m, foe.X, foe.Y, foe.Z, ref wx, ref wz);
+            else if (m.Cool <= 0) { m.Cool = 1.2f; m.Windup = 0.25f; Hurt(foe, m.Def.Damage, m.X, m.Z, 0, 1.2f); }
         }
 
         // A friend's turn: stay if told, see off anything hostile nearby, otherwise keep up with its owner.
@@ -1201,7 +1225,7 @@ namespace Stratum.Core
                 if (dx * dx + dz * dz > 80 * 80) continue;
                 if (m.Def.Hostile) hostile++; else passive++;
             }
-            int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : HostileCap;
+            int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : Difficulty >= 3 ? HostileCap + 3 : HostileCap;
             if (Quiet.In(p.X))
             {
                 // Only Shades walk the Quiet, by day or night.
@@ -1251,6 +1275,20 @@ namespace Stratum.Core
             if (v == null || !Loaded(v.X, v.Z)) return;
             int want = Math.Max(2, v.Houses + 1), have = 0;
             foreach (var m in All) if (m.Kind == MobKind.Villager && Math.Abs(m.HomeX - v.X) < 1 && Math.Abs(m.HomeZ - v.Z) < 1) have++;
+            // And one guard to a village.
+            bool guarded = false;
+            foreach (var m in All) if (m.Kind == MobKind.Guard && Math.Abs(m.HomeX - v.X) < 1 && Math.Abs(m.HomeZ - v.Z) < 1) guarded = true;
+            if (!guarded && Difficulty > 0)
+                for (int tries = 0; tries < 6; tries++)
+                {
+                    int gx = v.X + _r.Next(-6, 7), gz = v.Z + _r.Next(-6, 7);
+                    if (!Loaded(gx, gz)) continue;
+                    int gy = Ground(gx, gz, v.Y + 12, 24, out ushort gf);
+                    if (gy == int.MinValue || Blocks.Get(gf).Fluid != 0 || Body.Blocked(_get, gx + 0.5f, gy, gz + 0.5f, 0.45f, 2.5f)) continue;
+                    var g = Spawn(MobKind.Guard, gx + 0.5f, gy, gz + 0.5f);
+                    g.Kept = true; g.HomeX = v.X; g.HomeZ = v.Z;
+                    break;
+                }
             if (have >= want) return;
             for (int tries = 0; tries < 6; tries++)
             {

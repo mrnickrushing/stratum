@@ -211,7 +211,7 @@ namespace Stratum.Game
             _toastTimer -= dt;
             _toast.color = new Color(UIKit.Accent.r, UIKit.Accent.g, UIKit.Accent.b, Mathf.Clamp01(_toastTimer * 2));
 
-            bool survival = !P.Creative;
+            bool survival = !P.Creative && !P.Spectator;
             _healthBack.gameObject.SetActive(survival && show);
             _health.rectTransform.anchorMax = new Vector2(Mathf.Max(0.001f, P.Health / P.MaxHealth), 1);
             bool airVisible = survival && show && (P.HeadInWater || P.Air < P.MaxAir - 0.01f);

@@ -126,12 +126,13 @@ namespace Stratum.Game
             }
 
             // Double-tap space to fly in Creative.
-            if (jumpPressed && Creative)
+            if (jumpPressed && Creative && !Spectator)
             {
                 if (Time.time - _lastSpace < 0.3f) { Flying = !Flying; Velocity.y = 0; _lastSpace = -1; }
                 else _lastSpace = Time.time;
             }
-            if (!Creative) Flying = false;
+            if (Spectator) Flying = true;
+            else if (!Creative) Flying = false;
 
             var fwd = Quaternion.Euler(0, Yaw, 0) * Vector3.forward;
             var right = Quaternion.Euler(0, Yaw, 0) * Vector3.right;
@@ -192,7 +193,7 @@ namespace Stratum.Game
 
             bool wasGround = OnGround;
             _hitWall = false;
-            MoveAll(Velocity * dt);
+            if (Spectator) { Feet += Velocity * dt; OnGround = false; } else MoveAll(Velocity * dt);
             if (!wasGround && OnGround) Land();
             if (OnGround || Flying) _fallStart = Feet.y;
             else if (Feet.y > _fallStart) _fallStart = Feet.y;
@@ -394,6 +395,7 @@ namespace Stratum.Game
 
         public System.Action<Vector3Int, BlockDef> Trampled;    // a crop was knocked out of the ground
         float _prick;
+        public bool Spectator;           // looking on: flies through everything, can't be hurt, touches nothing
         public bool Blocking;            // shield raised
         public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
         public float ViewBack;           // how far the camera stands off
@@ -427,7 +429,7 @@ namespace Stratum.Game
                 if (Has(Fx.FireProof)) Burning = 0;
                 if (Has(Fx.Gills)) Air = MaxAir;
             }
-            if (Creative)
+            if (Creative || Spectator)
             {
                 Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet;
                 // Building can't kill you, and neither can a slip off a sky island: back to the last ground.
@@ -486,7 +488,7 @@ namespace Stratum.Game
             {
                 _starve += dt;
                 // Hunger alone never kills: on easy it stops at half health, on normal at half a heart.
-                float floor = Difficulty == 1 ? 10 : 1;
+                float floor = Difficulty == 1 ? 10 : Difficulty >= 3 ? 0 : 1;      // on Hard, hunger can finish you
                 if (_starve > 4) { _starve = 0; if (Health > floor) Damage(1, false); }
             }
             else _starve = 0;
@@ -532,7 +534,7 @@ namespace Stratum.Game
 
         public void Hit(float amount, Vector3 from)
         {
-            if (Creative || Health <= 0) return;
+            if (Creative || Spectator || Health <= 0) return;
             // A raised shield stops what comes from in front (and takes the wear for it).
             if (Blocking && Inv.HasShield)
             {
@@ -559,7 +561,7 @@ namespace Stratum.Game
 
         public void Damage(float amount, bool flinch)
         {
-            if (Creative || Health <= 0 || amount <= 0) return;
+            if (Creative || Spectator || Health <= 0 || amount <= 0) return;
             Health -= amount;
             _sinceHurt = 0;
             Sfx.I?.Play("hurt", 0.8f);

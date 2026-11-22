@@ -192,7 +192,7 @@ namespace Stratum.Game
             float atk = Mathf.Sin(Mathf.Clamp01(1 - v.Attack) * Mathf.PI) * (v.Attack > 0 ? 1 : 0);
             if (m.ArmL != null)
             {
-                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus || s.Kind == MobKind.King;
+                bool reach = s.Kind == MobKind.Ghoul || s.Kind == MobKind.Colossus || s.Kind == MobKind.King || s.Kind == MobKind.Guard;
                 float baseX = s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0;
                 m.ArmL.localRotation = Quaternion.Euler(baseX - sw * 0.7f - atk * 70, 0, -4);
                 m.ArmR.localRotation = Quaternion.Euler((s.Kind == MobKind.BoneArcher && (s.Flags & Mob.FAttack) != 0 ? -80 : reach ? -12 : 0) + sw * 0.7f - atk * 90, 0, 4);
@@ -346,6 +346,7 @@ namespace Stratum.Game
                 case MobKind.Shade: Shade(m); break;
                 case MobKind.Snapper: Snapper(m); break;
                 case MobKind.King: King(m); break;
+                case MobKind.Guard: Guard(m); break;
                 case MobKind.ChestCart: Cart(m); B(m, m.Body, 0, 0.86f, 0, 0.84f, 0.7f, 0.9f, Hex(0x9a6c3c)); B(m, m.Body, 0, 0.98f, 0, 0.88f, 0.1f, 0.94f, Hex(0x3a3c42)); B(m, m.Body, 0, 0.9f, 0.46f, 0.14f, 0.18f, 0.03f, Hex(0xd8b04a), 0, false); break;
             }
             return m;
@@ -509,6 +510,32 @@ namespace Stratum.Game
             B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
             Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
             foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
+        }
+
+        // The Village Guard: a broad figure in grey plate over a brown coat, a closed helm with a slit, a green sash
+        // like the villagers', and big gauntlets.
+        void Guard(Model m)
+        {
+            Color plate = Hex(0x8a8e96), dark = Hex(0x4a4c54), coat = Hex(0x6a4a2e), sash = Hex(0x2e6a4a);
+            foreach (int sx in new[] { -1, 1 })
+            {
+                var leg = Pivot(m.Root, new Vector3(sx * 0.2f, 1.0f, 0));
+                B(m, leg, 0, -0.5f, 0, 0.3f, 1.0f, 0.32f, coat); B(m, leg, 0, -0.86f, 0.02f, 0.34f, 0.3f, 0.38f, dark);
+                m.Legs.Add(leg);
+            }
+            m.Body = Pivot(m.Root, new Vector3(0, 1.0f, 0));
+            B(m, m.Body, 0, 0.5f, 0, 0.84f, 1.0f, 0.46f, plate);
+            B(m, m.Body, 0, 0.14f, 0, 0.88f, 0.14f, 0.5f, sash);
+            B(m, m.Body, 0, 0.96f, 0, 1.2f, 0.2f, 0.56f, dark);                            // pauldrons
+            m.ArmL = Pivot(m.Body, new Vector3(-0.58f, 0.9f, 0));
+            B(m, m.ArmL, 0, -0.5f, 0, 0.28f, 1.0f, 0.3f, plate); B(m, m.ArmL, 0, -1.02f, 0, 0.34f, 0.3f, 0.36f, dark);
+            m.ArmR = Pivot(m.Body, new Vector3(0.58f, 0.9f, 0));
+            B(m, m.ArmR, 0, -0.5f, 0, 0.28f, 1.0f, 0.3f, plate); B(m, m.ArmR, 0, -1.02f, 0, 0.34f, 0.3f, 0.36f, dark);
+            m.Head = Pivot(m.Root, new Vector3(0, 2.06f, 0));
+            B(m, m.Head, 0, 0.22f, 0, 0.46f, 0.46f, 0.46f, plate);
+            B(m, m.Head, 0, 0.26f, 0.235f, 0.34f, 0.07f, 0.02f, Hex(0x14141a), 0, false);   // the slit
+            B(m, m.Head, 0, 0.5f, 0, 0.1f, 0.16f, 0.5f, sash);                             // a crest
+            m.Swing = 26;
         }
 
         // The Hollow King: a towering figure in a tattered dark robe that doesn't reach the ground, a pale mask for a

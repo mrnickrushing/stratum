@@ -209,7 +209,7 @@ namespace Stratum.Game
             _state = State.Loading;
             _menus.ShowLoading();
             _meta = meta;
-            _keepInv = meta.keepInventory;
+            _keepInv = meta.keepInventory && meta.difficulty < 4;        // a hardcore world keeps nothing
             yield return null;
             if (meta.hasPlayer) WorldStore.Backup(meta);       // the world as it was left, before anything changes
 
@@ -296,6 +296,7 @@ namespace Stratum.Game
             _autosave = 120;
             _hud.Toast(meta.creative ? "Creative: double-tap Space to fly" : "Press E to open your backpack");
             if (!meta.creative) _hud.AddChat("", $"Difficulty: {DifficultyNames[_difficulty]}. Press T to chat, /help for commands.");
+            if (meta.dead) { Spectate(true); _hud.AddChat("", "This hardcore world's one life is spent: you can look around it, nothing more."); }
         }
 
         void StarterCreative(Inventory inv)
@@ -410,7 +411,7 @@ namespace Stratum.Game
             // Clicking back into the window grabs the mouse again.
             if (!_hud.InventoryOpen && Cursor.lockState != CursorLockMode.Locked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) SetCursor(true);
 
-            _act.HideHeld = _hud.InventoryOpen || _hudHidden || _player.View != 0;
+            _act.HideHeld = _hud.InventoryOpen || _hudHidden || _player.View != 0 || _player.Spectator;
             GoalsTick(Keyboard.current);
             SelfView();
 
@@ -462,6 +463,10 @@ namespace Stratum.Game
             if (_hud.InventoryOpen) _hud.CloseInventory();
             bool carried = false; foreach (var st in _player.Inv.Slots) if (!st.Empty) carried = true;
             if (!_keepInv) DropAll();
+            Stat("deaths");
+            // A hardcore world has one life: from here on it can only be looked at.
+            bool last = !Online && _meta != null && _meta.difficulty >= 4 && !_player.Creative;
+            if (last) { _meta.dead = true; Save(); }
             _menus.SetDeathText(_player.Creative || !carried ? "" : _keepInv ? "You kept everything you were carrying." : "Everything you carried is in a satchel where you fell.");
             if (Online) { SendMove(true); SendKeep(); }
             _menus.ShowDeath();
@@ -497,7 +502,9 @@ namespace Stratum.Game
         void RespawnNow()
         {
             var at = RespawnPoint(Online ? GroundAt(_netSpawn) + new Vector3(0, 0.01f, 0) : new Vector3(_meta.sx, _meta.sy + 0.01f, _meta.sz), out _);
+            if (!Online && _meta != null && _meta.dead) at = _player.Feet.y > 1 ? _player.Feet : at;      // a spent hardcore world: look on from where you fell
             _player.Respawn(at);
+            if (!Online && _meta != null && _meta.dead) { Spectate(true); _hud.AddChat("", "That was this world's one life. You can fly about and look, but nothing more."); }
             if (Online) { SendMove(true); SendKeep(); }
             _menus.HideAll();
             _state = State.Playing;

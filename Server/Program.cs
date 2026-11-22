@@ -18,7 +18,7 @@ namespace Stratum.Server
     //                                  sets a new one (for a forgotten password; everything they own is kept)
     //   STRATUM_CREATIVE / --creative  1 for creative mode
     //   STRATUM_VIEW / --view          most chunks a player sees in each direction (default 10)
-    //   STRATUM_DIFFICULTY / --difficulty  peaceful (no monsters, no hunger), easy, or normal (default)
+    //   STRATUM_DIFFICULTY / --difficulty  peaceful (no monsters, no hunger), easy, normal (default) or hard
     //   STRATUM_KIND / --kind          a new world's sort: normal, sky, frozen, dunes, islands, peaks or flat
     //   STRATUM_WORLDS / --worlds      worlds to choose from: "id|Name|survival/creative|difficulty|seed|description|kind;..."
     //                                  ("main" is the world already in the data folder; others go in worlds/<id>).
@@ -66,7 +66,7 @@ namespace Stratum.Server
             c.Creative = cr == "1" || string.Equals(cr, "true", StringComparison.OrdinalIgnoreCase);
             if (int.TryParse(Get("STRATUM_VIEW", "--view"), out int view)) c.MaxView = Math.Clamp(view, 4, 16);
             var diff = (Get("STRATUM_DIFFICULTY", "--difficulty") ?? "normal").ToLowerInvariant();
-            c.Difficulty = diff.StartsWith("p") || diff == "0" ? 0 : diff.StartsWith("e") || diff == "1" ? 1 : 2;
+            c.Difficulty = diff.StartsWith("p") || diff == "0" ? 0 : diff.StartsWith("e") || diff == "1" ? 1 : diff.StartsWith("h") || diff == "3" ? 3 : 2;
             c.Kind = WorldGen.ParseKind(Get("STRATUM_KIND", "--kind"));
             var keep = Get("STRATUM_KEEP", "--keep");
             c.Keep = keep == "1" || string.Equals(keep, "true", StringComparison.OrdinalIgnoreCase);

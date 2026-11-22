@@ -19,6 +19,7 @@ namespace Stratum.Game
         public bool Swinging => _swing < 0.95f;
         public System.Action<string> OpenStation;      // "workbench" / "furnace"
         public System.Action Travel;                   // a gate stone was touched
+        public System.Action<string> Stat;             // something worth counting happened ("mined", "placed", "fish", "eaten")
         public System.Action<string> Toast;
         public System.Action<Vector3Int> OpenBox;      // a chest
         public System.Action<Vector3Int> UseBed;       // the bed's foot
@@ -243,6 +244,7 @@ namespace Stratum.Game
             int roll = _rng.Next(total); string got = "raw_fish";
             foreach (var (item, w) in Catch) { if (roll < w) { got = item; break; } roll -= w; }
             Gain(got, 1);
+            if (got == "raw_fish") Stat?.Invoke("fish");
             P.AddXp(_rng.Next(1, 4));
             Sfx.I?.Play("pickup", 0.4f, 1.2f);
             if (!P.Creative && P.Inv.WearHeld()) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Fishing Rod broke"); }
@@ -308,6 +310,7 @@ namespace Stratum.Game
         {
             var mouse = Mouse.current; var kb = Keyboard.current;
             if (mouse == null) return;
+            if (P.Spectator) { P.Blocking = false; if (_fishing) Reel(false); return; }       // looking on: nothing can be touched
 
             // Hotbar.
             float scroll = mouse.scroll.ReadValue().y;
@@ -459,6 +462,7 @@ namespace Stratum.Game
                 {
                     _eat = 0;
                     P.Eat(heldDef);
+                    Stat?.Invoke("eaten");
                     if (heldDef.Drink) { if (heldDef.Leaves == "bucket") P.Burning = 0; SwapHeld(heldDef.Leaves ?? "bucket"); }
                     else if (!P.Creative) P.Inv.UseHeld();
                     Sfx.I?.Play("burp", 0.4f);
@@ -550,7 +554,7 @@ namespace Stratum.Game
             if (id == 0 || def.Hardness < 0 && !P.Creative) return;
             if (!World.Set(p.x, p.y, p.z, 0)) return;
             bool outer = _edit == null;
-            if (outer) _edit = Remember(p, 0);
+            if (outer) { _edit = Remember(p, 0); if (!P.Creative) Stat?.Invoke("mined"); }
             try { Broke(p, id, def); } finally { if (outer) _edit = null; }
         }
 
@@ -933,6 +937,7 @@ namespace Stratum.Game
         {
             Sfx.I?.Block("place", id, 0.8f);
             _swing = 0;
+            Stat?.Invoke("placed");
             if (!P.Creative) P.Inv.UseHeld();
         }
 

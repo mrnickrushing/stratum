@@ -1418,6 +1418,33 @@ namespace Stratum.Server
                 Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor && notes == 1, "at sunset it goes off again");
             }
 
+            // A village guard sees off a ghoul; on Hard, creatures hit half as hard again.
+            {
+                var gw = new MobSim(new Patch().Get, 8) { Spawning = false, Time01 = 0.9f };
+                var guard = gw.Spawn(MobKind.Guard, 0.5f, 11, 0.5f); guard.HomeX = 0; guard.HomeZ = 0;
+                var ghoul = gw.Spawn(MobKind.Ghoul, 6.5f, 11, 0.5f);
+                var nobody = new List<Seen>();
+                for (int i = 0; i < 20 * 20 && ghoul.Health > 0; i++) gw.Tick(0.05f, nobody);
+                Check(ghoul.Health <= 0 && guard.Health == guard.Def.Health, $"a village guard sees off a ghoul (ghoul health {ghoul.Health:0})");
+                float Blow(int difficulty)
+                {
+                    var hs = new MobSim(new Patch().Get, 8) { Spawning = false, Time01 = 0.9f, Difficulty = difficulty };
+                    hs.Spawn(MobKind.Ghoul, 1.5f, 11, 0.5f);
+                    var who = new List<Seen> { new Seen { Id = 1, X = 0.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                    float got = 0; hs.HitPlayer += (id, dmg, fx, fz, from) => { if (got == 0) got = dmg; };
+                    for (int i = 0; i < 20 * 6 && got == 0; i++) hs.Tick(0.05f, who);
+                    return got;
+                }
+                float normal = Blow(2), hard = Blow(3);
+                Check(normal > 0 && Math.Abs(hard - normal * 1.5f) < 0.01f, $"on Hard a ghoul hits half as hard again ({normal:0.0} against {hard:0.0})");
+                // Dyed sheep give wool of their colour.
+                var ss = new MobSim(new Patch().Get, 8) { Spawning = false };
+                var sheep = ss.Spawn(MobKind.Sheep, 0.5f, 11, 0.5f);
+                ss.Use(sheep.Id, "dye_purple", 0.5f, 0.5f, "kid");
+                var wool = ss.Use(sheep.Id, "shears", 0.5f, 0.5f, "kid");
+                Check(wool is (string woolItem, int woolCount) && woolItem == "purple_wool" && woolCount > 0 && Mob.FleeceOf(sheep.More) == Blocks.DyeIndex("purple"), "a sheep dyed purple is purple to everyone and gives purple wool");
+            }
+
             // Chutes: one draws in what lies on it; a side chute feeds the chest it points at.
             {
                 var cw = new Patch();
