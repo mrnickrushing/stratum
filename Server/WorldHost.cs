@@ -119,6 +119,7 @@ namespace Stratum.Server
             _fire = new Fire(World.Get, World.Put) { Loaded = World.IsLoaded, Spreads = cfg.Difficulty > 0 && !cfg.Creative };
             _blasts = new Blasts(World.Get, World.Put) { Loaded = World.IsLoaded };
             World.Growth.FoundFire = _fire.Found;
+            World.Growth.Snowing = (x, z) => _weather != null && _weather.State != 0 && World.Gen.BiomeAt(x, z) is Biome b && (b == Biome.Tundra || b == Biome.Taiga || b == Biome.Peaks);
             _drops.Burns = (x, y, z) => (uint)y < Chunk.Height && (World.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(World.Get(x, y, z)));
             World.Changed += (x, y, z, id) => { if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z); };
             _blasts.Broke = (x, y, z, d) =>
@@ -564,6 +565,18 @@ namespace Stratum.Server
                 _weather.Set(w, w == 0 ? 900 : 480);
                 Broadcast(SaidPacket("", $"{p.Name} changed the weather to {WeatherSim.Name(w)}"));
                 return;
+            }
+            if (text.StartsWith("/tp "))
+            {
+                // Three numbers: an operator going to a place (a name is handled by the game itself).
+                var c = text.Substring(4).Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                if (c.Length == 3 && float.TryParse(c[0], out float tx) && float.TryParse(c[1], out float ty) && float.TryParse(c[2], out float tz))
+                {
+                    if (!_hub.IsOp(p.Name)) { p.Conn.Send(SaidPacket("", "Only this server's operators can go to a place by its numbers.")); return; }
+                    if (Math.Abs(tx) > 3e6f || Math.Abs(tz) > 3e6f || ty < -20 || ty > 400) { p.Conn.Send(SaidPacket("", "That's off the edge of the world.")); return; }
+                    p.Conn.Send(new Packet(Net.Msg.Arrived).F32(tx).F32(ty).F32(tz));
+                    return;
+                }
             }
             if (text == "/ops") { p.Conn.Send(SaidPacket("", "Operators: " + string.Join(", ", _hub.OpNames()))); return; }
             if (text.StartsWith("/op ") || text.StartsWith("/deop ") || text == "/op" || text == "/deop")

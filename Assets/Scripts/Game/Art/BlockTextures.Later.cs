@@ -29,6 +29,7 @@ namespace Stratum.Game
                 case Tex.DustyTop: Planks(p, Hex(0x8a6a44), 4); Dust(p); return 2f;
                 case Tex.Stillstone: Rock(p, Hex(0xd9d4c4), Hex(0xb9b6ac), 0.1f, true); return 3f;
                 case Tex.GateStone: GateStone(p); return 3f;
+                case Tex.Vine: VineTex(p); return 1f;
                 case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
@@ -230,6 +231,30 @@ namespace Stratum.Game
                     bool ring = Mathf.Abs(r - 20) < 2.2f, mark = Mathf.Abs(dx) < 2 && Mathf.Abs(dy) < 11 || Mathf.Abs(dy - 4) < 2 && Mathf.Abs(dx) < 7 || r < 3.2f;
                     if (ring || mark) { var c = Color.Lerp(Hex(0x8a4ae0), Hex(0xe0c0ff), p.V(x, y, 16)); c.a = 1; p.Set(x, y, c, 0.9f); }
                 }
+        }
+
+        // Strands of small leaves hanging down, with gaps between.
+        static void VineTex(Paint p)
+        {
+            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) p.Set(x, y, new Color(0.25f, 0.5f, 0.2f, 0), 0);
+            for (int k = 0; k < 7; k++)
+            {
+                float cx = 5 + k * 9 + (p.Hash(k, 1) - 0.5f) * 4;
+                int from = (int)(p.Hash(k, 2) * 18);
+                for (int y = from; y < 64; y++)
+                {
+                    float sway = Mathf.Sin(y * 0.22f + k * 1.7f) * 2.2f;
+                    int stem = Mathf.RoundToInt(cx + sway);
+                    if (stem >= 0 && stem < 64) p.Set(stem, y, new Color(0.2f, 0.38f, 0.14f, 1), 0.3f);
+                    if ((y + k * 3) % 7 < 4)
+                        for (int dx = -3; dx <= 3; dx++)
+                        {
+                            int x = stem + dx; if (x < 0 || x > 63 || Mathf.Abs(dx) > 3 - Mathf.Abs((y + k * 3) % 7 - 1.5f)) continue;
+                            var c = Paint.Mul(new Color(0.3f, 0.62f, 0.22f), 0.75f + p.V(x, y, 16) * 0.5f); c.a = 1;
+                            p.Set(x, y, c, 0.6f);
+                        }
+                }
+            }
         }
 
         static void KegTop(Paint p)

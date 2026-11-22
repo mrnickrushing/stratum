@@ -33,6 +33,8 @@ namespace Stratum.Core
         // 0.14
         Fire, KegSide, KegTop, KegLit, Carrot0, Carrot1, Carrot2, Carrot3, Potato0, Potato1, Potato2, Potato3, StarOre,
         PistonFace, PistonSticky, PistonSide, PistonBack, DispenserFace, ObserverFace, ObserverSide, ObserverBack, ComparatorOff, ComparatorOn, CageSide, DustyFront, DustySide, DustyTop, Stillstone, GateStone,
+        // 0.16
+        Vine,
         Count
     }
 
@@ -127,7 +129,7 @@ namespace Stratum.Core
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
-            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone;
+            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone, SnowLayer, Vine;
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;

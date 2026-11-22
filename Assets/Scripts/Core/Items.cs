@@ -107,8 +107,9 @@ namespace Stratum.Core
             ToolSet("copper", "Copper", 3, 220, 5f);
             ToolSet("iron", "Iron", 4, 400, 7f);
             ToolSet("star", "Starstone", 5, 1200, 9f);
+            ToolSet("gold", "Golden", 1, 40, 11f);           // soft: quick while it lasts
             Add(new ItemDef { Id = "starstone", Name = "Starstone" });
-            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("star", "Starstone", 5, 1200, 8f) })
+            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("star", "Starstone", 5, 1200, 8f), ("gold", "Golden", 1, 40, 4f) })
             {
                 Add(new ItemDef { Id = mat + "_sword", Name = name + " Sword", MaxStack = 1, Tool = Tool.Sword, Tier = tier, Durability = dur, Speed = 1.5f, Damage = dmg });
                 // Tools hit a little harder than a fist too.
@@ -137,7 +138,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bone_meal", Name = "Bone Meal" });
             Add(new ItemDef { Id = "paper", Name = "Paper" });
             Add(new ItemDef { Id = "book", Name = "Book" });
-            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("star", "Starstone", 5, 1200) })
+            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("star", "Starstone", 5, 1200), ("gold", "Golden", 1, 40) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
@@ -181,7 +182,7 @@ namespace Stratum.Core
             // Armour: a cap, a coat, leggings and boots of hide, copper or iron.
             string[] pieces = { "cap", "coat", "leggings", "boots" }, pieceNames = { "Cap", "Coat", "Leggings", "Boots" };
             int[] need = { 5, 8, 7, 4 };
-            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420) })
+            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420), ("gold", "Golden", "gold_ingot", new[] { 2, 5, 3, 1 }, 90) })
                 for (int i = 0; i < 4; i++)
                 {
                     Add(new ItemDef { Id = mat + "_" + pieces[i], Name = name + " " + pieceNames[i], MaxStack = 1, ArmourSlot = i, Armour = pts[i], Durability = dur });
@@ -196,7 +197,7 @@ namespace Stratum.Core
             R("workbench", 1, null, ("@planks", 4));
             R("torch", 4, null, ("stick", 1), ("coal", 1));
             // At a workbench
-            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3), ("star", "starstone", 3) })
+            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3), ("star", "starstone", 3), ("gold", "gold_ingot", 3) })
             {
                 R(mat + "_pickaxe", 1, "workbench", (item, n), ("stick", 2));
                 R(mat + "_axe", 1, "workbench", (item, n), ("stick", 2));
@@ -211,7 +212,7 @@ namespace Stratum.Core
             R("iron_block", 1, "workbench", ("iron_ingot", 9));
             R("gold_block", 1, "workbench", ("gold_ingot", 9));
             R("mossy_cobble", 2, "workbench", ("cobble", 2), ("tall_grass", 1));
-            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot"), ("star", "starstone") })
+            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot"), ("star", "starstone"), ("gold", "gold_ingot") })
                 R(mat + "_sword", 1, "workbench", (item, 2), ("stick", 1));
             R("bow", 1, "workbench", ("stick", 3), ("thread", 3));
             R("arrow", 4, "workbench", ("stick", 1), ("feather", 1), ("cobble", 1));
@@ -352,6 +353,8 @@ namespace Stratum.Core
             R("copper_hoe", 1, "workbench", ("copper_ingot", 2), ("stick", 2));
             R("iron_hoe", 1, "workbench", ("iron_ingot", 2), ("stick", 2));
             R("star_hoe", 1, "workbench", ("starstone", 2), ("stick", 2));
+            R("gold_hoe", 1, "workbench", ("gold_ingot", 2), ("stick", 2));
+            R("snow_layer", 6, "workbench", ("snow", 3));
             R("shield", 1, "workbench", ("@planks", 6), ("iron_ingot", 1));
             R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
             R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));

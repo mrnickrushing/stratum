@@ -520,7 +520,7 @@ namespace Stratum.Game
         static void Armour(Canvas c, ItemDef item)
         {
             string mat = item.Id.Substring(0, item.Id.IndexOf('_'));
-            Color m = mat == "hide" ? Hex(0x8a5a34) : mat == "copper" ? Hex(0xd08050) : mat == "star" ? Hex(0x6cd6de) : Hex(0xccd0d6);
+            Color m = mat == "hide" ? Hex(0x8a5a34) : mat == "copper" ? Hex(0xd08050) : mat == "star" ? Hex(0x6cd6de) : mat == "gold" ? Hex(0xf0c83a) : Hex(0xccd0d6);
             System.Func<float, float, Color> fill = (x, y) => Color.Lerp(Shade(m, 0.65f), Color.Lerp(m, Color.white, 0.2f), Mathf.Clamp01((y - 10) / 90f + Mathf.PerlinNoise(x * 0.07f, y * 0.07f) * 0.25f));
             switch (item.ArmourSlot)
             {

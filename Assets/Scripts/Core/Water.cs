@@ -120,7 +120,7 @@ namespace Stratum.Core
             var d = Blocks.Get(id);
             if (d.Fluid != 0) return false;
             if (d.Replaceable) return true;
-            return fluid == 1 && d.Shape == Shape.Torch;     // water washes torches away
+            return fluid == 1 && (d.Shape == Shape.Torch || d.Shape == Shape.Cross || d.Id == Blocks.SnowLayer);     // water washes torches, crops and flowers away
         }
 
         static readonly int[] DX = { 1, -1, 0, 0 }, DZ = { 0, 0, 1, -1 };

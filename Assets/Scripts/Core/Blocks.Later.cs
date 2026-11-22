@@ -106,6 +106,17 @@ namespace Stratum.Core
             b = Rock("stillstone", "Stillstone", Tex.Stillstone, 2.5f, 1); Stillstone = b.Id;
             b = Add("gate_stone", "Gate Stone", Tex.GateStone); b.Hardness = 6; b.Tool = Tool.Pickaxe; b.TierNeeded = 4; b.Sound = Sound.Stone; b.Emit = 9; GateStone = b.Id;
 
+            // A dusting of snow: settles on the ground where it snows, melts by a fire, and anything can be built over it.
+            b = Add("snow_layer", "Snow Layer", Tex.Snow); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Replaceable = true;
+            b.Hardness = 0.1f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; b.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16) }; SnowLayer = b.Id;
+            // Vines: hang on the side of things, creep downward, and can be climbed.
+            Vine = Facings("vine", "Vine", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Climb = true; d.OnWall = true; d.FlatIcon = true;
+                d.Hardness = 0.2f; d.Sound = Sound.Leaves; d.DropItem = ""; d.Top = d.Bottom = d.Side = Tex.Vine;
+                d.Boxes = new[] { Box.Px(0, 0, 15, 16, 16, 16) };
+            });
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

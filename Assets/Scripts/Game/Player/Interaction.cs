@@ -557,6 +557,8 @@ namespace Stratum.Game
             ushort above = World.Get(p.x, p.y + 1, p.z);
             if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch && !Blocks.Get(above).OnWall)) Break(p + Vector3Int.up);
             if (P.Creative) { Unsupported(p); return; }
+            // Broken ice leaves its water behind (unless it hung over nothing).
+            if (id == Blocks.Ice && World.Get(p.x, p.y - 1, p.z) != 0) World.Set(p.x, p.y, p.z, Blocks.Water);
             var held = Items.Get(P.Inv.Held.Item);
             if (Mining.Drops(def, held))
             {
@@ -813,7 +815,7 @@ namespace Stratum.Game
         static bool Carpet(BlockDef d) => d.Shape == Shape.Boxes && !d.Solid && Blocks.Keys[d.BaseId].StartsWith("carpet_");
         static bool NeedsFloor(ushort id, BlockDef d) =>
             d.Shape == Shape.Cross || d.Shape == Shape.Torch && !d.OnWall || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
-            || Carpet(d) || d.BaseId == Blocks.Candle;
+            || Carpet(d) || d.BaseId == Blocks.Candle || id == Blocks.SnowLayer;
         static bool OnWall(BlockDef d) => d.OnWall || d.BaseId == Blocks.Ladder || d.BaseId == Blocks.WallSign || d.BaseId == Blocks.Button;
 
         // Things that stand on a block go when it does (plants, torches, signs, doors, carpets), and so do the
@@ -863,6 +865,8 @@ namespace Stratum.Game
             foreach (var (item, n) in edit.Got) P.Inv.Take(item, n);
             if (edit.Spent != null) P.Inv.Add(edit.Spent, 1);
         }
+
+        public void DropFor(BlockDef d, Vector3Int at) => GiveDrop(d, at);
 
         void GiveDrop(BlockDef d, Vector3Int at)
         {

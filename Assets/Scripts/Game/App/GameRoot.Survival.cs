@@ -54,6 +54,7 @@ namespace Stratum.Game
             _act.Link = link; _act.Creatures = _creatures;
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
+            _player.Trampled = (at, def) => _act.DropFor(def, at);
             // A gate stone carries whoever touches it to the Quiet, and the one there carries them home (their bed, or the spawn).
             _act.Travel = () =>
             {
@@ -421,6 +422,17 @@ namespace Stratum.Game
                     return true;
                 case "/tp":
                 case "/tpa":
+                {
+                    // Three numbers: a place rather than a person.
+                    var c = arg.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (c.Length == 3 && float.TryParse(c[0], out float tx) && float.TryParse(c[1], out float ty) && float.TryParse(c[2], out float tz))
+                    {
+                        if (Online) return false;           // the server decides who may
+                        if (Mathf.Abs(tx) > 3e6f || Mathf.Abs(tz) > 3e6f || ty < -20 || ty > 400) { _hud.AddChat("", "That's off the edge of the world."); return true; }
+                        Teleport(new Vector3(tx, ty, tz), $"Went to {tx:0} {ty:0} {tz:0}");
+                        return true;
+                    }
+                }
                     if (!Online || _avatars == null) { _hud.AddChat("", "There's nobody else here to go to."); return true; }
                     if (arg.Length == 0) { _hud.AddChat("", "Who to? /tp <name>  (online: " + string.Join(", ", _avatars.Names) + ")"); return true; }
                     foreach (int id in _avatars.Ids)

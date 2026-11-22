@@ -392,6 +392,8 @@ namespace Stratum.Game
             }
         }
 
+        public System.Action<Vector3Int, BlockDef> Trampled;    // a crop was knocked out of the ground
+        float _prick;
         public bool Blocking;            // shield raised
         public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
         public float ViewBack;           // how far the camera stands off
@@ -401,6 +403,14 @@ namespace Stratum.Game
             float fall = _fallStart - Feet.y;
             ushort under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
+            // Landing on farmland from a jump flattens it back to earth (and whatever grew there comes out).
+            if (!Creative && fall > 0.55f && Blocks.Get(under).BaseId == Blocks.Farmland)
+            {
+                var at = new Vector3Int(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
+                ushort crop = World.Get(at.x, at.y + 1, at.z);
+                World.Set(at.x, at.y, at.z, Blocks.Dirt);
+                if (Blocks.Get(crop).Grows == 1 && World.Set(at.x, at.y + 1, at.z, 0)) Trampled?.Invoke(at + Vector3Int.up, Blocks.Get(crop));
+            }
             if (Has(Fx.Leap)) fall -= 2;
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
@@ -434,6 +444,17 @@ namespace Stratum.Game
             if (Feet.y < -20) Damage(4);
 
             // Lava burns hard and sets you alight; water puts the fire out.
+            // A cactus pricks whoever leans on it or stands on it.
+            if (!Creative && (_prick -= dt) <= 0)
+            {
+                bool hit = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.1f), Mathf.FloorToInt(Feet.z)) == Blocks.Cactus;
+                for (int k = 0; k < 8 && !hit; k++)
+                {
+                    float ox = (k & 1) == 0 ? -0.42f : 0.42f, oz = (k & 2) == 0 ? -0.42f : 0.42f, oy = (k & 4) == 0 ? 0.2f : 1.4f;
+                    hit = World.Get(Mathf.FloorToInt(Feet.x + ox), Mathf.FloorToInt(Feet.y + oy), Mathf.FloorToInt(Feet.z + oz)) == Blocks.Cactus;
+                }
+                if (hit) { _prick = 0.5f; Damage(1); }
+            }
             if (InLava && !Has(Fx.FireProof)) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
             if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire && !Has(Fx.FireProof)) Burning = Mathf.Max(Burning, 4);
             else _lavaHurt = 0;

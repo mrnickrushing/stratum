@@ -292,7 +292,7 @@ namespace Stratum.Core
             Put(ch, bx, bz, hx, f, hz, (ushort)(Blocks.Bed + bedFacing * 2 + 1));
             P(ch, bx, bz, p, w - 2, f, d - 2, Blocks.Workbench);
             P(ch, bx, bz, p, w - 2, f + 1, d - 2, Blocks.Torch);
-            if (big) P(ch, bx, bz, p, w - 2, f, 1, (ushort)(Blocks.Chest + bf));
+            if (big) P(ch, bx, bz, p, w - 2, f, 1, Blocks.LootChest);          // something put by: it fills when first opened
             _ = bf;
         }
 

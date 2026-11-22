@@ -108,6 +108,7 @@ namespace Stratum.Game
             Flames = new Fire(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z), Spreads = difficulty > 0 && !player.Creative };
             Blasts = new Blasts(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z) };
             if (world.Growth != null) world.Growth.FoundFire = Flames.Found;
+            if (world.Growth != null) world.Growth.Snowing = (x, z) => Weather.State != 0 && world.Gen.BiomeAt(x, z) is Biome b && (b == Biome.Tundra || b == Biome.Taiga || b == Biome.Peaks);
             Ground.Burns = (x, y, z) => (uint)y < Chunk.Height && (world.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(world.Get(x, y, z)));
             Blasts.Broke = (x, y, z, d) =>
             {
