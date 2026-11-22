@@ -31,3 +31,6 @@ Server/obj/
 
 # Cloudflare deploy state
 site/.wrangler/
+
+# A local test server writes its world here.
+Server/world/
