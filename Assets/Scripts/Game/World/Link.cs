@@ -42,6 +42,7 @@ namespace Stratum.Game
         public Action<int, int> Sleepers;                       // asleep, players
         public Action<MobKind, string, Vector3> MobSound;
         public Action<string> Said;
+        public Action<Vector3, float> Boomed;                   // a blast: where, how strong
     }
 
     // Single player: the creatures live on this computer, and chests are kept in the world's folder.
@@ -55,6 +56,9 @@ namespace Stratum.Game
         public readonly MobSim Sim;
         public readonly DropSim Ground;
         public readonly Decay Leaves;
+        public readonly Fire Flames;
+        public readonly Blasts Blasts;
+        float _bolt = 20;
         readonly System.Random _dice = new System.Random();
         public readonly Containers Boxes = new Containers();
         public Furnaces Furnaces;
@@ -100,8 +104,24 @@ namespace Stratum.Game
                 var b = Mining.Bonus(d, _dice); if (b != null) Ground.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
                 b = Mining.Bonus2(d, _dice); if (b != null) Ground.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
             };
+            // Fire and blasts. Fire only spreads in a survival world that isn't peaceful.
+            Flames = new Fire(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z), Spreads = difficulty > 0 && !player.Creative };
+            Blasts = new Blasts(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z) };
+            if (world.Growth != null) world.Growth.FoundFire = Flames.Found;
+            Ground.Burns = (x, y, z) => (uint)y < Chunk.Height && (world.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(world.Get(x, y, z)));
+            Blasts.Broke = (x, y, z, d) =>
+            {
+                if (_dice.NextDouble() > 0.3) return;
+                var (item, n) = Mining.Drop(d);
+                if (item != null && n > 0) Ground.Scatter(item, n, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+            };
+            Blasts.Boom = (x, y, z, power) => { Sim.Blast(x, y, z, power, _seen); Boomed?.Invoke(new Vector3(x, y, z), power); };
+            Blasts.Lit = (x, y, z) => MobSound?.Invoke(MobKind.Bloat, "say", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
+            Sim.Burst += m => Blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
             world.Changed += (x, y, z, old, id) =>
             {
+                if (id == Blocks.Fire) Flames.Found(x, y, z);
+                if (id == Blocks.KegLit) Blasts.Prime(x, y, z);
                 if (id == 0 && Decay.IsLog(Blocks.Get(old))) Leaves.LogBroken(x, y, z);
                 if (id == Blocks.Chute) Chutes?.Add(x, y, z);
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
@@ -130,6 +150,22 @@ namespace Stratum.Game
             Sim.Tick(dt, _seen);
             Ground.Tick(dt);
             Leaves.Tick(dt);
+            Flames.Tick(dt);
+            Blasts.Tick(dt);
+            // A thunderstorm now and then sets something alight.
+            if (Weather.State == 2 && Flames.Spreads && (_bolt -= dt) <= 0)
+            {
+                _bolt = 25 + (float)_dice.NextDouble() * 50;
+                int bx = Mathf.FloorToInt(_player.Feet.x) + _dice.Next(-40, 41), bz = Mathf.FloorToInt(_player.Feet.z) + _dice.Next(-40, 41);
+                if (_world.IsReady(bx, bz))
+                    for (int y = Chunk.Height - 2; y > 1; y--)
+                    {
+                        ushort id = _world.Get(bx, y, bz);
+                        if (id == 0) continue;
+                        if (Blocks.Get(id).Burns) Flames.Light(bx, y + 1, bz);
+                        break;
+                    }
+            }
             Drops.Clear();
             foreach (var d in Ground.All) Drops.Add(new DropState { Id = d.Id, Item = d.Item, Count = d.Count, Pos = new Vector3(d.X, d.Y, d.Z) });
             Mobs.Clear();

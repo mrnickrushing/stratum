@@ -61,6 +61,7 @@ namespace Stratum.Game
         // Returns the bump strength for the normal map.
         static float Draw(Tex t, Paint p)
         {
+            if (t >= Tex.Fire) return Later(t, p);
             if (t >= Tex.WoolOrange) return Building(t, p);
             switch (t)
             {

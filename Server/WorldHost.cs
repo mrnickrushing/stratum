@@ -50,6 +50,9 @@ namespace Stratum.Server
 
         DropSim _drops;
         Decay _leaves;
+        Fire _fire;
+        Blasts _blasts;
+        float _bolt = 30;
         readonly Random _dice = new Random();
         readonly ServerConfig _cfg;
         public readonly ServerWorld World;
@@ -112,6 +115,30 @@ namespace Stratum.Server
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
             _drops = new DropSim(World.Get) { Loaded = (x, z) => World.IsLoaded(x, z) };
+            _fire = new Fire(World.Get, World.Put) { Loaded = World.IsLoaded, Spreads = cfg.Difficulty > 0 && !cfg.Creative };
+            _blasts = new Blasts(World.Get, World.Put) { Loaded = World.IsLoaded };
+            World.Growth.FoundFire = _fire.Found;
+            _drops.Burns = (x, y, z) => (uint)y < Chunk.Height && (World.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(World.Get(x, y, z)));
+            World.Changed += (x, y, z, id) => { if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z); };
+            _blasts.Broke = (x, y, z, d) =>
+            {
+                if (d.Container)
+                {
+                    foreach (var o in _players.Values) if (o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.HasBox = false;
+                    if (_boxes.Has(x, y, z)) foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty && !Smelting.Hidden(st.Item)) _drops.Scatter(st.Item, st.Count, st.Wear, x + 0.5f, y + 0.4f, z + 0.5f);
+                }
+                if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
+                if (_dice.NextDouble() > 0.3) return;
+                var (item, n) = Mining.Drop(d);
+                if (item != null && n > 0) _drops.Scatter(item, n, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+            };
+            _blasts.Boom = (x, y, z, power) =>
+            {
+                _mobs.Blast(x, y, z, power, _seen);
+                var f = new Packet(Net.Msg.Boom).F32(x).F32(y).F32(z).F32(power).Bytes();
+                foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 96 * 96) o.Conn.Send(f);
+            };
+            _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
             _leaves = new Decay(World.Get, World.Put);
             _leaves.Fell = (x, y, z, d) =>
             {
@@ -483,6 +510,7 @@ namespace Stratum.Server
             }
             World.SetRaw(x, y, z, id);
             if (id == 0 && Decay.IsLog(Blocks.Get(cur))) _leaves.LogBroken(x, y, z);
+            if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z);
             if (id == 0 || Blocks.Get(id).BaseId != Blocks.Get(cur).BaseId) { p.Broke[p.BrokeAt] = (x, y, z, Environment.TickCount64); p.BrokeAt = (p.BrokeAt + 1) % p.Broke.Length; }
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
             if (id == Blocks.Chute) _chutes.Add(x, y, z);
@@ -562,6 +590,23 @@ namespace Stratum.Server
             _mobs.Tick(dt, _seen);
             _drops.Tick(dt);
             _leaves.Tick(dt);
+            _fire.Tick(dt);
+            _blasts.Tick(dt);
+            // A thunderstorm now and then sets something alight near someone.
+            if (_weather.State == 2 && _fire.Spreads && (_bolt -= dt) <= 0 && _seen.Count > 0)
+            {
+                _bolt = 25 + (float)_dice.NextDouble() * 50;
+                var who = _seen[_dice.Next(_seen.Count)];
+                int bx = (int)Math.Floor(who.X) + _dice.Next(-40, 41), bz = (int)Math.Floor(who.Z) + _dice.Next(-40, 41);
+                if (World.IsLoaded(bx, bz))
+                    for (int y = Chunk.Height - 2; y > 1; y--)
+                    {
+                        ushort id = World.Get(bx, y, bz);
+                        if (id == 0) continue;
+                        if (Blocks.Get(id).Burns) _fire.Light(bx, y + 1, bz);
+                        break;
+                    }
+            }
         }
 
         // ------------------------------------------------------------------ things on the ground

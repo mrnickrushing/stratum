@@ -1212,6 +1212,29 @@ namespace Stratum.Server
             for (int i = 0; i < 200; i++) decay.Tick(0.05f);
             int left = 0; for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == Blocks.OakLeaves) left++;
             Check(left == 0 && fell == 49 && t.Get(21, 14, 0) == Blocks.OakLeaves, $"with the whole trunk cut the leaves fall away, and another tree's leaves stay ({left} left, {fell} fell)");
+            // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.
+            var bw = new Patch(); int booms = 0, broke = 0;
+            var blasts = new Blasts(bw.Get, bw.Set) { Boom = (x, y, z, p) => booms++, Broke = (x, y, z, d) => broke++ };
+            bw.Set(0, 11, 0, Blocks.KegLit); bw.Set(2, 11, 0, Blocks.BlastKeg); bw.Set(0, 9, 0, Blocks.Obsidian);
+            blasts.Prime(0, 11, 0);
+            for (int i = 0; i < 20 * 7; i++) blasts.Tick(0.05f);
+            Check(booms == 2 && broke > 20 && bw.Get(0, 10, 0) == 0 && bw.Get(0, 9, 0) == Blocks.Obsidian && bw.Get(2, 11, 0) == 0 && bw.Get(0, 3, 0) == Blocks.Stone,
+                $"a lit keg blows a hole in the ground, sets off the keg beside it, and obsidian stands ({booms} blasts, {broke} blocks)");
+
+            // Fire eats a wooden hut and then goes out; in a world where fire doesn't spread it only burns where lit.
+            foreach (bool spreads in new[] { true, false })
+            {
+                var fw = new Patch();
+                for (int x = 0; x < 4; x++) for (int y = 11; y < 14; y++) for (int z = 0; z < 4; z++) fw.Set(x, y, z, Blocks.OakPlanks);
+                var fire = new Fire(fw.Get, fw.Set) { Spreads = spreads };
+                Check(fire.Light(-1, 11, 1), "a fire is lit beside a wooden hut");
+                for (int i = 0; i < 20 * 400; i++) fire.Tick(0.05f);
+                int planks = 0, burning = 0;
+                foreach (var kv in fw.Cells) { if (kv.Value == Blocks.OakPlanks) planks++; if (kv.Value == Blocks.Fire) burning++; }
+                if (spreads) Check(planks < 10 && burning == 0 && fire.Count == 0, $"it eats the hut and goes out ({planks} planks left, {burning} still burning)");
+                else Check(planks == 48 && burning == 0 && fire.Count == 0, $"where fire doesn't spread the hut stands and the fire dies ({planks} planks left)");
+            }
+            Check(Items.Recipes.Exists(r => r.Out == "blast_keg") && Items.Get("blast_powder") != null, "a blast keg can be made");
             Check(Blocks.Get((ushort)(Blocks.WallTorch + 2)).OnWall && Mining.Drop(Blocks.Get((ushort)(Blocks.WallTorch + 2))).item == "torch", "a torch on a wall gives a torch back");
         }
 

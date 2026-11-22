@@ -32,7 +32,7 @@ namespace Stratum.Game
             public MobState S;
             public Model M;
             public Vector3 Pos;
-            public float Yaw, Pitch, Phase, Speed, Die, Attack, Hurt, Bob;
+            public float Yaw, Pitch, Phase, Speed, Die, Attack, Hurt, Bob, Swell;
             public Vector2 Light = new Vector2(1, 0);
             public bool Seen;
             public float LightTimer;
@@ -214,6 +214,12 @@ namespace Stratum.Game
 
             // Young ones are small; ones looking for a mate give off little pink sparks.
             float scale = (s.More & Mob.MBaby) != 0 ? 0.55f : 1;
+            if (s.Kind == MobKind.Bloat)
+            {
+                // About to burst: it swells and shudders.
+                v.Swell = Mathf.MoveTowards(v.Swell, (s.Flags & Mob.FAttack) != 0 ? 1 : 0, dt * ((s.Flags & Mob.FAttack) != 0 ? 0.7f : 2f));
+                scale *= 1 + v.Swell * 0.4f + Mathf.Sin(Time.time * 38) * 0.035f * v.Swell;
+            }
             if (Mathf.Abs(m.Root.localScale.x - scale) > 0.001f) m.Root.localScale = Vector3.one * scale;
             if ((s.More & Mob.MLove) != 0 && Random.value < dt * 4)
             {
@@ -319,6 +325,7 @@ namespace Stratum.Game
                 case MobKind.Penguin: Penguin(m); break;
                 case MobKind.Goat: Goat(m); break;
                 case MobKind.Camel: Camel(m); break;
+                case MobKind.Bloat: Bloat(m); break;
             }
             return m;
         }
@@ -481,6 +488,29 @@ namespace Stratum.Game
             B(m, m.Head, -0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false); B(m, m.Head, 0.06f, 0.68f, 0.505f, 0.04f, 0.05f, 0.02f, dark, 0, false);
             Eyes(m, m.Head, 0.155f, 0.78f, 0.3f, 0.06f, Hex(0x201810));
             foreach (int sx in new[] { -1, 1 }) B(m, m.Head, sx * 0.17f, 0.9f, 0.02f, 0.1f, 0.1f, 0.06f, coat);
+        }
+
+        // The Bloat: a swollen, warty bog creature on four stubby legs, with pale eyes and seams that glow.
+        void Bloat(Model m)
+        {
+            Color skin = Hex(0x5e6b3a), belly = Hex(0x8a9058), wart = Hex(0x3e4a28), seam = Hex(0xffa23a);
+            Legs4(m, 0.24f, 0.3f, 0.24f, 0.2f, 0.3f, wart, Hex(0x2a3018));
+            m.Body = Pivot(m.Root, new Vector3(0, 0.3f, 0));
+            B(m, m.Body, 0, 0.42f, 0, 0.86f, 0.84f, 0.86f, skin);
+            B(m, m.Body, 0, 0.3f, 0, 0.96f, 0.5f, 0.96f, belly);                       // the bulge
+            B(m, m.Body, 0, 0.92f, 0, 0.6f, 0.2f, 0.6f, skin);
+            B(m, m.Body, 0, 0.56f, 0.435f, 0.5f, 0.05f, 0.02f, seam, 0.9f, false);     // glowing seams
+            B(m, m.Body, 0, 0.3f, 0.485f, 0.7f, 0.05f, 0.02f, seam, 0.9f, false);
+            B(m, m.Body, 0.435f, 0.56f, 0, 0.02f, 0.05f, 0.5f, seam, 0.9f, false);
+            B(m, m.Body, -0.435f, 0.56f, 0, 0.02f, 0.05f, 0.5f, seam, 0.9f, false);
+            foreach (var (wx, wy, wz) in new[] { (0.3f, 0.86f, 0.2f), (-0.26f, 0.88f, -0.18f), (0.1f, 1.04f, -0.1f), (-0.44f, 0.7f, 0.2f), (0.44f, 0.66f, -0.22f) })
+                B(m, m.Body, wx, wy, wz, 0.12f, 0.1f, 0.12f, wart);
+            m.Head = Pivot(m.Root, new Vector3(0, 1.0f, 0.3f));
+            B(m, m.Head, -0.2f, 0.06f, 0.12f, 0.2f, 0.2f, 0.2f, skin);                 // eye stalks
+            B(m, m.Head, 0.2f, 0.06f, 0.12f, 0.2f, 0.2f, 0.2f, skin);
+            Eyes(m, m.Head, 0.2f, 0.07f, 0.225f, 0.13f, Hex(0xf4f0c8), 0.5f);
+            Eyes(m, m.Head, 0.2f, 0.07f, 0.24f, 0.05f, Hex(0x141008));
+            B(m, m.Head, 0, -0.2f, 0.135f, 0.44f, 0.05f, 0.02f, Hex(0x1e2410), 0, false);   // a wide mouth
         }
 
         void Pig(Model m)

@@ -497,6 +497,23 @@ namespace Stratum.Game
                     Sfx.I?.Play("portal", 0.7f, 1.2f);
                     if (!P.Creative) P.Inv.WearHeld();
                 }
+                else if (target == Blocks.BlastKeg)
+                {
+                    // Lights the fuse.
+                    World.Set(Target.x, Target.y, Target.z, Blocks.KegLit);
+                    Sfx.I?.Play("sizzle", 0.6f, 1.3f);
+                    if (!P.Creative) P.Inv.WearHeld();
+                }
+                else if (target != 0 && (World.Get(spot.x, spot.y, spot.z) == 0 || Blocks.Get(World.Get(spot.x, spot.y, spot.z)).Replaceable && Blocks.Get(World.Get(spot.x, spot.y, spot.z)).Fluid == 0)
+                         && (Blocks.Get(target).Burns || Blocks.Get(World.Get(spot.x, spot.y - 1, spot.z)).Solid))
+                {
+                    // A flame on the ground, or against something that burns.
+                    if (World.Set(spot.x, spot.y, spot.z, Blocks.Fire))
+                    {
+                        Sfx.I?.Play("sizzle", 0.5f, 1.6f);
+                        if (!P.Creative) P.Inv.WearHeld();
+                    }
+                }
                 else Sfx.I?.Play("swish", 0.3f, 1.6f);
                 _swing = 0;
                 return;
@@ -870,6 +887,22 @@ namespace Stratum.Game
                         if (l > best) best = l;
                     }
             return new Vector4(sky, best / 15f, 0, 1);
+        }
+
+        // A blast: smoke and sparks thrown out from the middle.
+        public void Puff(Vector3 at, float power)
+        {
+            if (_dust == null) return;
+            _dust.transform.position = at;
+            var ep = new ParticleSystem.EmitParams { applyShapeToPosition = true };
+            int n = Mathf.Clamp((int)(power * 26), 30, 160);
+            for (int i = 0; i < n; i++)
+            {
+                float k = Random.Range(0.25f, 1f);
+                ep.startColor = i % 4 == 0 ? new Color(1f, 0.6f + k * 0.3f, 0.2f, 1) : new Color(k * 0.8f, k * 0.78f, k * 0.75f, 1);
+                ep.velocity = Random.onUnitSphere * Random.Range(1.5f, 3.2f) * power + Vector3.up * 1.5f;
+                _dust.Emit(ep, 1);
+            }
         }
 
         void Burst(Vector3Int p, BlockDef def)

@@ -78,6 +78,13 @@ namespace Stratum.Game
                 _hud.Sleeping(true, total > 1 ? $"Sleeping...  {asleep}/{total} players in bed" : "Sleeping...");
             };
             link.MobSound = MobSfx;
+            link.Boomed = (at, power) =>
+            {
+                Sfx.I?.PlayAt("thunder", at, 1f, 1.5f + UnityEngine.Random.value * 0.3f);
+                Sfx.I?.PlayAt("hit_hard", at, 1f, 0.6f);
+                _hud?.Caption("Blast");
+                _act.Puff(at, power);
+            };
             link.Said = s => { _hud.Toast(s); if (_hud.CanChat) _hud.AddChat("", s); };
         }
 
@@ -223,7 +230,7 @@ namespace Stratum.Game
         {
             { MobKind.Cow, "moo" }, { MobKind.Pig, "oink" }, { MobKind.Sheep, "baa" }, { MobKind.Chicken, "cluck" },
             { MobKind.Ghoul, "groan" }, { MobKind.BoneArcher, "rattle" }, { MobKind.Crawler, "hiss" },
-            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" },
+            { MobKind.EmberImp, "imp" }, { MobKind.Colossus, "roar" }, { MobKind.Villager, "villager" }, { MobKind.Bloat, "sizzle" },
         };
 
         void MobSfx(MobKind kind, string what, Vector3 at)

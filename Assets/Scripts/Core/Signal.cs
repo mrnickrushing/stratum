@@ -49,7 +49,7 @@ namespace Stratum.Core
             IsPlate(id) || IsWire(id) || IsLamp(id) ? V(id) == 1 :
             IsTorch(id) ? V(id) == 0 : false;
 
-        public static bool IsPart(ushort id) => IsWire(id) || IsLever(id) || IsButton(id) || IsPlate(id) || IsTorch(id) || IsLamp(id) || IsRepeater(id)
+        public static bool IsPart(ushort id) => IsWire(id) || IsLever(id) || IsButton(id) || IsPlate(id) || IsTorch(id) || IsLamp(id) || IsRepeater(id) || id == Blocks.BlastKeg
                                               || Opens(id) || Rails.Booster(id);
 
         // Things that stand on the block below them (and pop off when it goes).
@@ -301,6 +301,7 @@ namespace Stratum.Core
                         ushort want = (ushort)(Blocks.SparkWire + (_level.ContainsKey(c) ? 1 : 0));
                         if (want != id) _set(x, y, z, want);
                     }
+                    else if (id == Blocks.BlastKeg) { if (Powered(c, x, y, z)) _set(x, y, z, Blocks.KegLit); }
                     else if (IsLamp(id))
                     {
                         ushort want = (ushort)(Blocks.SparkLamp + (Powered(c, x, y, z) ? 1 : 0));

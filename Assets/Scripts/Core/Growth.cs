@@ -52,9 +52,12 @@ namespace Stratum.Core
             }
         }
 
+        public Action<int, int, int> FoundFire;             // a fire block nobody is watching (the land was saved burning)
+
         void Tick(int x, int y, int z, ushort id)
         {
             var d = Blocks.Get(id);
+            if (id == Blocks.Fire) { FoundFire?.Invoke(x, y, z); return; }
             if (d.BaseId == Blocks.Wheat)
             {
                 var below = Blocks.Get(_get(x, y - 1, z));

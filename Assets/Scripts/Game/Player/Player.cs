@@ -401,6 +401,7 @@ namespace Stratum.Game
 
             // Lava burns hard and sets you alight; water puts the fire out.
             if (InLava) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
+            if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire) Burning = Mathf.Max(Burning, 4);
             else _lavaHurt = 0;
             if (InWater) Burning = 0;
             if (Burning > 0)

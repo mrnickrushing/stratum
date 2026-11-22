@@ -5,7 +5,9 @@ namespace Stratum.Core
 {
     public enum MobKind : byte { Cow, Pig, Sheep, Chicken, Ghoul, BoneArcher, Crawler, Arrow, EmberImp, Colossus, Villager, Boat, Cart,
         // 0.12: more wildlife
-        Deer, Fox, Rabbit, Penguin, Goat, Camel, Count }
+        Deer, Fox, Rabbit, Penguin, Goat, Camel,
+        // 0.14
+        Bloat, Count }
 
     public sealed class MobDef
     {
@@ -107,6 +109,10 @@ namespace Stratum.Core
                 Drops = new[] { ("raw_mutton", 1, 2, 1f), ("hide", 0, 1, 1f) } });
             D(new MobDef { Kind = MobKind.Camel, Name = "Camel", Health = 16, Speed = 1.2f, HalfW = 0.5f, Height = 2.1f, Xp = 3,
                 Drops = new[] { ("hide", 1, 3, 1f) } });
+            // The Bloat: a swollen bog creature that creeps up without a sound, swells and bursts.
+            D(new MobDef { Kind = MobKind.Bloat, Name = "Bloat", Health = 20, Speed = 2.1f, HalfW = 0.4f, Height = 1.5f, Hostile = true,
+                Damage = 0, Reach = 2.6f, AttackEvery = 1, Sight = 16, Xp = 5,
+                Drops = new[] { ("blast_powder", 0, 2, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -131,6 +137,8 @@ namespace Stratum.Core
         public event Action<int, float, float, float, Mob> HitPlayer;
         // A creature died: (it, the player who killed it, or 0).
         public event Action<Mob, int> Died;
+        // A Bloat burst: the host makes the blast.
+        public event Action<Mob> Burst;
         // A creature made a sound worth hearing: (it, "hurt"/"die"/"say"/"shoot").
         public event Action<Mob, string> Sound;
 
@@ -214,6 +222,31 @@ namespace Stratum.Core
                 Died?.Invoke(m, player);
             }
             else Sound?.Invoke(m, "hurt");
+        }
+
+        // A blast at (x, y, z): everything near is thrown back and hurt, less the further away it stands.
+        public void Blast(float x, float y, float z, float power, List<Seen> players)
+        {
+            float reach = power * 2.2f;
+            var cause = new Mob { Kind = MobKind.Bloat, Def = Def(MobKind.Bloat), X = x, Y = y, Z = z };
+            for (int i = All.Count - 1; i >= 0; i--)
+            {
+                var m = All[i];
+                if (m.Dead > 0 || m.Kind == MobKind.Arrow) continue;
+                float dx = m.X - x, dy = m.Y + m.Def.Height / 2 - y, dz = m.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist > reach) continue;
+                m.Hurt = 0;
+                Hurt(m, (1 - dist / reach) * power * 6, x, z, 0, 1.6f);
+            }
+            if (players == null) return;
+            foreach (var p in players)
+            {
+                if (!p.Alive || p.Creative) continue;
+                float dx = p.X - x, dy = p.Y + 0.9f - y, dz = p.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist > reach) continue;
+                float dmg = (1 - dist / reach) * power * 5 * (Difficulty == 1 ? 0.6f : 1);
+                if (dmg >= 0.5f) HitPlayer?.Invoke(p.Id, dmg, x, z, cause);
+            }
         }
 
         // An arrow loosed by a player (or by a creature, owner < 0).
@@ -523,6 +556,20 @@ namespace Stratum.Core
                         Sound?.Invoke(m, "shoot");
                     }
                 }
+                else if (m.Kind == MobKind.Bloat)
+                {
+                    // Close enough: it stops and swells; back off in time and it calms down again.
+                    wx = dx; wz = dz;
+                    bool close = dist < d.Reach && Math.Abs(dy) < 2.5f;
+                    if (close || m.Phase > 0 && dist < 5.5f)
+                    {
+                        if (m.Phase <= 0) Sound?.Invoke(m, "say");
+                        m.Phase += dt; wx = wz = 0;
+                        if (m.Phase >= 1.5f) { m.Dead = 0.05f; m.Health = 0; Burst?.Invoke(m); }
+                    }
+                    else m.Phase = Math.Max(0, m.Phase - dt * 2);
+                    m.Windup = m.Phase > 0 ? 0.2f : 0;
+                }
                 else
                 {
                     wx = dx; wz = dz;
@@ -692,6 +739,7 @@ namespace Stratum.Core
             bool burning = false;
             if (d.Burns && !Ember.In(m.X) && IsDay && Weather == 0 && !m.InWater && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + d.Height), (int)Math.Floor(m.Z))) burning = true;
             if (m.InLava && !d.Fireproof) burning = true;
+            if (!d.Fireproof && m.Y >= 0 && m.Y < Chunk.Height && _get((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 0.2f), (int)Math.Floor(m.Z)) == Blocks.Fire) burning = true;
             if (burning) m.Burn = 1.5f; else m.Burn = Math.Max(0, m.Burn - dt);
             if (m.Burn > 0 && !d.Fireproof && m.Hurt <= 0) Hurt(m, m.InLava ? 4 : 1, m.X + 0.01f, m.Z, 0, 0.1f);
             if (m.InWater && m.Kind == MobKind.EmberImp && m.Hurt <= 0) Hurt(m, 1, m.X, m.Z, 0, 0.1f);
@@ -885,7 +933,8 @@ namespace Stratum.Core
                 if (BlockLight(x, y, z) > 3) continue;            // torches keep a place safe
                 if (!FarFromAll(x, y, z, players, 20)) continue;
                 float k = Rand();
-                var kind = k < 0.48f ? MobKind.Ghoul : k < 0.78f ? MobKind.BoneArcher : MobKind.Crawler;
+                var kind = k < 0.40f ? MobKind.Ghoul : k < 0.66f ? MobKind.BoneArcher : k < 0.84f ? MobKind.Crawler : MobKind.Bloat;
+                if (kind == MobKind.Bloat && Ember.In(x)) kind = MobKind.Ghoul;
                 if (kind == MobKind.Crawler && Body.Blocked(_get, x + 0.5f, y, z + 0.5f, 0.6f, 0.9f)) kind = MobKind.Ghoul;
                 if (Body.Blocked(_get, x + 0.5f, y, z + 0.5f, Def(kind).HalfW, Def(kind).Height)) continue;
                 Spawn(kind, x + 0.5f, y, z + 0.5f);

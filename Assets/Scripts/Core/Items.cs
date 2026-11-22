@@ -130,6 +130,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "spark", Name = "Spark Dust", Block = Blocks.SparkWire });
             Add(new ItemDef { Id = "flint", Name = "Flint" });
             Add(new ItemDef { Id = "fire_striker", Name = "Fire Striker", MaxStack = 1, Durability = 64 });
+            Add(new ItemDef { Id = "blast_powder", Name = "Blast Powder" });
             Add(new ItemDef { Id = "boat", Name = "Boat", MaxStack = 1 });
             Add(new ItemDef { Id = "minecart", Name = "Minecart", MaxStack = 1 });
             Add(new ItemDef { Id = "compass", Name = "Compass", MaxStack = 1 });
@@ -208,6 +209,7 @@ namespace Stratum.Core
             R("booster_rail", 6, "workbench", ("gold_ingot", 6), ("stick", 1), ("spark", 1));
             R("spark_torch", 1, null, ("spark", 1), ("stick", 1));
             R("fire_striker", 1, null, ("iron_ingot", 1), ("flint", 1));
+            R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
             R("cinder_bricks", 1, "furnace", ("cinderstone", 2));
             R("lever", 1, null, ("cobble", 1), ("stick", 1));
             R("button", 1, null, ("stone", 1));
