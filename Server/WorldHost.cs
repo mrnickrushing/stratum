@@ -564,7 +564,29 @@ namespace Stratum.Server
                 Broadcast(SaidPacket("", $"{p.Name} changed the weather to {WeatherSim.Name(w)}"));
                 return;
             }
-            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>")); return; }
+            if (text.StartsWith("/give") || text.StartsWith("/time") || text == "/day" || text == "/night")
+            {
+                // For the server's operators (STRATUM_OPS).
+                if (!_cfg.Ops.Contains(p.Name.ToLowerInvariant())) { p.Conn.Send(SaidPacket("", "Only this server's operators can do that.")); return; }
+                var a = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (a[0] == "/give")
+                {
+                    var d = a.Length > 1 ? Items.Get(a[1].ToLowerInvariant()) : null;
+                    int n = a.Length > 2 && int.TryParse(a[2], out int gn) ? Math.Clamp(gn, 1, 640) : 1;
+                    if (d == null || !d.Creative) { p.Conn.Send(SaidPacket("", "/give <thing> [how many], for example /give torch 16")); return; }
+                    for (int left = n; left > 0; left -= d.MaxStack) p.Conn.Send(new Packet(Net.Msg.Give).Str(d.Id).U16(Math.Min(left, d.MaxStack)).U16(0));
+                    Log.Info($"{p.Name} gave themselves {n} {d.Id}");
+                    p.Conn.Send(SaidPacket("", $"Given {n} {d.Name}."));
+                    return;
+                }
+                float t = a[0] == "/day" ? 0.27f : a[0] == "/night" ? 0.8f : a.Length == 3 && a[1] == "set" ? WeatherSim.TimeOf(a[2].ToLowerInvariant()) : -1;
+                if (t < 0) { p.Conn.Send(SaidPacket("", "/time set day, noon, night or midnight (or a number from 0 to 24000)")); return; }
+                World.Meta.time = t;
+                Broadcast(ClockPacket());
+                Broadcast(SaidPacket("", $"{p.Name} set the time."));
+                return;
+            }
+            if (text.StartsWith("/")) { p.Conn.Send(SaidPacket("", "Commands: /list  /spawn  /home  /tp <name>  /weather <clear|rain|thunder>  (operators: /give  /time set  /day  /night)")); return; }
             Broadcast(SaidPacket(p.Name, text));
             Log.Info($"<{p.Name}> {text}");
         }
@@ -732,6 +754,13 @@ namespace Stratum.Server
         void OpenBox(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32();
+            if (InReach(p, x, y, z) && World.Get(x, y, z) == Blocks.LootChest)
+            {
+                // A dusty chest fills itself the first time it's opened, and is an ordinary chest from then on.
+                var loot = Ruins.Roll(World.Meta.seed, x, y, z);
+                World.Put(x, y, z, Blocks.Chest);
+                for (int i = 0; i < loot.Length; i++) if (!loot[i].Empty) _boxes.Set(x, y, z, i, loot[i]);
+            }
             if (!InReach(p, x, y, z) || !Blocks.Get(World.Get(x, y, z)).Container) return;
             // One pair of hands in a chest at a time: two people moving the same stack at once could copy or lose it.
             if (InUse(p, x, y, z, out string user)) { p.Conn.Send(SaidPacket("", $"{user} is using that. Wait for them to close it.")); return; }

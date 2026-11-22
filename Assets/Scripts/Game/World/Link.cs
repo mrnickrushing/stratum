@@ -211,6 +211,13 @@ namespace Stratum.Game
 
         public override void OpenBox(Vector3Int at)
         {
+            // A dusty chest fills itself the first time it's opened, and is an ordinary chest from then on.
+            if (_world.Get(at.x, at.y, at.z) == Blocks.LootChest)
+            {
+                var loot = Ruins.Roll(_world.Gen.Seed, at.x, at.y, at.z);
+                _world.Set(at.x, at.y, at.z, Blocks.Chest);
+                for (int i = 0; i < loot.Length; i++) if (!loot[i].Empty) Boxes.Set(at.x, at.y, at.z, i, loot[i]);
+            }
             _open = true; _box = at;
             BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
         }

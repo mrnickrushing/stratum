@@ -95,6 +95,13 @@ namespace Stratum.Core
             b.Boxes = new[] { Box.Px(1, 0, 1, 15, 2, 15), Box.Px(7, 2, 7, 9, 14, 9), Box.Px(2, 2, 6, 6, 8, 10), Box.Px(10, 2, 6, 14, 8, 10), Box.Px(6, 2, 10, 10, 8, 14) };
             BrewStand = b.Id;
 
+            // A cage that monsters come out of while someone is near (found in vaults), and a dusty chest that
+            // fills itself the first time it is opened.
+            b = Add("cage", "Monster Cage", Tex.CageSide); b.Opaque = false; b.Opacity = 1; b.Cutout = true; b.Hardness = 5; b.Tool = Tool.Pickaxe; b.Sound = Sound.Metal; b.DropItem = "";
+            b.Creative = false; Palette.Remove(b.Id); Cage = b.Id;
+            b = Add("dusty_chest", "Dusty Chest", Tex.DustyTop, Tex.DustySide, Tex.DustyTop); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 1; b.Hardness = 2.5f; b.Tool = Tool.Axe; b.Sound = Sound.Wood;
+            b.Boxes = new[] { Box.Px(1, 0, 1, 15, 14, 15) }; b.DropItem = "chest"; b.Creative = false; Palette.Remove(b.Id); LootChest = b.Id;
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

@@ -520,7 +520,7 @@ namespace Stratum.Game
         static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
-            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -592,7 +592,7 @@ namespace Stratum.Game
                 if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }
-                if (tdef.Container && target != Blocks.Satchel) { OpenBox?.Invoke(Target); return; }
+                if (tdef.Container && target != Blocks.Satchel || target == Blocks.LootChest) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }

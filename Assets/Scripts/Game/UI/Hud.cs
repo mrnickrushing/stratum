@@ -155,7 +155,7 @@ namespace Stratum.Game
         }
 
         Image _xpBack, _xp; Text _xpLevel, _craftSub;
-        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map);
+        bool Held(Transform t) => _compass != null && (t == _compass || t == _clockFace.transform || t == _map) || Own(t);
 
         Image Bar(string name, Color col, float x, float y, float w, out Image fill)
         {

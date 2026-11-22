@@ -586,7 +586,7 @@ namespace Stratum.Core
         }
 
         public static int XpFor(BlockDef b, Random r) =>
-            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.StarOre ? r.Next(3, 8) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.Cage ? r.Next(15, 40) : b.Id == Blocks.StarOre ? r.Next(3, 8) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
 
         // Shears bring leaves, grass and the like away whole.
         public static (string item, int count) Drop(BlockDef b, ItemDef held)

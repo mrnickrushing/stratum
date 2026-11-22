@@ -24,6 +24,9 @@ namespace Stratum.Game
                 case Tex.ObserverSide: MachineFace(p, 3); return 3f;
                 case Tex.ComparatorOff: Gauge(p, false); return 2f;
                 case Tex.ComparatorOn: Gauge(p, true); return 2f;
+                case Tex.CageSide: CageSide(p); return 3f;
+                case Tex.DustyFront: case Tex.DustySide: Chest(p, false); Dust(p); return 3f;
+                case Tex.DustyTop: Planks(p, Hex(0x8a6a44), 4); Dust(p); return 2f;
                 case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
@@ -186,6 +189,31 @@ namespace Stratum.Game
                     bool a = (x - 32) * (x - 32) + (y - 14) * (y - 14) < 30, b = (x - 18) * (x - 18) + (y - 46) * (y - 46) < 30, c = (x - 46) * (x - 46) + (y - 46) * (y - 46) < 30;
                     if (a || b || c) p.Set(x, y, pin, 0.9f);
                     else if (Mathf.Abs(x - 32) < 2 && y > 14 && y < 46 || Mathf.Abs(y - 46) < 2 && x > 18 && x < 46) p.Set(x, y, line, 0.4f);
+                }
+        }
+
+        // Iron bars both ways, with a dark middle seen between them.
+        static void CageSide(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool bar = x % 16 < 4 || y % 16 < 4, rim = x < 4 || x > 59 || y < 4 || y > 59;
+                    if (bar || rim) { var c = Paint.Mul(Hex(0x4a4c54), 0.8f + p.V(x, y, 16) * 0.4f + (x % 16 == 1 || y % 16 == 1 ? 0.25f : 0)); c.a = 1; p.Set(x, y, c, 0.9f); }
+                    else p.Set(x, y, new Color(0.05f, 0.05f, 0.07f, 0), 0);
+                }
+        }
+
+        // A grey film and cobwebby streaks over whatever was painted.
+        static void Dust(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    int i = Paint.I(x, y);
+                    float film = 0.25f + p.Fbm(x, y, 8, 3) * 0.3f + (y > 50 ? 0.15f : 0);
+                    var c = Color.Lerp(p.C[i], new Color(0.62f, 0.6f, 0.56f, 1), Mathf.Clamp01(film)); c.a = 1;
+                    p.C[i] = c;
                 }
         }
 

@@ -390,7 +390,7 @@ namespace Stratum.Game
             {
                 case "/help":
                 case "/?":
-                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night (single player)");
+                    _hud.AddChat("", "Commands: /spawn  /home  /keep <on|off>  /tp <name>  /list  /weather <clear|rain|thunder>  /day  /night  /time set <day|noon|night|midnight>  /give <thing> [how many]  /gamemode <survival|creative>");
                     return true;
                 case "/keep":
                     if (Online) { _hud.AddChat("", _keepInv ? "This world lets you keep your things when you fall." : "In this world your things drop in a satchel when you fall. The server decides."); return true; }
@@ -427,6 +427,40 @@ namespace Stratum.Game
                     wl.Weather.Set(w, w == 0 ? 900 : 480);
                     _hud.AddChat("", w == 0 ? "The weather clears." : w == 2 ? "A thunderstorm rolls in." : "It starts to rain.");
                     return true;
+                case "/give":
+                {
+                    if (Online) return false;               // the server decides who may
+                    var ga = arg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    string what = ga.Length > 0 ? ga[0].ToLowerInvariant() : "";
+                    int many = ga.Length > 1 && int.TryParse(ga[1], out int gn) ? Mathf.Clamp(gn, 1, 640) : 1;
+                    var gd = FindItem(what);
+                    if (gd == null) { _hud.AddChat("", ga.Length == 0 ? "/give <thing> [how many], for example /give torch 16" : $"There's nothing called \"{what}\"."); return true; }
+                    Give(gd.Id, many, 0);
+                    _hud.AddChat("", $"Given {many} {gd.Name}.");
+                    return true;
+                }
+                case "/gamemode":
+                {
+                    if (Online) { _hud.AddChat("", "On a server the world's mode is set by whoever runs it."); return true; }
+                    string gm = arg.ToLowerInvariant();
+                    bool? want = gm == "creative" || gm == "c" || gm == "1" ? true : gm == "survival" || gm == "s" || gm == "0" ? false : (bool?)null;
+                    if (want == null) { _hud.AddChat("", "/gamemode survival or /gamemode creative"); return true; }
+                    _player.Creative = _meta.creative = want.Value;
+                    if (!want.Value) _player.Flying = false;
+                    Save();
+                    _hud.AddChat("", want.Value ? "Creative: every block to hand, and you can fly." : "Survival: mine it, make it, stay alive.");
+                    return true;
+                }
+                case "/time":
+                {
+                    if (Online) return false;
+                    var ta = arg.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    float t = ta.Length == 2 && ta[0] == "set" ? WeatherSim.TimeOf(ta[1]) : -1;
+                    if (t < 0) { _hud.AddChat("", "/time set day, noon, night or midnight (or a number from 0 to 24000)"); return true; }
+                    _sky.Time01 = t;
+                    _hud.AddChat("", "The time is set.");
+                    return true;
+                }
                 case "/day":
                 case "/night":
                     if (Online) return false;
@@ -435,6 +469,17 @@ namespace Stratum.Game
                     return true;
             }
             return false;
+        }
+
+        // A thing by its key or its name ("oak_planks", "Oak Planks", "oak planks").
+        static ItemDef FindItem(string what)
+        {
+            if (string.IsNullOrEmpty(what)) return null;
+            var d = Items.Get(what);
+            if (d != null && d.Creative) return d;
+            string spaced = what.Replace('_', ' ');
+            foreach (var it in Items.Order) if (it.Creative && string.Equals(it.Name, spaced, StringComparison.OrdinalIgnoreCase)) return it;
+            return null;
         }
 
         void Teleport(Vector3 to, string what)

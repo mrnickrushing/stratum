@@ -395,7 +395,7 @@ namespace Stratum.Game
                 }
                 if (_hud.CanChat && !_hud.InventoryOpen && _hud.ChatClosedFrame != Time.frameCount && (Keys.Pressed(Act.Chat) || kb.enterKey.wasPressedThisFrame)) { _hud.OpenChat(); return; }
                 if (_hud.CanChat && !_hud.InventoryOpen && kb.slashKey.wasPressedThisFrame) { _hud.OpenChat("/"); return; }
-                if ((Keys.Pressed(Act.Backpack) || kb.tabKey.wasPressedThisFrame) && !_hud.Typing)
+                if (Keys.Pressed(Act.Backpack) && !_hud.Typing && !_hud.GoalsOpen)
                 {
                     if (_hud.InventoryOpen) CloseInventory(); else OpenInventory(null);
                 }
@@ -411,6 +411,7 @@ namespace Stratum.Game
             if (!_hud.InventoryOpen && Cursor.lockState != CursorLockMode.Locked && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame) SetCursor(true);
 
             _act.HideHeld = _hud.InventoryOpen || _hudHidden || _player.View != 0;
+            GoalsTick(Keyboard.current);
             SelfView();
 
             _autosave -= Time.unscaledDeltaTime;

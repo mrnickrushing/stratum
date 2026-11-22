@@ -1256,6 +1256,33 @@ namespace Stratum.Server
                 Check(parked != null && parked.Tame && parked.Kept, "and waits where its rider got off");
             }
 
+            // A vault: found from the seed, it has its cage and two dusty chests, and a dusty chest has things in it.
+            {
+                int seed = 20261122; var gen = new WorldGen(seed, WorldKind.Normal);
+                int vx = 0, vy = 0, vz = 0; bool any = false;
+                for (int c = 0; c < 40 && !any; c++) any = Ruins.Vault(seed, c, 0, out vx, out vy, out vz);
+                var vc = new Chunk(vx >> 4, vz >> 4); gen.Generate(vc);
+                ushort mid = vc.Get(vx & 15, vy, vz & 15);
+                int chests = 0;
+                foreach (var (ox, oz) in new[] { (-3, 0), (3, 1) })
+                {
+                    var cc = new Chunk((vx + ox) >> 4, (vz + oz) >> 4); gen.Generate(cc);
+                    if (cc.Get((vx + ox) & 15, vy, (vz + oz) & 15) == Blocks.LootChest) chests++;
+                }
+                Check(any && mid == Blocks.Cage && chests == 2, $"a vault has a monster cage in the middle and two dusty chests ({Blocks.Get(mid).Name}, {chests})");
+                var loot = Ruins.Roll(seed, vx - 3, vy, vz); int stacks = 0; foreach (var st in loot) if (!st.Empty && Items.Get(st.Item) != null) stacks++;
+                var again = Ruins.Roll(seed, vx - 3, vy, vz); bool same = true; for (int i = 0; i < loot.Length; i++) if (loot[i].Item != again[i].Item || loot[i].Count != again[i].Count) same = false;
+                Check(stacks >= 3 && same, $"a dusty chest holds several things, the same whoever opens it first ({stacks} stacks)");
+                // The cage lets monsters out while someone is near, four at most.
+                var who = new List<Seen> { new Seen { Id = 1, X = vx + 6.5f, Y = vy, Z = vz + 0.5f, Alive = true, Creative = true, Key = "kid" } };
+                ushort CageWorld(int x, int y, int z) => x == vx && y == vy && z == vz ? Blocks.Cage : y < vy || y > vy + 4 ? Blocks.Stone : (ushort)0;      // a cave with a roof
+                var cs2 = new MobSim(CageWorld, 3) { Time01 = 0.3f, Seed = seed, HostileCap = 0, PassiveCap = 0 };      // nothing but what the cage lets out
+                int most = 0;
+                for (int i = 0; i < 20 * 90; i++) { cs2.Tick(0.05f, who); int now = 0; foreach (var m in cs2.All) if (m.Def.Hostile && m.Dead <= 0) now++; most = Math.Max(most, now); }
+                int out2 = most;
+                Check(out2 >= 2 && out2 <= 4, $"a vault's cage lets its monsters out while someone is near, four at most ({out2})");
+            }
+
             // Spark machines.
             {
                 var mw = new Patch(); Signal sig = null;

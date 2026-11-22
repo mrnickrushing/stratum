@@ -190,6 +190,7 @@ namespace Stratum.Game
             _keepInv = welcome.More && welcome.Bool();          // 0.5.1: the server's world lets players keep their things
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
+            _myName = name;
             _netSpawn = new Vector3(sx + 0.5f, sy, sz + 0.5f);
             yield return null;
 

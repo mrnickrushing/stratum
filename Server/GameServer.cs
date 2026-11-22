@@ -20,6 +20,7 @@ namespace Stratum.Server
         public string Motd = "";
         public int MaxPlayers = 10;
         public string Password = "";               // invite code needed to make an account (blank: anyone can)
+        public HashSet<string> Ops = new HashSet<string>();     // names (lower case) who may /give and set the time
         public string Reset = "";                  // account names whose passwords to clear once (STRATUM_RESET)
         public bool Creative;
         public int MaxView = 10;

@@ -410,6 +410,11 @@ namespace Stratum.Core
                 Hazards(m, dt);
                 if (Despawn(m, players)) Remove(m);
             }
+            if ((_cageTimer -= dt) <= 0)
+            {
+                _cageTimer = 4 + Rand() * 6;
+                if (Difficulty > 0 && Spawning) foreach (var p in players) if (p.Alive && !Ember.In(p.X)) Cages(p);
+            }
             if (VillageNear != null && (_villageTimer -= dt) <= 0)
             {
                 _villageTimer = 5;
@@ -520,6 +525,31 @@ namespace Stratum.Core
                 m.Sheared = sheared; m.Regrow = regrow; m.Kept = true;
                 if (ver >= 2) { m.Job = job; m.HomeX = homeX; m.HomeZ = homeZ; }
                 m.Tame = tame; m.Sit = sit; m.OwnerKey = owner;
+            }
+        }
+
+        float _cageTimer = 3;
+        readonly List<(int x, int y, int z)> _cages = new List<(int, int, int)>();
+
+        // A monster cage with someone within sixteen blocks lets another creature out beside it (no more than four at once).
+        void Cages(in Seen p)
+        {
+            _cages.Clear();
+            Ruins.CagesNear(Seed, p.X, p.Z, 16, _cages);
+            foreach (var (x, y, z) in _cages)
+            {
+                if (Math.Abs(p.Y - y) > 10 || !Loaded(x, z) || _get(x, y, z) != Blocks.Cage) continue;
+                int near = 0;
+                foreach (var m in All) if (m.Def.Hostile && m.Dead <= 0 && Math.Abs(m.X - x) < 20 && Math.Abs(m.Z - z) < 20 && Math.Abs(m.Y - y) < 8) near++;
+                if (near >= 4) continue;
+                var kind = Ruins.CageKind(Seed, x, y, z);
+                for (int tries = 0; tries < 6; tries++)
+                {
+                    float sx = x + 0.5f + _r.Next(-3, 4), sz = z + 0.5f + _r.Next(-3, 4);
+                    if (Body.Blocked(_get, sx, y, sz, Def(kind).HalfW, Def(kind).Height) || !Blocks.Get(_get((int)Math.Floor(sx), y - 1, (int)Math.Floor(sz))).Solid) continue;
+                    Spawn(kind, sx, y, sz);
+                    break;
+                }
             }
         }
 

@@ -210,6 +210,7 @@ namespace Stratum.Core
             Trees(ch, cols);
             Flora(ch, cols);
             int vbx = bx, vbz = bz;
+            if (!Level && Kind != WorldKind.Sky) Ruins.Stamp(ch, Seed);
             if (Builds.Is(Kind)) Builds.Stamp(ch, Kind);
             else Villages.Stamp(ch, (x, z) => (int)cols[(x - vbx + M) + (z - vbz + M) * W].Height);
             ch.RecalcMaxY();
