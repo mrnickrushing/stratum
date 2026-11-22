@@ -10,7 +10,7 @@ namespace Stratum.Core
     {
         public static readonly int[] DX = { 0, 1, 0, -1 }, DZ = { 1, 0, -1, 0 };
 
-        public static bool Is(ushort id) { if (id == 0) return false; int b = Blocks.Get(id).BaseId; return b == Blocks.Rail || b == Blocks.BoosterRail; }
+        public static bool Is(ushort id) { if (id == 0) return false; int b = Blocks.Get(id).BaseId; return b == Blocks.Rail || b == Blocks.BoosterRail || b == Blocks.DetectorRail; }
         public static bool Booster(ushort id) => id != 0 && Blocks.Get(id).BaseId == Blocks.BoosterRail;
 
         // The two directions a rail joins, and the one it rises toward (-1 if it's flat).
@@ -18,7 +18,8 @@ namespace Stratum.Core
         {
             var d = Blocks.Get(id);
             int v = id - d.BaseId;
-            if (d.BaseId == Blocks.BoosterRail)
+            if (d.BaseId == Blocks.DetectorRail) v >>= 1;                  // its low bit is "on"
+            if (d.BaseId == Blocks.BoosterRail || d.BaseId == Blocks.DetectorRail)
             {
                 if (v < 2) return (v, v + 2, -1);
                 int u = v - 2; return (u, (u + 2) & 3, u);
@@ -32,9 +33,10 @@ namespace Stratum.Core
 
         static ushort Make(ushort baseId, int a, int b, int up)
         {
-            bool booster = baseId == Blocks.BoosterRail;
-            if (up >= 0) return (ushort)(baseId + (booster ? 2 : 6) + up);
-            if (((a + 2) & 3) == b || booster) return (ushort)(baseId + (a & 1));
+            bool booster = baseId != Blocks.Rail;                           // booster and detector rails only run straight
+            int step = baseId == Blocks.DetectorRail ? 2 : 1;
+            if (up >= 0) return (ushort)(baseId + ((booster ? 2 : 6) + up) * step);
+            if (((a + 2) & 3) == b || booster) return (ushort)(baseId + (a & 1) * step);
             int c = ((a + 1) & 3) == b ? a : b;
             return (ushort)(baseId + 2 + c);
         }

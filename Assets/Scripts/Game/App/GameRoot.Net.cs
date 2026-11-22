@@ -440,6 +440,9 @@ namespace Stratum.Game
                 case Net.Msg.Boom:
                     _link?.Boomed?.Invoke(new Vector3(r.F32(), r.F32(), r.F32()), r.F32());
                     break;
+                case Net.Msg.Note:
+                    _link?.Noted?.Invoke(new Vector3(r.I32() + 0.5f, r.I32() + 0.5f, r.I32() + 0.5f), r.U8());
+                    break;
                 case Net.Msg.Splashed:
                     _link?.Splashed?.Invoke(new Vector3(r.F32(), r.F32(), r.F32()), r.Str(), r.F32());
                     break;

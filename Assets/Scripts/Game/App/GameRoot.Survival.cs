@@ -94,6 +94,7 @@ namespace Stratum.Game
                 _hud.Sleeping(true, total > 1 ? $"Sleeping...  {asleep}/{total} players in bed" : "Sleeping...");
             };
             link.MobSound = MobSfx;
+            link.Noted = (at, pitch) => Sfx.I?.PlayAt("note_" + Mathf.Clamp(pitch, 0, 7), at, 0.9f, 1);
             link.Splashed = (at, effect, secs) =>
             {
                 Sfx.I?.PlayAt("splash", at, 0.7f, 1.5f);

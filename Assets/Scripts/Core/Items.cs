@@ -262,6 +262,9 @@ namespace Stratum.Core
             R("gate_stone", 1, "workbench", ("obsidian", 4), ("shade_shard", 4), ("starstone", 1));
             R("brewing_stand", 1, "workbench", ("cobble", 3), ("ember", 1));
             foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));
+            R("detector_rail", 6, "workbench", ("iron_ingot", 6), ("pressure_plate", 1), ("spark", 1));
+            R("daylight_sensor", 1, "workbench", ("glass", 3), ("sunstone_shard", 3), ("@planks", 3));
+            R("note_block", 1, "workbench", ("@planks", 8), ("spark", 1));
             R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));
             R("sticky_piston", 1, "workbench", ("piston", 1), ("clay", 2));
             R("sticky_piston", 1, "workbench", ("piston", 1), ("jelly", 1));

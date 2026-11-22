@@ -66,6 +66,8 @@ namespace Stratum.Game
             _clips["groan"] = Voice(1.1f, 120, 85, 1.1f, 5, 0.6f);
             _clips["rattle"] = Rattle();
             _clips["hiss"] = Hiss(0.6f);
+            float[] scale = { 261.6f, 293.7f, 329.6f, 349.2f, 392.0f, 440.0f, 493.9f, 523.3f };
+            for (int i = 0; i < 8; i++) _clips["note_" + i] = Chime(new[] { scale[i] }, 0.55f);
             _clips["bark"] = Grunt(0.16f, 420, 1.1f, 1);
             _clips["imp"] = Voice(0.5f, 420, 600, 0.5f, 25, 0.3f);
             _clips["roar"] = Voice(1.8f, 70, 50, 1.6f, 7, 0.9f);

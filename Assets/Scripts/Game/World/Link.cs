@@ -43,6 +43,7 @@ namespace Stratum.Game
         public Action<MobKind, string, Vector3> MobSound;
         public Action<string> Said;
         public Action<Vector3, float> Boomed;                   // a blast: where, how strong
+        public Action<Vector3, int> Noted;                      // a note block sounded: where, which note
         public Action<Vector3, string, float> Splashed;         // a splash potion burst: where, what it does, for how long
         public virtual void Splash(Vector3 at, string effect, float secs) => Splashed?.Invoke(at, effect, secs);
     }
@@ -125,6 +126,9 @@ namespace Stratum.Game
             {
                 world.Signal.Fired = (x, y, z, dir) => { Machines.Dispense(Boxes, Ground, Sim, world.Get, (bx, by, bz, id) => world.Set(bx, by, bz, id), x, y, z, dir, _dice); MobSound?.Invoke(MobKind.Arrow, "shoot", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)); };
                 world.Signal.Holds = (x, y, z) => Machines.Holds(Boxes, x, y, z);
+                world.Signal.IsDay = () => Sim.IsDay && Weather.State != 2;
+                world.Signal.Played = (x, y, z, pitch) => Noted?.Invoke(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), pitch);
+                if (world.Growth != null) world.Growth.FoundPart = (x, y, z) => world.Signal.Wake(x, y, z);
             }
             Sim.Laid += m => Ground.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             world.Changed += (x, y, z, old, id) =>
@@ -153,7 +157,7 @@ namespace Stratum.Game
             Chutes.Tick(dt);
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
-            foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+            foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && (!m.Def.Vehicle || m.Kind != MobKind.Boat)) _bodies.Add((m.X, m.Y, m.Z));      // carts count: they set off detector rails
             _world.Signal?.Tick(dt, _bodies);
             _sky.Weather = Sim.Weather = Weather.State;
             Sim.Tick(dt, _seen);

@@ -143,6 +143,13 @@ namespace Stratum.Server
             _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
             World.Signal.Fired = (x, y, z, dir) => Machines.Dispense(_boxes, _drops, _mobs, World.Get, World.Put, x, y, z, dir, _dice);
             World.Signal.Holds = (x, y, z) => Machines.Holds(_boxes, x, y, z);
+            World.Signal.IsDay = () => _mobs.IsDay && _weather.State != 2;
+            World.Signal.Played = (x, y, z, pitch) =>
+            {
+                var f = new Packet(Net.Msg.Note).I32(x).I32(y).I32(z).U8((byte)pitch).Bytes();
+                foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 48 * 48) o.Conn.Send(f);
+            };
+            World.Growth.FoundPart = (x, y, z) => World.Signal.Wake(x, y, z);
             _mobs.Laid += m => _drops.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             _leaves = new Decay(World.Get, World.Put);
             _leaves.Fell = (x, y, z, d) =>
@@ -248,7 +255,7 @@ namespace Stratum.Server
                     World.Growth.Tick(dt, _near);
                     _bodies.Clear();
                     foreach (var pl in _players.Values) if (pl.Joined && pl.Alive) _bodies.Add((pl.X, pl.Y, pl.Z));
-                    foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+                    foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && (!m.Def.Vehicle || m.Kind != MobKind.Boat)) _bodies.Add((m.X, m.Y, m.Z));
                     World.Signal.Tick(dt, _bodies);
                     TickMobs(dt);
                     if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); if (drops ^= true) SendDrops(); }

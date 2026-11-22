@@ -30,6 +30,9 @@ namespace Stratum.Game
                 case Tex.Stillstone: Rock(p, Hex(0xd9d4c4), Hex(0xb9b6ac), 0.1f, true); return 3f;
                 case Tex.GateStone: GateStone(p); return 3f;
                 case Tex.Vine: VineTex(p); return 1f;
+                case Tex.DetectorRail: RailTex(p, false, false); DetectorPlate(p); return 1.5f;
+                case Tex.SensorTop: SensorTop(p); return 1.5f;
+                case Tex.NoteSide: NoteSide(p); return 2f;
                 case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
@@ -255,6 +258,46 @@ namespace Stratum.Game
                         }
                 }
             }
+        }
+
+        // A red plate between the rails.
+        static void DetectorPlate(Paint p)
+        {
+            for (int y = 22; y < 42; y++)
+                for (int x = 24; x < 40; x++)
+                {
+                    bool rim = x == 24 || x == 39 || y == 22 || y == 41;
+                    var c = rim ? Hex(0x4a1512) : Paint.Mul(Hex(0xc8322a), 0.85f + p.V(x, y, 8) * 0.3f); c.a = 1;
+                    p.Set(x, y, c, 0.7f);
+                }
+        }
+
+        // Pale blue glass cells in a wooden frame, to catch the sun.
+        static void SensorTop(Paint p)
+        {
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    bool frame = x < 4 || x > 59 || y < 4 || y > 59 || x % 14 < 2 || y % 14 < 2;
+                    Color c = frame ? Paint.Mul(Hex(0x8a6a44), 0.85f + p.Streak(x, y, 12, 2, 2) * 0.3f) : Color.Lerp(Hex(0x9ac8e0), Hex(0xd8eef8), p.V(x * 0.7f, y * 0.7f, 8));
+                    c.a = 1; p.Set(x, y, c, frame ? 0.7f : 0.3f);
+                }
+        }
+
+        // Planks with a dark sound hole and a single note drawn beside it.
+        static void NoteSide(Paint p)
+        {
+            Planks(p, Hex(0x9a6c40), 4);
+            for (int y = 0; y < 64; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float dx = x - 22, dy = y - 30;
+                    if (dx * dx + dy * dy < 100) p.Set(x, y, Hex(0x1a120c), 0.1f);
+                    else if (dx * dx + dy * dy < 132) p.Set(x, y, Hex(0x5a3c20), 0.8f);
+                    // The note: a round head, a stem and a flag.
+                    float nx = x - 44, ny = y - 20;
+                    if (nx * nx + ny * ny * 1.6f < 20 || x >= 47 && x <= 48 && y >= 20 && y <= 44 || x >= 48 && x <= 53 && y >= 38 - (x - 48) && y <= 44 - (x - 48)) p.Set(x, y, Hex(0x20160e), 0.3f);
+                }
         }
 
         static void KegTop(Paint p)

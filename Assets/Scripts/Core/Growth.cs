@@ -80,12 +80,14 @@ namespace Stratum.Core
             }
         }
 
+        public Action<int, int, int> FoundPart;
         public Action<int, int, int> FoundFire;             // a fire block nobody is watching (the land was saved burning)
 
         void Tick(int x, int y, int z, ushort id)
         {
             var d = Blocks.Get(id);
             if (id == Blocks.Fire) { FoundFire?.Invoke(x, y, z); return; }
+            if (d.Sensor) { FoundPart?.Invoke(x, y, z); return; }       // a daylight sensor nobody has woken since the land loaded
             // Ice and settled snow melt beside something hot; vines creep down.
             if (id == Blocks.Ice || id == Blocks.SnowLayer) { if (Warm(x, y, z)) _set(x, y, z, id == Blocks.Ice ? Blocks.Water : (ushort)0); return; }
             if (d.BaseId == Blocks.Vine) { if (y > 2 && _get(x, y - 1, z) == 0 && _rng.Value() < 0.12f) _set(x, y - 1, z, id); return; }

@@ -534,7 +534,7 @@ namespace Stratum.Game
         static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
-            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.GateStone || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.Repeat || d.Note || d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || id == Blocks.GateStone || id == Blocks.LootChest || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -613,6 +613,22 @@ namespace Stratum.Game
                 if (target == Blocks.Satchel) { World.Set(Target.x, Target.y, Target.z, 0); Sfx.I?.Play("pickup", 0.6f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Bed) { UseBed?.Invoke(tdef.Variant == 0 ? Target : Target - Dir4[tdef.Facing]); return; }
                 if (tdef.Opens) { Toggle(Target, tdef); return; }
+                if (tdef.Repeat)
+                {
+                    // Each click makes a repeater wait a moment longer, then back to the shortest.
+                    int which = System.Array.IndexOf(Blocks.Repeaters, tdef.BaseId), next = (which + 1) & 3;
+                    World.Set(Target.x, Target.y, Target.z, (ushort)(Blocks.Repeaters[next] + (target - tdef.BaseId)));
+                    Toast?.Invoke($"Repeater delay: 0.{next + 1} s");
+                    Sfx.I?.Play("click", 0.5f, 0.9f + next * 0.15f); _swing = 0; return;
+                }
+                if (tdef.Note)
+                {
+                    // Each click steps a note block up its eight notes, and sounds the new one.
+                    int pitch = ((tdef.Variant >> 1) + 1) & 7;
+                    World.Set(Target.x, Target.y, Target.z, (ushort)(tdef.BaseId + pitch * 2 + (tdef.Variant & 1)));
+                    Sfx.I?.PlayAt("note_" + pitch, (Vector3)Target + Vector3.one * 0.5f, 0.9f, 1);
+                    _swing = 0; return;
+                }
                 if (tdef.BaseId == Blocks.Lever) { World.Set(Target.x, Target.y, Target.z, Blocks.Flip(target, 1)); Sfx.I?.Play("door_close", 0.4f, 1.8f); _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Button) { if ((tdef.Variant & 1) == 0) { World.Set(Target.x, Target.y, Target.z, (ushort)(target + 1)); Sfx.I?.Play("door_close", 0.35f, 2.2f); } _swing = 0; return; }
                 if (tdef.BaseId == Blocks.Sign || tdef.BaseId == Blocks.WallSign) { EditSign?.Invoke(Target); return; }
@@ -772,7 +788,7 @@ namespace Stratum.Game
                 if (TargetNormal.y != 0 || !Blocks.Get(target).Opaque) return;
                 place = (ushort)(Blocks.Button + DirOf(-TargetNormal) * 2);
             }
-            else if (id == Blocks.Rail || id == Blocks.BoosterRail)
+            else if (id == Blocks.Rail || id == Blocks.BoosterRail || id == Blocks.DetectorRail)
             {
                 if (!Blocks.Get(below).Solid || !Blocks.Get(below).Opaque && !Blocks.Slabs.Contains(below)) return;
                 place = Rails.Shape(World.Get, at.x, at.y, at.z, id, f);

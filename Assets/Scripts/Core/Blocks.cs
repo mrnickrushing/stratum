@@ -34,7 +34,7 @@ namespace Stratum.Core
         Fire, KegSide, KegTop, KegLit, Carrot0, Carrot1, Carrot2, Carrot3, Potato0, Potato1, Potato2, Potato3, StarOre,
         PistonFace, PistonSticky, PistonSide, PistonBack, DispenserFace, ObserverFace, ObserverSide, ObserverBack, ComparatorOff, ComparatorOn, CageSide, DustyFront, DustySide, DustyTop, Stillstone, GateStone,
         // 0.16
-        Vine,
+        Vine, DetectorRail, SensorTop, NoteSide,
         Count
     }
 
@@ -66,6 +66,8 @@ namespace Stratum.Core
         public bool Piston, Sticky, Arm; // pushes the blocks in front of it; pulls one back; the arm it puts out
         public bool Emitter;             // gives power while on (observer, comparator)
         public bool Watcher, Gauge;      // on for a moment when the block it faces changes; on while the container behind it holds something
+        public bool Repeat; public float Slow;   // a repeater, and how much longer than the usual moment it waits
+        public bool Sensor, Note;        // on while daylight falls on it; plays its note when power arrives
         public bool Creative = true;     // listed in the creative palette
         public string DropItem;          // item id dropped; null = itself; "" = nothing
         public int DropCount = 1;
@@ -129,7 +131,8 @@ namespace Stratum.Core
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
-            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone, SnowLayer, Vine;
+            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre, Piston, StickyPiston, PistonArm, Dispenser, Observer, Comparator, BrewStand, Cage, LootChest, Stillstone, GateStone, SnowLayer, Vine, DetectorRail, DaylightSensor, NoteBlock;
+        public static readonly ushort[] Repeaters = new ushort[4];      // by delay: 0.1 s, 0.2 s, 0.3 s, 0.4 s
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;

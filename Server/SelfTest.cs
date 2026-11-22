@@ -1379,6 +1379,43 @@ namespace Stratum.Server
                 Run(0.3f);
                 Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f); Put(0, 11, 13, Blocks.Lever); Run(0.4f); Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f);
                 Check(fired == 2, $"a dispenser goes off once each time power arrives ({fired})");
+
+                // A repeater set slower passes power on later than a quick one.
+                float When(ushort repeaterBase)
+                {
+                    var rw = new Patch(); Signal rs = null;
+                    rs = new Signal(rw.Get, (x, y, z, id) => { rw.Set(x, y, z, id); rs.Wake(x, y, z); });
+                    void P2(int x, int y, int z, ushort id) { rw.Set(x, y, z, id); rs.Wake(x, y, z); }
+                    P2(1, 11, 0, (ushort)(repeaterBase + 1 * 2)); P2(2, 11, 0, Blocks.SparkLamp); P2(0, 11, 0, Blocks.Lever);
+                    for (int i = 0; i < 10; i++) rs.Tick(0.05f, null);
+                    P2(0, 11, 0, (ushort)(Blocks.Lever + 1));
+                    for (int i = 1; i <= 40; i++) { rs.Tick(0.05f, null); if (rw.Get(2, 11, 0) == Blocks.SparkLamp + 1) return i * 0.05f; }
+                    return -1;
+                }
+                float quick = When(Blocks.Repeaters[0]), slow = When(Blocks.Repeaters[3]);
+                Check(quick > 0 && slow > quick + 0.2f, $"a repeater set to its longest wait passes power on later ({quick:0.00} s against {slow:0.00} s)");
+
+                // A detector rail gives power while something is on it.
+                Put(0, 11, 20, Blocks.DetectorRail); Put(1, 11, 20, Blocks.SparkLamp);
+                Run(0.3f);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp, "a detector rail with nothing on it gives no power");
+                var cart = new List<(float, float, float)> { (0.5f, 11.06f, 20.5f) };
+                for (int i = 0; i < 8; i++) sig.Tick(0.05f, cart);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp + 1 && mw.Get(0, 11, 20) == Blocks.DetectorRail + 1, "with a cart on it, it lights the lamp beside it");
+                Run(1.2f);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp && mw.Get(0, 11, 20) == Blocks.DetectorRail, "and stops once the cart has gone");
+                Check(Rails.Is(Blocks.DetectorRail) && Rails.Ends((ushort)(Blocks.DetectorRail + 3)) == (1, 3, -1), "a detector rail is a rail, whichever way it is on");
+
+                // A daylight sensor follows the sun; a note block sounds once each time power arrives.
+                bool day = false; int notes = 0, lastNote = -1;
+                sig.IsDay = () => day; sig.Played = (x, y, z, pitch) => { notes++; lastNote = pitch; };
+                Put(0, 11, 24, Blocks.DaylightSensor); Put(1, 11, 24, (ushort)(Blocks.NoteBlock + 3 * 2));
+                Run(1.5f);
+                Check(notes == 0 && mw.Get(0, 11, 24) == Blocks.DaylightSensor, "a daylight sensor is off at night");
+                day = true; Run(1.6f);
+                Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor + 1 && notes == 1 && lastNote == 3, $"at sunrise it comes on, and the note block beside it sounds its note once ({notes}, note {lastNote})");
+                day = false; Run(1.6f);
+                Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor && notes == 1, "at sunset it goes off again");
             }
 
             // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.

@@ -31,6 +31,7 @@ namespace Stratum.Core
             Drops = 86,          // 0.14: what lies on the ground nearby
             Boom = 87,           // 0.14: a blast (x, y, z, power), to be heard and seen
             Splashed = 88,       // 0.16: a splash potion burst near (x, y, z, effect, seconds)
+            Note = 89,           // 0.16: a note block sounded (x, y, z, which of its eight notes)
             TakeBack = 85,       // 0.7.3: things the player took that weren't there any more (item, count)
         }
 
