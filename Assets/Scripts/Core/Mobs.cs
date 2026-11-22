@@ -42,8 +42,8 @@ namespace Stratum.Core
         public byte Job;                      // villagers: farmer, smith, librarian, shepherd, butcher
         public float HomeX, HomeZ;            // villagers: the middle of their village
 
-        public const byte MBaby = 1, MLove = 2;
-        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2));
+        public const byte MBaby = 1, MLove = 2, MRest = 32;       // MRest: bred a little while ago, not hungry yet
+        public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2) | (BreedCool > 0 ? MRest : 0));
         public static int JobOf(byte more) => (more >> 2) & 7;
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
@@ -310,7 +310,12 @@ namespace Stratum.Core
             for (int i = All.Count - 1; i >= 0; i--)
             {
                 var m = All[i];
-                if (!Loaded((int)Math.Floor(m.X), (int)Math.Floor(m.Z))) continue;    // frozen until its ground is back
+                if (!Loaded((int)Math.Floor(m.X), (int)Math.Floor(m.Z)))
+                {
+                    // Frozen until its ground is back; wild ones nobody is near any more are let go instead.
+                    if (m.Kind == MobKind.Arrow || !m.Def.Vehicle && !m.Def.Boss && m.Kind != MobKind.Villager && !m.Kept && Alone(m, players)) Remove(m);
+                    continue;
+                }
                 m.Age += dt;
                 if (m.Kind == MobKind.Arrow) { Arrow(m, dt, players); continue; }
                 if (m.Def.Vehicle)
@@ -436,11 +441,23 @@ namespace Stratum.Core
             {
                 var k = (MobKind)r.ReadByte();
                 float x = r.ReadSingle(), y = r.ReadSingle(), z = r.ReadSingle();
+                float yaw = r.ReadSingle(), health = r.ReadSingle(), baby = r.ReadSingle(), breedCool = r.ReadSingle();
+                bool sheared = r.ReadBoolean(); float regrow = r.ReadSingle();
+                byte job = 0; float homeX = 0, homeZ = 0;
+                if (ver >= 2) { job = r.ReadByte(); homeX = r.ReadSingle(); homeZ = r.ReadSingle(); }
+                if ((int)k < 0 || (int)k >= Defs.Length) continue;
                 var m = Spawn(k, x, y + 0.05f, z);
-                m.Yaw = r.ReadSingle(); m.Health = r.ReadSingle(); m.Baby = r.ReadSingle(); m.BreedCool = r.ReadSingle();
-                m.Sheared = r.ReadBoolean(); m.Regrow = r.ReadSingle(); m.Kept = true;
-                if (ver >= 2) { m.Job = r.ReadByte(); m.HomeX = r.ReadSingle(); m.HomeZ = r.ReadSingle(); }
+                m.Yaw = yaw; m.Health = health; m.Baby = baby; m.BreedCool = breedCool;
+                m.Sheared = sheared; m.Regrow = regrow; m.Kept = true;
+                if (ver >= 2) { m.Job = job; m.HomeX = homeX; m.HomeZ = homeZ; }
             }
+        }
+
+        bool Alone(Mob m, List<Seen> players)
+        {
+            float far = m.Def.Hostile ? 72 : 110;
+            foreach (var p in players) if (Dist2(m, p) <= far * far) return false;
+            return true;
         }
 
         bool Despawn(Mob m, List<Seen> players)
@@ -791,7 +808,7 @@ namespace Stratum.Core
                 int y = Ground(x, z, v.Y + 12, 24, out ushort floor);
                 if (y == int.MinValue || Blocks.Get(floor).Fluid != 0) continue;
                 var m = Spawn(MobKind.Villager, x + 0.5f, y, z + 0.5f);
-                m.Kept = true; m.HomeX = v.X; m.HomeZ = v.Z; m.Job = (byte)((have + (v.X * 31 + v.Z)) % Trades.Jobs.Length & 7);
+                m.Kept = true; m.HomeX = v.X; m.HomeZ = v.Z; m.Job = (byte)(((have + (v.X * 31 + v.Z)) % Trades.Jobs.Length + Trades.Jobs.Length) % Trades.Jobs.Length & 7);
                 if (m.Job >= Trades.Jobs.Length) m.Job = 0;
                 return;
             }

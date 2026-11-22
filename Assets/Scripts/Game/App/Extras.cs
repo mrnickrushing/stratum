@@ -141,7 +141,7 @@ namespace Stratum.Game
             new Bundle { Name = "Garden Party", World = "maze", Look = 3, Outfit = 11, Desc = "The Hedge Maze in the Pastel look, dressed as a Gardener." },
             new Bundle { Name = "Comic Town", World = "town", Look = 4, Outfit = 12, Desc = "Market Town in the Inked look, dressed as a Merchant." },
             new Bundle { Name = "Above the Clouds", World = "cloud", Look = 3, Outfit = 3, Desc = "Cloud Hopper in the Pastel look, dressed as a Frost Walker." },
-            new Bundle { Name = "The Usual", World = null, Look = 0, Outfit = 0, Desc = "Back to how Stratum normally looks: the usual blocks and the Traveller's tunic." },
+            new Bundle { Name = "The Usual", World = null, Look = Looks.Default, Outfit = 0, Desc = "Back to how Stratum normally looks: the usual blocks and the Traveller's tunic." },
         };
 
         public const int Custom = 255;      // the outfit made piece by piece (CustomLook.Mine)

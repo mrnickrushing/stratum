@@ -311,7 +311,7 @@ namespace Stratum.Core
             R("black_wool", 1, null, ("white_wool", 1), ("coal", 1));
             R("grey_wool", 2, null, ("white_wool", 2), ("coal", 1));
             R("brown_wool", 1, null, ("white_wool", 1), ("dirt", 1));
-            // Cooking needs no fuel: a furnace is warm enough.
+            // Cooking: in a furnace, on fuel like the ores.
             R("steak", 1, "furnace", ("raw_beef", 1));
             R("roast_pork", 1, "furnace", ("raw_pork", 1));
             R("roast_mutton", 1, "furnace", ("raw_mutton", 1));
@@ -327,16 +327,18 @@ namespace Stratum.Core
             Crafting.Assign(Recipes);
         }
 
+        public static int DerivedCount { get { lock (Derived) return Derived.Count; } }
         public static ItemDef Get(string id)
         {
             if (id == null) return null;
             if (Defs.TryGetValue(id, out var d)) return d;
             if (id.IndexOf('@') < 0) return null;
+            if (id.Length > 64) return null;
             lock (Derived)
             {
                 if (Derived.TryGetValue(id, out d)) return d;
                 d = Enchants.Derive(id);
-                Derived[id] = d;
+                if (d != null) Derived[id] = d;
                 return d;
             }
         }
@@ -527,6 +529,13 @@ namespace Stratum.Core
 
         public static int XpFor(BlockDef b, Random r) =>
             b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
+
+        // Shears bring leaves, grass and the like away whole.
+        public static (string item, int count) Drop(BlockDef b, ItemDef held)
+        {
+            if (held != null && held.Tool == Tool.Shears && b.DropItem == "" && (b.Sound == Sound.Leaves || b.Shape == Shape.Cross)) return (Blocks.Keys[b.BaseId], 1);
+            return Drop(b);
+        }
 
         public static (string item, int count) Drop(BlockDef b)
         {

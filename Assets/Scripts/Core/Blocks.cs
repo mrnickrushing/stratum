@@ -115,7 +115,8 @@ namespace Stratum.Core
             Chest, Bed, Satchel, Lava, Obsidian,
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
-            Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale;
+            Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
+            Hedge, Candle;
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;

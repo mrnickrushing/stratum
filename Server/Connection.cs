@@ -38,6 +38,7 @@ namespace Stratum.Server
         }
 
         public bool Open => Volatile.Read(ref _closed) == 0;
+        public Action Gone;                          // called once when the connection closes, whoever is listening by then
 
         // Hands the connection to whoever handles it next (the front door, then a world).
         public volatile bool Routed;          // handed on from the front door to a world
@@ -99,6 +100,7 @@ namespace Stratum.Server
             if (Interlocked.Exchange(ref _closed, 1) != 0) return;
             try { _out.CompleteAdding(); } catch { }
             try { _tcp.Close(); } catch { }
+            try { Gone?.Invoke(); } catch { }
             _onClosed(this, why);
         }
     }

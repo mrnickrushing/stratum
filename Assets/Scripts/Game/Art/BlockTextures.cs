@@ -29,7 +29,7 @@ namespace Stratum.Game
         public static void Repaint()
         {
             int n = (int)Tex.Count, look = Looks.Current;
-            Albedo.filterMode = look == 1 ? FilterMode.Point : FilterMode.Trilinear;
+            Albedo.filterMode = look == 1 || look == 5 ? FilterMode.Point : FilterMode.Trilinear;
             for (int i = 0; i < n; i++)
             {
                 var p = new Paint(1000 + i * 31);

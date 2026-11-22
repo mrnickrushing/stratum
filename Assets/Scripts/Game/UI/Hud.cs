@@ -480,7 +480,7 @@ namespace Stratum.Game
                     v.Hover = on => Tip(on && _box != null ? _box[idx] : Stack.None);
                     _boxSlots.Add(v);
                 }
-                var hint = UIKit.Label(_boxGrid, chute ? "A chute takes from the chest or furnace on top of it and drops into the one underneath." : "Shift-click moves a stack between the chest and your pack.", 19, UIKit.Dim);
+                var hint = UIKit.Label(_boxGrid, chute ? "A chute takes from the chest or furnace on top of it and drops into the one underneath." : "Shift-click moves a stack between the container and your pack.", 19, UIKit.Dim);
                 hint.rectTransform.Place(0, 1, 0, -((slots + 8) / 9) * (CS + CG) - 10, 600, 30);
             }
             if (creative) FillPalette(S, G);
@@ -640,7 +640,7 @@ namespace Stratum.Game
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? (World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Satchel ? "Satchel" : World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Chute ? "Chute" : World.Get(_boxAt.x, _boxAt.y, _boxAt.z) == Blocks.Barrel ? "Barrel" : "Chest") : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
                 .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))

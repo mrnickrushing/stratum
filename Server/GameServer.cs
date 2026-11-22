@@ -131,7 +131,7 @@ namespace Stratum.Server
             Directory.CreateDirectory(cfg.Dir);
             _accounts = new Accounts(cfg.Dir);
             _accounts.ApplyReset(cfg.Reset);
-            if (cfg.Backup) Backups.Take(cfg.Dir);          // before any world opens its files
+            if (cfg.Backup) Backups.Take(cfg.Dir, TimeSpan.FromHours(3));          // before any world opens its files
             _key = LoadKey(cfg.Dir);
             var pub = _key.ExportParameters(false); _keyMod = pub.Modulus; _keyExp = pub.Exponent;
             var defs = cfg.Worlds.Count > 0 ? cfg.Worlds
@@ -161,8 +161,11 @@ namespace Stratum.Server
                 try
                 {
                     var tcp = _listener.AcceptTcpClient();
+                    // Every connection costs two threads: past any number real players could reach, turn it away.
+                    if (Volatile.Read(ref _live) >= MaxConnections) { try { tcp.Close(); } catch { } continue; }
+                    Interlocked.Increment(ref _live);
                     int id = Interlocked.Increment(ref _nextId);
-                    _opened.Enqueue(new Connection(id, tcp, (cn, f) => _inbox.Enqueue((cn, f)), (cn, why) => _closed.Enqueue((cn, why))));
+                    _opened.Enqueue(new Connection(id, tcp, (cn, f) => _inbox.Enqueue((cn, f)), (cn, why) => _closed.Enqueue((cn, why))) { Gone = () => Interlocked.Decrement(ref _live) });
                 }
                 catch (Exception) { if (_stop) return; Thread.Sleep(50); }
             }
@@ -293,9 +296,13 @@ namespace Stratum.Server
         public const int KnowsBuilds = 8;       // 0.12: the hand-built adventure worlds
         public const int KnowsTypes = 2;        // 0.5: Towering Wilds, Vast Lands and the single-biome worlds
 
+        const int MaxConnections = 96;
+        int _live;                                   // connections open right now
+
         void Admit(Pending p, Accounts.Result res, Accounts.Mode mode, string version, string world, int features, int outfit, byte[] look = null)
         {
             if (!_pending.TryGetValue(p.Conn.Id, out var still) || still != p) return;    // gone meanwhile
+            if (!p.Conn.Open) { _pending.Remove(p.Conn.Id); return; }
             if (!res.Ok) { Refuse(p.Conn, res.Error); return; }
             var host = Worlds.FirstOrDefault(w => w.Def.Id == world) ?? Worlds[0];
             // An older game would draw a themed world's land right but get its look and creatures wrong.

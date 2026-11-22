@@ -147,7 +147,13 @@ namespace Stratum.Server
             return new Result(null, a.name, KeyFor(a.name), token);
         }
 
-        Account Find(string name) => _store.accounts.FirstOrDefault(x => string.Equals(x.name, name, StringComparison.OrdinalIgnoreCase));
+        // Two names are the same account when they give the same save file (KeyFor), so a look-alike letter that
+        // lower-cases to an ordinary one can't open a second account over someone's save.
+        Account Find(string name)
+        {
+            string low = name.ToLowerInvariant();
+            return _store.accounts.FirstOrDefault(x => string.Equals(x.name.ToLowerInvariant(), low, StringComparison.Ordinal));
+        }
 
         static void SetPassword(Account a, string pw)
         {

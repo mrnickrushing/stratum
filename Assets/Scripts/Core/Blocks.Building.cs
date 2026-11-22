@@ -121,6 +121,7 @@ namespace Stratum.Core
             // A clipped hedge joins up like a wall.
             b = Add("hedge", "Hedge", Tex.OakLeaves); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 1; b.Cutout = true; b.Connect = Connect.Wall; b.Tall = true;
             b.Hardness = 0.3f; b.Sound = Sound.Leaves; b.Boxes = ConnectBoxes(Connect.Wall, 0);
+            Hedge = b.Id;
 
             // ---- fences and doors in the other woods
             var woodTex = new Dictionary<string, (Tex planks, Tex lower, Tex upper, string name, string planksKey)>
@@ -229,6 +230,7 @@ namespace Stratum.Core
             b = Add("floor_lamp", "Standing Lamp", Tex.LampShade); b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Emit = 14; b.Hardness = 0.5f; b.Sound = Sound.Cloth; b.Bottom = Tex.AnvilSide;
             b.Boxes = new[] { Box.Px(5, 0, 5, 11, 1, 11), Box.Px(7, 1, 7, 9, 10, 9), Box.Px(4, 10, 4, 12, 16, 12) };
             b = Add("candle", "Candle", Tex.Candle); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Emit = 11; b.Hardness = 0.1f; b.Sound = Sound.Cloth; b.FlatIcon = true;
+            Candle = b.Id;
             b.Boxes = new[] { Box.Px(7, 0, 7, 9, 6, 9) };
             b = Add("chandelier", "Chandelier", Tex.Lantern); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Emit = 15; b.Hardness = 0.5f; b.Sound = Sound.Metal;
             b.Boxes = new[] { Box.Px(7, 10, 7, 9, 16, 9), Box.Px(2, 7, 7, 14, 9, 9), Box.Px(7, 7, 2, 9, 9, 14), Box.Px(1, 5, 6, 4, 9, 10), Box.Px(12, 5, 6, 15, 9, 10), Box.Px(6, 5, 1, 10, 9, 4), Box.Px(6, 5, 12, 10, 9, 15) };

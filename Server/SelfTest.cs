@@ -1116,7 +1116,11 @@ namespace Stratum.Server
                 srv3.Stop();
                 var srv4 = new GameServer(cfg); srv4.Start();
                 using (var a = new Bot(srv4.Port)) { a.Login("Ada", "someone-else"); Check(a.Refused() == "Wrong password.", "the same reset isn't applied twice"); }
+                using (var a = new Bot(srv4.Port)) { a.Create("Kit", "kit-password", "open sesame"); Check(a.Welcome(), "Kit makes an account"); }
+                using (var a = new Bot(srv4.Port)) { a.Create("\u212Ait", "other-password", "open sesame"); Check(a.Refused() != null, "a name spelled with a look-alike letter can't open a second account over Kit's save"); }
+                using (var a = new Bot(srv4.Port)) { a.Login("\u212Ait", "other-password"); Check(a.Refused() != null, "nor log in as Kit without Kit's password"); }
                 srv4.Stop();
+                ReviewChecks();
                 EmberChecks();
                 WorldChecks(Path.Combine(dir, "worlds-test"));
                 KindChecks(Path.Combine(dir, "kinds-test"));
@@ -1125,6 +1129,20 @@ namespace Stratum.Server
             finally { try { Directory.Delete(dir, true); } catch { } }
             Console.WriteLine(_fails == 0 ? "ALL PASSED" : $"{_fails} FAILED");
             return _fails == 0 ? 0 : 1;
+        }
+
+        // Things a read through the code turned up (0.13).
+        static void ReviewChecks()
+        {
+            var shears = Items.Get("shears");
+            Check(Mining.Drop(Blocks.Get(Blocks.OakLeaves), shears).item == "oak_leaves" && Mining.Drop(Blocks.Get(Blocks.TallGrass), shears).item == "tall_grass",
+                "shears bring leaves and tall grass away whole (mossy cobble, hedges and the forest picture need them)");
+            Check(Mining.Drop(Blocks.Get(Blocks.OakLeaves), null).item == null, "bare hands still get nothing from leaves");
+            int before = Items.DerivedCount;
+            for (int i = 0; i < 50; i++) Items.Get("nothing_" + i + "@zz");
+            Items.Get("x@" + new string('q', 5000));
+            Check(Items.DerivedCount == before, "made-up item names aren't remembered");
+            Check(Items.Get("no_such_thing@zz") == null, "and still aren't items");
         }
     }
 }

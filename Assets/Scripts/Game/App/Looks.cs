@@ -14,16 +14,19 @@ namespace Stratum.Game
     {
         public static readonly Look[] All =
         {
-            new Look { Name = "Stratum", Desc = "The usual look: detailed, hand-painted blocks." },
+            new Look { Name = "Stratum", Desc = "Smooth and detailed: every block painted by hand." },
             new Look { Name = "Chunky", Desc = "Big square pixels, like a game from long ago.", Bump = 0.5f },
             new Look { Name = "Storybook", Desc = "Bold, bright colours with flat shading, like a picture book.", Bump = 0.7f },
             new Look { Name = "Pastel", Desc = "Soft, chalky colours. Everything looks like sweets.", Bump = 0.8f },
             new Look { Name = "Inked", Desc = "Dark pen lines round every stone and plank, like a comic.", Bump = 1.2f },
+            new Look { Name = "Classic", Desc = "Sixteen crisp pixels a side, a few strong tones to each block.", Bump = 0.35f },
         };
+
+        public const int Default = 5;                // Classic, unless another look was picked on this computer
 
         public static int Current
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt("look", 0), 0, All.Length - 1);
+            get => Mathf.Clamp(PlayerPrefs.GetInt("look", Default), 0, All.Length - 1);
             set { PlayerPrefs.SetInt("look", Mathf.Clamp(value, 0, All.Length - 1)); PlayerPrefs.Save(); }
         }
 
@@ -53,6 +56,50 @@ namespace Stratum.Game
                             flat.a = amax - amin < 0.01f ? amin : (a / (B * B) > 0.28f ? amax : 0);     // thin things (lattice, ladders) stay
                             if (flat.a == 0) { var keep = px[bx + by * size]; flat = new Color(keep.r, keep.g, keep.b, 0); }
                             for (int y = by; y < by + B; y++) for (int x = bx; x < bx + B; x++) px[x + y * size] = flat;
+                        }
+                    break;
+                }
+                case 5:
+                {
+                    // Sixteen texels a side. Averaging alone goes soft, so each texel is pushed away from the block's
+                    // middle tone, given a grain of its own and snapped to a handful of tones, the way pixel art is drawn.
+                    const int B = 4; int n = size / B;
+                    var cell = new Color[n * n];
+                    float mean = 0; int count = 0;
+                    for (int cy = 0; cy < n; cy++)
+                        for (int cx = 0; cx < n; cx++)
+                        {
+                            Color sum = Color.clear; float a = 0, amin = 1, amax = 0;
+                            for (int y = cy * B; y < cy * B + B; y++)
+                                for (int x = cx * B; x < cx * B + B; x++)
+                                {
+                                    var c = px[x + y * size];
+                                    if (c.a > 0.01f) sum += new Color(c.r, c.g, c.b, 0) * c.a;
+                                    a += c.a; amin = Mathf.Min(amin, c.a); amax = Mathf.Max(amax, c.a);
+                                }
+                            Color flat = a > 0 ? sum / a : px[cx * B + cy * B * size];
+                            flat.a = amax - amin < 0.01f ? amin : (a / (B * B) > 0.28f ? amax : 0);
+                            if (flat.a == 0) { var keep = px[cx * B + cy * B * size]; flat = new Color(keep.r, keep.g, keep.b, 0); }
+                            cell[cx + cy * n] = flat;
+                            if (flat.a > 0.01f) { mean += Lum(flat); count++; }
+                        }
+                    if (count > 0) mean /= count;
+                    for (int cy = 0; cy < n; cy++)
+                        for (int cx = 0; cx < n; cx++)
+                        {
+                            var c = cell[cx + cy * n];
+                            if (c.a > 0.01f)
+                            {
+                                uint h = (uint)(cx * 374761393 + cy * 668265263 + (int)(mean * 9973)); h = (h ^ (h >> 13)) * 1274126177; h ^= h >> 16;
+                                float grain = ((h & 255) / 255f - 0.5f) * 0.07f;
+                                float l = Mathf.Max(0.004f, Lum(c));
+                                float want = Mathf.Clamp(mean + (l - mean) * 1.55f + grain, 0.02f, 0.98f);
+                                want = Mathf.Round(want * 18) / 18f;
+                                c = Sat(c, 1.18f);
+                                float k = want / Mathf.Max(0.004f, Lum(c));
+                                c = new Color(Mathf.Clamp01(c.r * k), Mathf.Clamp01(c.g * k), Mathf.Clamp01(c.b * k), c.a);
+                            }
+                            for (int y = cy * B; y < cy * B + B; y++) for (int x = cx * B; x < cx * B + B; x++) px[x + y * size] = c;
                         }
                     break;
                 }
