@@ -1355,6 +1355,15 @@ namespace Stratum.Server
                 }
             }
             {
+                // A satchel for someone who fell in deep water lies on the bottom; in lava there is nowhere for it.
+                ushort seaWater = Blocks.Water;
+                ushort Sea(int x, int y, int z) => y <= 10 ? Blocks.Stone : y <= 40 ? seaWater : (ushort)0;
+                bool found = Containers.SpotFor(Sea, 5, 30, 5, null, out var bottom);
+                Check(found && bottom == (5, 11, 5), $"fallen in deep water, the satchel sinks to the bottom ({bottom})");
+                ushort Fire(int x, int y, int z) => y <= 10 ? Blocks.Stone : y <= 40 ? Blocks.Lava : (ushort)0;
+                Check(!Containers.SpotFor(Fire, 5, 30, 5, null, out _), "in lava there is nowhere for one (the things go back to their owner)");
+            }
+            {
                 var ask = Items.Ask("Oak Planks 20", out int askN, out string askSay);
                 Check(ask != null && ask.Id == "oak_planks" && askN == 20, "/give understands a thing's name and a count");
                 Check(Items.Ask("torch", out askN, out askSay)?.Id == "torch" && askN == 1, "/give torch is the torch, though other things have torch in their names");

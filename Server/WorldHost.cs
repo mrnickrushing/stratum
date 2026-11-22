@@ -1015,7 +1015,7 @@ namespace Stratum.Server
                 if (made++ == 0) { sx = ax; sy = ay; sz = az; }
             }, ix, (int)Math.Floor(y), iz, st);
             foreach (var s in rest) Give(p, s.Item, s.Count, s.Wear);
-            Log.Info($"{p.Name}'s things went into a satchel at {sx} {sy} {sz}");
+            Log.Info(made > 0 ? $"{p.Name}'s things went into a satchel at {sx} {sy} {sz}" : $"{p.Name}'s things found a satchel already there, or no room for one (handed back: {rest.Count} stacks)");
         }
 
         void Mount(Player p, Reader r)
