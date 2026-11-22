@@ -79,6 +79,18 @@ namespace Stratum.Server
                 Meta.sx = s.x; Meta.sy = s.y; Meta.sz = s.z;
                 SaveMeta();
             }
+            else if (Directory.GetFiles(Path.Combine(dir, "players")).Length == 0)
+            {
+                // Nobody has ever been here, so nothing depends on where the start is: use today's better pick
+                // (level open ground), which worlds made before 0.16.2 didn't get.
+                var s = Gen.FindSpawn();
+                if (s.x != Meta.sx || s.y != Meta.sy || s.z != Meta.sz)
+                {
+                    Log.Info($"{dir}: nobody has played here yet; the start moves from {Meta.sx} {Meta.sy} {Meta.sz} to {s.x} {s.y} {s.z}");
+                    Meta.sx = s.x; Meta.sy = s.y; Meta.sz = s.z;
+                    SaveMeta();
+                }
+            }
             Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); }) { Loaded = IsLoaded };
             Signal = new Signal(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }) { Loaded = IsLoaded };
             Growth = new Growth(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }, (uint)Meta.seed ^ 0x5eed) { Loaded = IsLoaded };
