@@ -14,6 +14,7 @@ namespace Stratum.Game
                 case Tex.KegTop: KegTop(p); return 2.5f;
                 case Tex.KegSide: KegSide(p, false); return 3f;
                 case Tex.KegLit: KegSide(p, true); return 3f;
+                case Tex.StarOre: Ore(p, Hex(0x8ff0f4), Hex(0x3aa6c8), false); return 4f;
             }
             if (t >= Tex.Carrot0 && t <= Tex.Carrot3) { RootCrop(p, t - Tex.Carrot0, Hex(0x4f9a2c), Hex(0xf08a1e), true); return 1f; }
             if (t >= Tex.Potato0 && t <= Tex.Potato3) { RootCrop(p, t - Tex.Potato0, Hex(0x3f7e34), Hex(0xc9a25e), false); return 1f; }

@@ -35,6 +35,9 @@ namespace Stratum.Core
                     else b.BaseId = key == "carrot" ? Carrot : Potato;
                 }
 
+            // Starstone: the hardest thing in the ground, deep down, for the best tools.
+            b = Rock("star_ore", "Starstone Ore", Tex.StarOre, 5, 4); b.DropItem = "starstone"; StarOre = b.Id;
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

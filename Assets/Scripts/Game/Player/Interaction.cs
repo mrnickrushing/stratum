@@ -155,6 +155,8 @@ namespace Stratum.Game
         static int DirOf(Vector3 v) => Mathf.Abs(v.x) > Mathf.Abs(v.z) ? (v.x > 0 ? 1 : 3) : (v.z > 0 ? 0 : 2);
         static int DirOf(Vector3Int v) => v.x > 0 ? 1 : v.x < 0 ? 3 : v.z > 0 ? 0 : 2;
 
+        GameObject _shield; Material _shieldMat; float _shieldUp;
+
         // ------------------------------------------------------------------ fishing
         bool _fishing; GameObject _bobber; float _biteIn, _biteLeft, _fishClock;
         static readonly (string item, int weight)[] Catch =
@@ -360,6 +362,8 @@ namespace Stratum.Game
                 Link?.Mount(TargetMob); _swing = 0;
                 return;
             }
+            // A shield in the other hand comes up while the right button is held (with a tool, a sword or nothing in hand).
+            P.Blocking = rmb && P.Inv.HasShield && (heldDef == null || heldDef.Tool != Tool.None && heldDef.Tool != Tool.Hoe && heldDef.Tool != Tool.Shears) && !HasMob;
             // Fishing: cast onto water, wait for the float to dip, pull in.
             if (_fishing && (heldDef == null || heldDef.Id != "fishing_rod" || (_bobber.transform.position - P.EyePos).sqrMagnitude > 14 * 14)) Reel(false);
             if (_fishing) FishTick(dt);
@@ -926,6 +930,28 @@ namespace Stratum.Game
             _lightTimer -= dt;
             if (_lightTimer <= 0) { _lightTimer = 0.15f; _light = LightAt(P.EyePos); _heldBlockMat.SetVector("_LightOverride", new Vector4(_light.x, _light.y, 0, 1)); }
             _heldMr.enabled = !HideHeld;
+            // The shield, low on the left; raised across the view when blocking.
+            bool shield = P.Inv.HasShield && !HideHeld;
+            if (shield && _shield == null)
+            {
+                _shield = new GameObject("Shield");
+                _shield.transform.SetParent(P.Cam.transform, false);
+                _shield.AddComponent<MeshFilter>().sharedMesh = FlatQuad();
+                var smr = _shield.AddComponent<MeshRenderer>(); smr.shadowCastingMode = ShadowCastingMode.Off;
+                _shieldMat = new Material(_heldItemMat); _shieldMat.SetTexture("_BaseMap", Icons.TextureOf("shield"));
+                smr.sharedMaterial = _shieldMat;
+            }
+            if (_shield != null)
+            {
+                _shield.SetActive(shield);
+                _shieldUp = Mathf.MoveTowards(_shieldUp, P.Blocking ? 1 : 0, dt * 7);
+                _shield.transform.localPosition = Vector3.Lerp(new Vector3(-0.5f, -0.42f, 0.72f), new Vector3(-0.16f, -0.16f, 0.6f), _shieldUp);
+                _shield.transform.localRotation = Quaternion.Euler(0, Mathf.Lerp(60, 8, _shieldUp), Mathf.Lerp(-8, 0, _shieldUp));
+                _shield.transform.localScale = Vector3.one * Mathf.Lerp(0.5f, 0.62f, _shieldUp);
+                float sday = Sky != null ? Sky.DayFactor * 0.85f + 0.15f : 1;
+                float slit = Mathf.Max(Mathf.Pow(0.8f, (1 - _light.x) * 15) * sday, Mathf.Pow(0.8f, (1 - _light.y) * 15));
+                _shieldMat.SetColor("_BaseColor", new Color(slit, slit, slit, 1) * 1.1f);
+            }
             if (_held.activeSelf)
             {
                 _swing = Mathf.Min(1, _swing + dt * 4.5f);

@@ -345,7 +345,7 @@ namespace Stratum.Game
         {
             if (_player.Creative || _link == null) return;
             var all = new List<Core.Stack>();
-            for (int i = 0; i < Inventory.Size; i++)
+            for (int i = 0; i <= Inventory.OffHand; i++)
                 if (!_player.Inv.Slots[i].Empty) { all.Add(_player.Inv.Slots[i]); _player.Inv.Slots[i] = Core.Stack.None; }
             int xp = Xp.Dropped(_player.XpLevel);
             if (xp > 0) all.Add(new Core.Stack("xp", xp));

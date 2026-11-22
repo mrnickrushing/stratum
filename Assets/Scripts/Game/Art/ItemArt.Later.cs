@@ -55,6 +55,24 @@ namespace Stratum.Game
                     c.Disc(V(78, 30), 6, (dx, dy) => dy > 0 ? Hex(0xd83a2a) : Hex(0xf2f2ee));
                     c.Line(V(20, 18), V(30, 14), 4, (t, ss) => Hex(0x4a4c52));                                            // reel
                     return true;
+                case "starstone":
+                    // A cut stone: pale blue facets round a bright table.
+                    c.Poly(new[] { V(48, 88), V(80, 62), V(72, 22), V(48, 8), V(24, 22), V(16, 62) }, (x, y) => Color.Lerp(Hex(0x2f9ab8), Hex(0xa8f6f8), Mathf.Clamp01((x * 0.4f + y * 0.9f - 20) / 100f)));
+                    c.Poly(new[] { V(48, 70), V(64, 56), V(60, 34), V(48, 26), V(36, 34), V(32, 56) }, (x, y) => Color.Lerp(Hex(0xd8feff), Hex(0x7fe4ee), Mathf.Clamp01((y - 26) / 44f)));
+                    c.Line(V(48, 88), V(48, 70), 1.4f, (t, ss) => Hex(0x1f7a98)); c.Line(V(80, 62), V(64, 56), 1.4f, (t, ss) => Hex(0x1f7a98));
+                    c.Line(V(16, 62), V(32, 56), 1.4f, (t, ss) => Hex(0x1f7a98)); c.Line(V(48, 8), V(48, 26), 1.4f, (t, ss) => Hex(0x1f7a98));
+                    return true;
+                case "shield":
+                    // A round-topped board with an iron rim and boss.
+                    c.Poly(new[] { V(18, 84), V(78, 84), V(80, 46), V(66, 20), V(48, 8), V(30, 20), V(16, 46) }, (x, y) => Hex(0x55585e));
+                    c.Poly(new[] { V(23, 79), V(73, 79), V(75, 47), V(63, 24), V(48, 14), V(33, 24), V(21, 47) }, (x, y) =>
+                    {
+                        float g = Mathf.PerlinNoise(x * 0.5f, y * 0.05f);
+                        Color wood = Color.Lerp(Hex(0x8a5a30), Hex(0xb07c44), g);
+                        return Mathf.Abs(x - 48) < 5 ? Hex(0xb8322a) : (int)(x / 8.5f) % 2 == 0 ? wood : Shade(wood, 0.9f);
+                    });
+                    c.Disc(V(48, 50), 9, (dx, dy) => Color.Lerp(Hex(0xe2e4e8), Hex(0x7a7c84), Mathf.Clamp01(dx * 0.5f - dy * 0.5f + 0.5f)));
+                    return true;
                 case "raw_fish": Fish(c, Hex(0x5a8ab0), Hex(0xd8e4ea)); return true;
                 case "cooked_fish": Fish(c, Hex(0x9a5a2a), Hex(0xe0b070)); return true;
                 case "egg":

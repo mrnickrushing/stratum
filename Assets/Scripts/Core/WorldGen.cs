@@ -371,6 +371,13 @@ namespace Stratum.Core
             return y0 + (y1 - y0) * fz;
         }
 
+        // Starstone has dice of its own, so adding it moved no other ore.
+        void StarVein(Chunk ch)
+        {
+            var rng = new Rng(Noise.Hash(ch.X, 23, ch.Z, Seed));
+            if (rng.Value() < 0.55f) Vein(ch, ref rng, Blocks.StarOre, 1, 3, 15, 4);
+        }
+
         void Ores(Chunk ch)
         {
             var rng = new Rng(Noise.Hash(ch.X, 7, ch.Z, Seed));
@@ -382,6 +389,7 @@ namespace Stratum.Core
             if (rng.Value() < 0.5f) Vein(ch, ref rng, Blocks.JadeOre, 1, 8, 110, 3);
             Vein(ch, ref rng, Blocks.SparkOre, 5, 4, 18, 6);
             Vein(ch, ref rng, Blocks.Gravel, 5, 5, 90, 14);
+            StarVein(ch);
             // Moss grows on rock beside cave air below 50.
         }
 

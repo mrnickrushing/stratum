@@ -10,7 +10,7 @@ namespace Stratum.Core
         public ushort Block;           // the block it places (0 = not a block)
         public int MaxStack = 64;
         public Tool Tool;            // tools: what they're for
-        public int Tier;             // tools: 1 wood, 2 stone, 3 copper, 4 iron
+        public int Tier;             // tools: 1 wood, 2 stone, 3 copper, 4 iron, 5 starstone
         public int Durability;       // tools: uses before it breaks
         public float Speed = 1;      // tools: how much faster than a hand
         public bool Creative = true;
@@ -94,7 +94,9 @@ namespace Stratum.Core
             ToolSet("stone", "Stone", 2, 130, 3.5f);
             ToolSet("copper", "Copper", 3, 220, 5f);
             ToolSet("iron", "Iron", 4, 400, 7f);
-            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f) })
+            ToolSet("star", "Starstone", 5, 1200, 9f);
+            Add(new ItemDef { Id = "starstone", Name = "Starstone" });
+            foreach (var (mat, name, tier, dur, dmg) in new[] { ("wood", "Wooden", 1, 60, 4f), ("stone", "Stone", 2, 130, 5f), ("copper", "Copper", 3, 220, 6f), ("iron", "Iron", 4, 400, 7f), ("star", "Starstone", 5, 1200, 8f) })
             {
                 Add(new ItemDef { Id = mat + "_sword", Name = name + " Sword", MaxStack = 1, Tool = Tool.Sword, Tier = tier, Durability = dur, Speed = 1.5f, Damage = dmg });
                 // Tools hit a little harder than a fist too.
@@ -123,7 +125,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "bone_meal", Name = "Bone Meal" });
             Add(new ItemDef { Id = "paper", Name = "Paper" });
             Add(new ItemDef { Id = "book", Name = "Book" });
-            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400) })
+            foreach (var (mat, name, tier, dur) in new[] { ("wood", "Wooden", 1, 60), ("stone", "Stone", 2, 130), ("copper", "Copper", 3, 220), ("iron", "Iron", 4, 400), ("star", "Starstone", 5, 1200) })
                 Add(new ItemDef { Id = mat + "_hoe", Name = name + " Hoe", MaxStack = 1, Tool = Tool.Hoe, Tier = tier, Durability = dur, Speed = 1, Damage = 1 });
             Add(new ItemDef { Id = "bucket", Name = "Bucket", MaxStack = 16 });
             Add(new ItemDef { Id = "jade", Name = "Jade" });
@@ -132,6 +134,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "fire_striker", Name = "Fire Striker", MaxStack = 1, Durability = 64 });
             Add(new ItemDef { Id = "blast_powder", Name = "Blast Powder" });
             // 0.14: fishing, root crops, eggs
+            Add(new ItemDef { Id = "shield", Name = "Shield", MaxStack = 1, Durability = 300 });
             Add(new ItemDef { Id = "fishing_rod", Name = "Fishing Rod", MaxStack = 1, Durability = 64 });
             Food("raw_fish", "Raw Fish", 2, 0.4f);
             Food("cooked_fish", "Cooked Fish", 5, 6);
@@ -159,7 +162,7 @@ namespace Stratum.Core
             // Armour: a cap, a coat, leggings and boots of hide, copper or iron.
             string[] pieces = { "cap", "coat", "leggings", "boots" }, pieceNames = { "Cap", "Coat", "Leggings", "Boots" };
             int[] need = { 5, 8, 7, 4 };
-            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260) })
+            foreach (var (mat, name, item, pts, dur) in new[] { ("hide", "Hide", "hide", new[] { 1, 3, 2, 1 }, 80), ("copper", "Copper", "copper_ingot", new[] { 2, 5, 4, 1 }, 180), ("iron", "Iron", "iron_ingot", new[] { 2, 6, 5, 2 }, 260), ("star", "Starstone", "starstone", new[] { 3, 8, 6, 3 }, 420) })
                 for (int i = 0; i < 4; i++)
                 {
                     Add(new ItemDef { Id = mat + "_" + pieces[i], Name = name + " " + pieceNames[i], MaxStack = 1, ArmourSlot = i, Armour = pts[i], Durability = dur });
@@ -174,7 +177,7 @@ namespace Stratum.Core
             R("workbench", 1, null, ("@planks", 4));
             R("torch", 4, null, ("stick", 1), ("coal", 1));
             // At a workbench
-            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3) })
+            foreach (var (mat, item, n) in new[] { ("wood", "@planks", 3), ("stone", "cobble", 3), ("copper", "copper_ingot", 3), ("iron", "iron_ingot", 3), ("star", "starstone", 3) })
             {
                 R(mat + "_pickaxe", 1, "workbench", (item, n), ("stick", 2));
                 R(mat + "_axe", 1, "workbench", (item, n), ("stick", 2));
@@ -189,7 +192,7 @@ namespace Stratum.Core
             R("iron_block", 1, "workbench", ("iron_ingot", 9));
             R("gold_block", 1, "workbench", ("gold_ingot", 9));
             R("mossy_cobble", 2, "workbench", ("cobble", 2), ("tall_grass", 1));
-            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot") })
+            foreach (var (mat, item) in new[] { ("wood", "@planks"), ("stone", "cobble"), ("copper", "copper_ingot"), ("iron", "iron_ingot"), ("star", "starstone") })
                 R(mat + "_sword", 1, "workbench", (item, 2), ("stick", 1));
             R("bow", 1, "workbench", ("stick", 3), ("thread", 3));
             R("arrow", 4, "workbench", ("stick", 1), ("feather", 1), ("cobble", 1));
@@ -319,6 +322,8 @@ namespace Stratum.Core
             R("stone_hoe", 1, "workbench", ("cobble", 2), ("stick", 2));
             R("copper_hoe", 1, "workbench", ("copper_ingot", 2), ("stick", 2));
             R("iron_hoe", 1, "workbench", ("iron_ingot", 2), ("stick", 2));
+            R("star_hoe", 1, "workbench", ("starstone", 2), ("stick", 2));
+            R("shield", 1, "workbench", ("@planks", 6), ("iron_ingot", 1));
             R("red_wool", 1, null, ("white_wool", 1), ("red_flower", 1));
             R("yellow_wool", 1, null, ("white_wool", 1), ("yellow_flower", 1));
             R("blue_wool", 1, null, ("white_wool", 1), ("blue_flower", 1));
@@ -380,7 +385,8 @@ namespace Stratum.Core
     {
         public const int Hotbar = 9, Main = 36, Size = 40;     // 36..39: armour (head, body, legs, feet)
         public const int ArmourStart = Main;
-        public readonly Stack[] Slots = new Stack[Size];
+        public const int OffHand = Size;                        // the other hand (a shield): kept after the pack's own slots, saved as the last loose stack
+        public readonly Stack[] Slots = new Stack[Size + 1];
         public int Selected;
 
         public Stack Held => Slots[Selected];
@@ -442,6 +448,19 @@ namespace Stratum.Core
         public int SoftLanding => Items.Get(Slots[Size - 1].Item)?.Ench('g') ?? 0;
 
         // Wears the held tool; true when it broke.
+        // The shield took a blow. True if that broke it.
+        public bool WearShield(int by)
+        {
+            ref var s = ref Slots[OffHand];
+            var d = Items.Get(s.Item);
+            if (d == null || d.Durability <= 0) return false;
+            s.Wear += Math.Max(1, by);
+            if (s.Wear >= d.Durability) { s = Stack.None; return true; }
+            return false;
+        }
+
+        public bool HasShield => Slots[OffHand].Item == "shield";
+
         public bool WearHeld()
         {
             ref var s = ref Slots[Selected];
@@ -543,7 +562,7 @@ namespace Stratum.Core
         }
 
         public static int XpFor(BlockDef b, Random r) =>
-            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
+            b.Id == Blocks.CoalOre ? r.Next(0, 3) : b.Id == Blocks.StarOre ? r.Next(3, 8) : b.Id == Blocks.SunstoneOre ? r.Next(2, 6) : b.Id == Blocks.JadeOre ? r.Next(3, 8) : b.Id == Blocks.EmberOre ? r.Next(2, 6) : b.Id == Blocks.SparkOre ? r.Next(1, 6) : 0;
 
         // Shears bring leaves, grass and the like away whole.
         public static (string item, int count) Drop(BlockDef b, ItemDef held)

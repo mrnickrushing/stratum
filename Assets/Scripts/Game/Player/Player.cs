@@ -168,7 +168,7 @@ namespace Stratum.Game
             }
             else
             {
-                float sp = Sneaking ? SneakSpeed : Sprinting ? Run : Walk;
+                float sp = Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk;
                 var target = wish * sp;
                 float accel = OnGround ? 14 : 3;
                 Velocity.x = Mathf.Lerp(Velocity.x, target.x, 1 - Mathf.Exp(-dt * accel));
@@ -388,6 +388,7 @@ namespace Stratum.Game
             }
         }
 
+        public bool Blocking;            // shield raised
         public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
         public float ViewBack;           // how far the camera stands off
 
@@ -482,6 +483,18 @@ namespace Stratum.Game
         public void Hit(float amount, Vector3 from)
         {
             if (Creative || Health <= 0) return;
+            // A raised shield stops what comes from in front (and takes the wear for it).
+            if (Blocking && Inv.HasShield)
+            {
+                var toward = from - Feet; toward.y = 0;
+                if (toward.sqrMagnitude < 0.01f || Vector3.Dot(toward.normalized, transform.forward) > 0.1f)
+                {
+                    Sfx.I?.Play("anvil", 0.5f, 0.7f);
+                    if (Inv.WearShield(Mathf.CeilToInt(amount))) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke("Shield broke"); }
+                    if (toward.sqrMagnitude > 0.01f) { var back = -toward.normalized; Velocity.x += back.x * 2.5f; Velocity.z += back.z * 2.5f; }
+                    return;
+                }
+            }
             int pts = Inv.ArmourPoints;
             float taken = amount * (1 - Mathf.Min(20, pts) * 0.04f) * (1 - Mathf.Min(0.64f, Inv.Warding * 0.04f));
             if (pts > 0) { var broke = Inv.WearArmour(); if (broke != null) { Sfx.I?.Play("break_tool", 0.8f); Toast?.Invoke(broke + " broke"); } }

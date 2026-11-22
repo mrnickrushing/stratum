@@ -453,6 +453,18 @@ namespace Stratum.Game
                     v.Hover = on => { if (on && P.Inv.Slots[idx].Empty) _tip.text = names[slotType] + " armour goes here"; else Tip(on ? P.Inv.Slots[idx] : Stack.None); };
                     _armSlots.Add(v);
                 }
+                // The other hand: a shield.
+                {
+                    var v = SlotView.Make(_invGrid, S);
+                    v.GetComponent<RectTransform>().Place(0, 1, 5 * (S + G), -468, S, S);
+                    v.Click = b =>
+                    {
+                        if (!_cursor.Empty && _cursor.Item != "shield") { Toast("Only a shield goes in the other hand"); return; }
+                        CursorClick(ref P.Inv.Slots[Inventory.OffHand], b == PointerEventData.InputButton.Right ? PointerEventData.InputButton.Left : b);
+                    };
+                    v.Hover = on => { if (on && P.Inv.Slots[Inventory.OffHand].Empty) _tip.text = "A shield goes here: hold the right button to raise it"; else Tip(on ? P.Inv.Slots[Inventory.OffHand] : Stack.None); };
+                    _armSlots.Add(v);
+                }
                 _armText = UIKit.Label(_invGrid, "", 22, UIKit.Dim);
                 _armText.rectTransform.Place(0, 1, 0, -558, 340, 30);
             }

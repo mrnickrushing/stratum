@@ -534,8 +534,8 @@ namespace Stratum.Server
                     Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
                     int unmade = 0; string which = "";
                     foreach (var id in Blocks.Palette)
-                        if (id >= Blocks.ByKey["orange_wool"] && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
-                    Check(unmade == 0, "every block of the 0.11 building set can be crafted" + which);
+                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                    Check(unmade == 0, "every block added since the 0.11 building set can be crafted (ores are dug)" + which);
                 }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
                 {

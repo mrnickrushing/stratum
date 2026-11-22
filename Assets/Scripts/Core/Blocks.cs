@@ -31,7 +31,7 @@ namespace Stratum.Core
         // 0.11: colours, doors and furniture
         WoolOrange, WoolLime, WoolCyan, WoolLightBlue, WoolPurple, WoolMagenta, WoolPink, WoolLightGrey, PlasterTint0, PlasterTint1, PlasterTint2, PlasterTint3, PlasterTint4, PlasterTint5, PlasterTint6, PlasterTint7, PlasterTint8, PlasterTint9, PlasterTint10, PlasterTint11, PlasterTint12, PlasterTint13, PlasterTint14, PlasterTint15, Tiles0, Tiles1, Tiles2, Tiles3, Tiles4, Tiles5, Tiles6, Tiles7, Tiles8, Tiles9, Tiles10, Tiles11, Tiles12, Tiles13, Tiles14, Tiles15, PaintedPlanks0, PaintedPlanks1, PaintedPlanks2, PaintedPlanks3, PaintedPlanks4, PaintedPlanks5, DoorBirchLower, DoorBirchUpper, DoorPineLower, DoorPineUpper, DoorDarkLower, DoorDarkUpper, CabinetFront, StoveFront, FridgeFront, TvFront, PianoFront, Picture0, Picture1, Picture2, ClockFace, MirrorGlass, Porcelain, Candle, LampShade, CrateSide, StoveTop, PottedYellow, PottedBlue,
         // 0.14
-        Fire, KegSide, KegTop, KegLit, Carrot0, Carrot1, Carrot2, Carrot3, Potato0, Potato1, Potato2, Potato3,
+        Fire, KegSide, KegTop, KegLit, Carrot0, Carrot1, Carrot2, Carrot3, Potato0, Potato1, Potato2, Potato3, StarOre,
         Count
     }
 
@@ -120,7 +120,7 @@ namespace Stratum.Core
             OakDoor, Trapdoor, Ladder, OakFence, FenceGate, CobbleWall, GlassPane, IronBars, Sign, WallSign,
             Chute, Barrel, Lantern, Hearth, EnchantingTable, Anvil, JadeOre, JadeBlock, Rail, BoosterRail, SparkOre, SparkWire, Lever, Button, PressurePlate, SparkTorch, SparkLamp, Repeater, Portal, Cinderstone, Ash, CinderBricks, EmberOre,
             Farmland, FarmlandWet, Wheat, SaplingOak, SaplingBirch, SaplingPine, SugarCane, HayBale,
-            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato;
+            Hedge, Candle, WallTorch, Fire, BlastKeg, KegLit, Carrot, Potato, StarOre;
         public const int WheatStages = 4;
         public static readonly ushort[] WaterAt = new ushort[8], LavaAt = new ushort[4];   // by level (0 = the source)
         public const int WaterReach = 7, LavaReach = 3;
