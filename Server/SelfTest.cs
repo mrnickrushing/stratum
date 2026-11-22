@@ -122,6 +122,7 @@ namespace Stratum.Server
             Kind = r.More ? (WorldKind)r.U8() : WorldKind.Normal;
             Keeps = r.More && r.Bool();
             Notes = r.More ? r.Str() : "";
+            Slots = r.WithMore(Slots);
             return true;
         }
 
@@ -912,6 +913,9 @@ namespace Stratum.Server
                     {
                         d.Create("Dot", "dot-password", world: "");
                         Check(d.Welcome(), "Dot joins with a game that shows things on the ground");
+                        // Her pack holds the 4 cobble she is about to throw down.
+                        var carrying = new Stack[Inventory.Size]; carrying[0] = new Stack("cobble", 4);
+                        d.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(carrying).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("").I32(0).MoreStacks(carrying));
                         d.Move(px + 0.5f, py + 1, pz + 2.5f);
                         Thread.Sleep(150);
                         d.Send(new Packet(Net.Msg.Toss).Str("gold_ingot").U16(1).U16(0).F32(px + 0.5f).F32(py + 3).F32(pz + 2.5f).F32(0).F32(0).F32(0).Bool(true));
@@ -965,6 +969,14 @@ namespace Stratum.Server
                         Check(d.Wait(Net.Msg.Block, r => r.I32() == px + 2 && r.I32() == py + 2 && r.I32() == pz && r.U16() == Blocks.Stone && r.I32() == WorldHost.Refused, 2000) != null,
                               "Dot, putting stone in the same place, is told it was refused (so her game hands the block back)");
                         a.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz).U16(0).U16(Blocks.Stone));
+                        // A chest: all 4 cobble go in, 3 come back out, and she is cut off before her game sends its pack.
+                        d.Send(new Packet(Net.Msg.SetBlock).I32(px + 2).I32(py + 2).I32(pz + 2).U16(Blocks.Chest).U16(0));
+                        Thread.Sleep(200);
+                        d.Send(new Packet(Net.Msg.OpenBox).I32(px + 2).I32(py + 2).I32(pz + 2));
+                        bool opened = d.Wait(Net.Msg.Box, null, 2000) != null;
+                        d.Send(new Packet(Net.Msg.BoxSlot).I32(px + 2).I32(py + 2).I32(pz + 2).U8(0).Slot(new Stack("cobble", 4)).Slot(Stack.None));
+                        d.Send(new Packet(Net.Msg.BoxSlot).I32(px + 2).I32(py + 2).I32(pz + 2).U8(0).Slot(new Stack("cobble", 1)).Slot(new Stack("cobble", 4)));
+                        Check(opened, "Dot puts her cobble in a chest and takes 3 back");
                         // A boat she has only just got into is left behind when she is cut off.
                         var before = Boats(d);
                         d.Send(new Packet(Net.Msg.Park).U8((byte)MobKind.Boat).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0));
@@ -979,14 +991,56 @@ namespace Stratum.Server
                     {
                         d.Login("Dot", "dot-password", world: "");
                         bool dotBack = d.Welcome();
-                        Check(dotBack && Cobble(d) == 4, $"and the cobble isn't doubled once her pack has counted it (has {Cobble(d)})");
+                        Check(dotBack && Cobble(d) == 3, $"cut off with the chest open, she has the 3 she took and not the 1 she left (has {Cobble(d)})");
+                        d.Send(new Packet(Net.Msg.OpenBox).I32(px + 2).I32(py + 2).I32(pz + 2));
+                        int inChest = -1;
+                        d.Wait(Net.Msg.Box, r => { r.I32(); r.I32(); r.I32(); inChest = 0; foreach (var st in r.Stacks()) if (st.Item == "cobble") inChest += st.Count; return true; }, 2000);
+                        Check(inChest == 1, $"and the chest holds the 1 ({inChest})");
                         var after = Boats(d);
                         Check(after.boats >= 1, $"cut off the moment she got in, her boat is still there ({after.boats})");
+                        // In, riding, out again, and cut off before her next word on moving: one boat, not two.
+                        d.Move(px + 0.5f, py + 1, pz + 2.5f);
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.Mount).I32(after.id));
+                        d.Wait(Net.Msg.Mounted, null, 2000);
+                        d.Send(new Packet(Net.Msg.Move).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0).F32(0).U8(Net.InBoat).Str(""));
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.Park).U8((byte)MobKind.Boat).F32(px + 0.5f).F32(py + 1).F32(pz + 3.5f).F32(0));
+                        // She falls: everything she carries goes into a satchel, and she is cut off before her game says its pack is empty.
+                        var falls = new Stack[Inventory.Size]; falls[0] = new Stack("cobble", 3);
+                        d.Send(new Packet(Net.Msg.Drop).F32(px + 0.5f).F32(py + 1).F32(pz + 2.5f).Stacks(falls).MoreStacks(falls));
+                        Thread.Sleep(200);
                         // Waiting high over the far side of a portal, then cut off: she returns where she set out.
                         d.Move(px + 0.5f, py + 1, pz + 2.5f);
                         Thread.Sleep(150);
                         d.Move(px + 9000.5f, 140, pz + 0.5f);
                         Thread.Sleep(150);
+                    }
+                    Thread.Sleep(300);
+                    using (var d = new Bot(port) { Features = 63 })
+                    {
+                        // A pack with far more waiting for room than one list of 255 can carry: all of it is kept.
+                        d.Login("Dot", "dot-password", world: "");
+                        bool afterFall = d.Welcome();
+                        Check(afterFall && Cobble(d) == 0, $"cut off as she fell, she doesn't come back still carrying what lies in her satchel (has {Cobble(d)})");
+                        var boatsNow = Boats(d);
+                        Check(boatsNow.boats == 1, $"and getting out of the boat just before left one boat, not two ({boatsNow.boats})");
+                        var big = new Stack[Inventory.Size + 700];
+                        for (int i = Inventory.Size; i < big.Length - 1; i++) big[i] = new Stack { Item = "cobble", Count = 1 + (i % 7) };
+                        big[big.Length - 1] = new Stack { Item = "shield", Count = 1 };
+                        d.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(big).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("").I32(0).MoreStacks(big));
+                        Thread.Sleep(300);
+                    }
+                    Thread.Sleep(300);
+                    using (var d = new Bot(port) { Features = 63 })
+                    {
+                        d.Login("Dot", "dot-password", world: "");
+                        bool again = d.Welcome(); int kept = 0, right = 0;
+                        for (int i = Inventory.Size; again && i < d.Slots.Length; i++) if (!d.Slots[i].Empty) { kept++; if (d.Slots[i].Item == "cobble" && d.Slots[i].Count == 1 + (i % 7)) right++; }
+                        Check(again && d.Slots.Length == Inventory.Size + 700 && kept == 700 && right == 699 && d.Slots[d.Slots.Length - 1].Item == "shield",
+                              $"700 stacks waiting beyond the pack all come back, in order, the shield last ({kept} kept, {right} as sent, {d.Slots.Length} slots)");
+                        d.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(new Stack[Inventory.Size]).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("").I32(0).MoreStacks(new Stack[Inventory.Size]));
+                        Thread.Sleep(300);
                     }
                     Thread.Sleep(300);
                     using (var d = new Bot(port) { Features = 63 })

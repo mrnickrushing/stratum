@@ -1,6 +1,6 @@
 // stratum.rushingtechnologies.com: the page and pictures are static assets (public/); the downloads are too big
 // for those, so they live in the R2 bucket "stratum-downloads" under v<version>/ and stream from here.
-const VERSION = "0.16.3";
+const VERSION = "0.16.4";
 const FILES = {
   windows: [`Stratum-${VERSION}-Setup.exe`, "application/vnd.microsoft.portable-executable"],
   "windows-zip": [`Stratum-${VERSION}-Windows.zip`, "application/zip"],

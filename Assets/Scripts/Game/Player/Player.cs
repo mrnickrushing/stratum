@@ -424,7 +424,7 @@ namespace Stratum.Game
             for (int i = 0; i < FxLeft.Length; i++) if (FxLeft[i] > 0) FxLeft[i] = Mathf.Max(0, FxLeft[i] - dt);
             if (!Creative && Health > 0)
             {
-                if (Has(Fx.Regen) && (_fxRegen -= dt) <= 0) { _fxRegen = 2.2f; Health = Mathf.Min(MaxHealth, Health + 1); }
+                if (Has(Fx.Regen) && !Dead && (_fxRegen -= dt) <= 0) { _fxRegen = 2.2f; Health = Mathf.Min(MaxHealth, Health + 1); }
                 if (Has(Fx.Poison) && (_fxPoison -= dt) <= 0) { _fxPoison = 1.25f; if (Health > 1) Damage(1, false); }
                 if (Has(Fx.FireProof)) Burning = 0;
                 if (Has(Fx.Gills)) Air = MaxAir;
@@ -477,7 +477,8 @@ namespace Stratum.Game
                 Exhaustion -= 4;
                 if (Saturation > 0) Saturation = Mathf.Max(0, Saturation - 1); else Food = Mathf.Max(0, Food - 1);
             }
-            if (Food >= 18 && Health < MaxHealth && _sinceHurt > 1)
+            if (Dead) { Health = 0; _regen = 0; }      // nothing mends until Respawn is pressed
+            else if (Food >= 18 && Health < MaxHealth && _sinceHurt > 1)
             {
                 _regen += dt;
                 float every = Saturation > 0 && Food >= 20 ? 0.5f : 4f;
@@ -507,7 +508,7 @@ namespace Stratum.Game
 
         public void TakePotion(string effect, float secs)
         {
-            if (effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
+            if (effect == "Heal" && !Dead) Health = Mathf.Min(MaxHealth, Health + 8);
             else if (effect != null && System.Enum.TryParse<Fx>(effect, out var fx)) AddFx(fx, secs);
         }
 
@@ -566,11 +567,14 @@ namespace Stratum.Game
             _sinceHurt = 0;
             Sfx.I?.Play("hurt", 0.8f);
             Hurt?.Invoke(amount);
-            if (Health <= 0) { Health = 0; Died?.Invoke(); }
+            if (Health <= 0) { Health = 0; Dead = true; Died?.Invoke(); }
         }
+
+        public bool Dead;           // fell, and hasn't pressed Respawn yet
 
         public void Respawn(Vector3 at)
         {
+            Dead = false;
             Health = MaxHealth; Air = MaxAir; Velocity = Vector3.zero; Feet = at; _fallStart = at.y; Flying = false;
             Food = 20; Saturation = 5; Exhaustion = 0; _lastFeet = at; Asleep = false; Burning = 0;
         }
