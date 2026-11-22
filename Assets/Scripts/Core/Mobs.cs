@@ -224,6 +224,9 @@ namespace Stratum.Core
         }
 
         // A boat or cart put down (from the hand, or got out of).
+        // A chest cart's store number (given the first time it's wanted, if it has none).
+        public int HoldOf(Mob m) { if (m.Hold == 0) m.Hold = _nextHold++; return m.Hold; }
+
         public Mob Park(MobKind kind, float x, float y, float z, float yaw, string who = "")
         {
             if (!Def(kind).Vehicle && kind != MobKind.Camel) return null;

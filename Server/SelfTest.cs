@@ -47,6 +47,7 @@ namespace Stratum.Server
         public byte[] KeyMod, KeyExp, Nonce, LoginKey, SentSealed;
         public int Outfit;
         public byte[] Look;                              // an outfit made piece by piece (0.12)
+        public string Notes = "";
         public int Features = GameServer.KnowsKinds | GameServer.KnowsTypes | GameServer.KnowsTransfers | GameServer.KnowsBuilds;     // 0: act like a 0.3 client
 
         public void Hello(Accounts.Mode mode, string name, string secret, string invite = "", int proto = Net.Protocol, string world = null)
@@ -120,6 +121,7 @@ namespace Stratum.Server
             Food = r.F32(); r.F32(); HasBed = r.Bool(); BX = r.I32(); r.I32(); r.I32(); Difficulty = r.U8(); XpLevel = r.I32(); r.I32();
             Kind = r.More ? (WorldKind)r.U8() : WorldKind.Normal;
             Keeps = r.More && r.Bool();
+            Notes = r.More ? r.Str() : "";
             return true;
         }
 
@@ -897,6 +899,14 @@ namespace Stratum.Server
                     b.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str().Contains("operator rights away"), 2000);
                     a.Send(new Packet(Net.Msg.Chat).Str("/deop Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "" && r.Str() == "There has to be one operator left.", 2000) != null, "the last operator can't step down");
+                    // A shield in the other hand is passed on with what is held; a splash potion's burst reaches those near.
+                    a.Send(new Packet(Net.Msg.Move).F32(px + 0.5f).F32(py + 1).F32(pz + 0.5f).F32(0).F32(0).U8(0).Str("iron_sword~s"));
+                    Check(b.Wait(Net.Msg.Moved, r => { r.I32(); r.F32(); r.F32(); r.F32(); r.F32(); r.F32(); r.U8(); return r.Str() == "iron_sword~s"; }, 3000) != null, "Bea is told Ada carries a shield");
+                    a.Send(new Packet(Net.Msg.Splash).F32(px + 0.5f).F32(py + 1).F32(pz + 1.5f).Str("Swift").F32(60));
+                    Check(b.Wait(Net.Msg.Splashed, r => { r.F32(); r.F32(); r.F32(); return r.Str() == "Swift" && Math.Abs(r.F32() - 60) < 0.01f; }, 3000) != null, "a splash potion Ada throws bursts for Bea too");
+                    // Goals and statistics are kept with the account.
+                    a.Send(new Packet(Net.Msg.Keep).F32(20).F32(20).F32(5).U8(0).Stacks(new Stack[Inventory.Size]).Bool(false).I32(0).I32(0).I32(0).I32(0).I32(0).Str("wood,bench|mined=12;"));
+                    Thread.Sleep(200);
                     // Things on the ground, for a game that knows about them.
                     using (var d = new Bot(port) { Features = 31 })
                     {
@@ -1147,7 +1157,7 @@ namespace Stratum.Server
                     a.Want(new[] { (px >> 4, pz >> 4) });
                     a.Wait(Net.Msg.Chunk, null, 15000);
                     Check(a.BlockAt(px, py, pz) == Blocks.Stone, "and the stone she placed is still there");
-                    using (var b = new Bot(srv2.Port)) { b.Login("ADA", pwA); Check(b.Welcome() && b.Name == "Ada", "logging in on another computer (any capitals) works"); }
+                    using (var b = new Bot(srv2.Port)) { b.Login("ADA", pwA); Check(b.Welcome() && b.Name == "Ada", "logging in on another computer (any capitals) works"); Check(b.Notes == "wood,bench|mined=12;", $"and her goals and statistics come with her ({b.Notes})"); }
                 }
                 using (var c = new Bot(srv2.Port)) { c.Create("Cyd", "cy-password"); Check(c.Refused()?.Contains("invite code") == true, "with an invite code set, a new account needs it"); }
                 using (var c = new Bot(srv2.Port)) { c.Create("Cyd", "cy-password", "open sesame"); Check(c.Welcome(), "and the right code makes one"); }
@@ -1443,6 +1453,19 @@ namespace Stratum.Server
                 ss.Use(sheep.Id, "dye_purple", 0.5f, 0.5f, "kid");
                 var wool = ss.Use(sheep.Id, "shears", 0.5f, 0.5f, "kid");
                 Check(wool is (string woolItem, int woolCount) && woolItem == "purple_wool" && woolCount > 0 && Mob.FleeceOf(sheep.More) == Blocks.DyeIndex("purple"), "a sheep dyed purple is purple to everyone and gives purple wool");
+            }
+
+            // What lies on the ground is still there after a save and a load, as old as it was.
+            {
+                var dw = new Patch(); var d1 = new DropSim(dw.Get);
+                d1.Toss("cobble", 7, 0, 0.5f, 12, 0.5f, 0, 0, 0); d1.Toss("iron_pickaxe", 1, 30, 3.5f, 12, 0.5f, 0, 0, 0);
+                for (int i = 0; i < 20 * 20; i++) d1.Tick(0.05f);
+                string file = Path.Combine(Path.GetTempPath(), "stratum-drops-" + Guid.NewGuid().ToString("N") + ".bin");
+                d1.SaveFile(file);
+                var d2 = new DropSim(dw.Get); d2.LoadFile(file);
+                try { File.Delete(file); } catch { }
+                bool same = d2.All.Count == 2 && d2.All.Exists(x => x.Item == "cobble" && x.Count == 7 && x.Age > 19) && d2.All.Exists(x => x.Item == "iron_pickaxe" && x.Wear == 30);
+                Check(same, $"things lying on the ground are still there after a save and a load ({d2.All.Count})");
             }
 
             // Chutes: one draws in what lies on it; a side chute feeds the chest it points at.

@@ -188,6 +188,7 @@ namespace Stratum.Game
             var kind = welcome.More ? (WorldKind)welcome.U8() : WorldKind.Normal;
             if (kind >= WorldKind.Count) kind = WorldKind.Normal;
             _keepInv = welcome.More && welcome.Bool();          // 0.5.1: the server's world lets players keep their things
+            _serverNotes = welcome.More ? welcome.Str() : null;   // 0.17: goals and statistics kept with the account
             Logins.Remember(address, name, token);
             _menus.JoinedAs(name);
             _myName = name;
@@ -319,14 +320,14 @@ namespace Stratum.Game
             if (same && !force) return;
             _lastSentPos = f; _lastSentYaw = _player.Yaw; _lastSentPitch = _player.Pitch; _lastSentFlags = flags;
             var held = _player.Inv.Held;
-            _net.Send(new Packet(Net.Msg.Move).F32(f.x).F32(f.y).F32(f.z).F32(_player.Yaw).F32(_player.Pitch).U8(flags).Str(held.Empty ? "" : held.Item));
+            _net.Send(new Packet(Net.Msg.Move).F32(f.x).F32(f.y).F32(f.z).F32(_player.Yaw).F32(_player.Pitch).U8(flags).Str((held.Empty ? "" : held.Item) + (_player.Inv.HasShield ? "~s" : "")));
         }
 
         void SendKeep()
         {
             if (_net == null || _player == null) return;
             _net.Send(new Packet(Net.Msg.Keep).F32(_player.Health).F32(_player.Food).F32(_player.Saturation).U8((byte)_player.Inv.Selected).Stacks(SaveSlots())
-                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints));
+                .Bool(_hasBed).I32(_bed.x).I32(_bed.y).I32(_bed.z).I32(_player.XpLevel).I32(_player.XpPoints).Str(Notes()));
         }
 
         // Reads what the server sent and keeps it up to date with us. Runs every frame while connected.
@@ -401,6 +402,7 @@ namespace Stratum.Game
                     int id = r.I32();
                     var p = new Vector3(r.F32(), r.F32(), r.F32()); float yaw = r.F32(), pitch = r.F32(); byte flags = r.U8();
                     _avatars.Moved(id, p, yaw, pitch, flags);
+                    if (r.More) _avatars.SetShield(id, r.Str().EndsWith("~s"));
                     break;
                 }
                 case Net.Msg.Clock:

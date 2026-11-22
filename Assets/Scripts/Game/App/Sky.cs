@@ -216,7 +216,7 @@ namespace Stratum.Game
                 RenderSettings.fogEndDistance = end * Mathf.Lerp(1, 0.75f, overcast);
             }
             if (_grade != null) _grade.postExposure.value = Underwater ? 0.0f : 0.25f - overcast * (Weather == 2 ? 0.75f : 0.5f) + Flash * 0.8f;
-            Shader.SetGlobalColor(CaveGlow, Deep ? new Color(0.46f, 0.20f, 0.11f) : Color.black);
+            Shader.SetGlobalColor(CaveGlow, Deep ? new Color(0.46f, 0.20f, 0.11f) : NightVision ? new Color(0.44f, 0.48f, 0.56f) : Color.black);      // Night Vision lights caves too
             if (Still)
             {
                 var dark = new Color(0.035f, 0.025f, 0.075f);

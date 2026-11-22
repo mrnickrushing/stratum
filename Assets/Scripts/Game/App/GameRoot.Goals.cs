@@ -48,7 +48,33 @@ namespace Stratum.Game
             return sb.ToString();
         }
 
-        string GoalsKey => "goals_" + (_meta != null ? _meta.name + "_" + _meta.seed : "online");
+        string GoalsKey => "goals_" + (_meta != null ? _meta.name + "_" + _meta.seed : "online_" + (_myName ?? ""));
+        string _serverNotes;         // what the server kept for this account (goals and statistics), read once on joining
+
+        // Goals and statistics as one line, for the server to keep with the account: "wood,bench|mined=12;walked=340".
+        string Notes()
+        {
+            if (_goalsKey == null) return "";
+            var sb = new System.Text.StringBuilder(string.Join(",", _goals)).Append('|');
+            foreach (var kv in _stats) sb.Append(kv.Key).Append('=').Append(kv.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+            return sb.Length > 3900 ? "" : sb.ToString();
+        }
+
+        // What the server remembers is added to what this computer does: every goal either knows, the larger of each count.
+        void MergeNotes(string notes)
+        {
+            if (string.IsNullOrEmpty(notes)) return;
+            int bar = notes.IndexOf('|');
+            foreach (var id in (bar < 0 ? notes : notes.Substring(0, bar)).Split(',')) if (id.Length > 0) _goals.Add(id);
+            if (bar < 0) return;
+            foreach (var pair in notes.Substring(bar + 1).Split(';'))
+            {
+                int eq = pair.IndexOf('=');
+                if (eq <= 0 || !double.TryParse(pair.Substring(eq + 1), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v)) continue;
+                string key = pair.Substring(0, eq);
+                _stats.TryGetValue(key, out double mine); if (v > mine) _stats[key] = v;
+            }
+        }
 
         void LoadGoals()
         {
@@ -61,6 +87,7 @@ namespace Stratum.Game
                 if (eq > 0 && double.TryParse(pair.Substring(eq + 1), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v)) _stats[pair.Substring(0, eq)] = v;
             }
             _statAt = _player != null ? _player.Feet : Vector3.zero;
+            if (Online) { MergeNotes(_serverNotes); _serverNotes = null; }
         }
 
         void Reach(string id)

@@ -55,7 +55,7 @@ namespace Stratum.Game
         readonly VoxelWorld _world;
         readonly Player _player;
         readonly Sky _sky;
-        readonly string _file, _mobFile;
+        readonly string _file, _mobFile; string _dropFile;
         readonly int _difficulty;
         public readonly MobSim Sim;
         public readonly DropSim Ground;
@@ -91,8 +91,10 @@ namespace Stratum.Game
             Sim.Seed = world.Gen.Seed;
             _mobFile = folder != null ? Path.Combine(folder, "creatures.bin") : null;
             if (_mobFile != null) try { Sim.LoadFile(_mobFile); } catch (Exception e) { Debug.LogWarning("creatures unreadable: " + e.Message); }
+            _dropFile = folder != null ? Path.Combine(folder, "drops.bin") : null;
             Sim.HitPlayer += (id, dmg, fx, fz, from) => Hurt?.Invoke(dmg, new Vector3(fx, _player.Feet.y, fz), from.Kind);
             Ground = new DropSim(world.Get) { Loaded = (x, z) => world.IsReady(x, z) };
+            if (_dropFile != null) try { Ground.LoadFile(_dropFile); } catch (Exception e) { Debug.LogWarning("drops unreadable: " + e.Message); }
             // What a creature carried falls where it fell; the experience goes to whoever struck the last blow.
             Sim.Died += (m, killer) =>
             {
@@ -224,7 +226,7 @@ namespace Stratum.Game
         public override void OpenCart(int mob)
         {
             if (!Sim.TryGet(mob, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
-            var at = new Vector3Int(Mob.HoldX + m.Hold, 0, 0);
+            var at = new Vector3Int(Mob.HoldX + Sim.HoldOf(m), 0, 0);
             _open = true; _box = at;
             BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
         }
@@ -289,6 +291,7 @@ namespace Stratum.Game
         public override void Save()
         {
             if (_mobFile != null) try { Sim.SaveFile(_mobFile); } catch (Exception e) { Debug.LogWarning("could not save creatures: " + e.Message); }
+            if (_dropFile != null) try { Ground.SaveFile(_dropFile); } catch (Exception e) { Debug.LogWarning("could not save what lies on the ground: " + e.Message); }
             if (_file == null || !Boxes.Dirty) return;
             try { Boxes.Save(_file); } catch (Exception e) { Debug.LogWarning("could not save containers: " + e.Message); }
         }

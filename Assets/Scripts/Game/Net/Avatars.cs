@@ -83,6 +83,25 @@ namespace Stratum.Game
 
         public void Clear() { foreach (var id in new List<int>(_all.Keys)) Remove(id); }
 
+        // A shield on the left arm of someone who carries one in their other hand.
+        public void SetShield(int id, bool on)
+        {
+            if (!_all.TryGetValue(id, out var a) || a.ArmL == null) return;
+            var have = a.ArmL.Find("Shield");
+            if (have == null)
+            {
+                if (!on) return;
+                var parts = new List<Renderer>(a.Parts); var cols = new List<Color>(a.Colors);
+                var hold = Pivot(a.ArmL, "Shield", new Vector3(-0.1f, -0.42f, -0.16f));
+                Box(hold, Vector3.zero, new Vector3(0.08f, 0.62f, 0.5f), new Color(0.6f, 0.42f, 0.24f), parts, cols);
+                Box(hold, new Vector3(-0.045f, 0, 0), new Vector3(0.02f, 0.62f, 0.08f), new Color(0.72f, 0.2f, 0.16f), parts, cols);
+                Box(hold, new Vector3(-0.05f, 0, 0), new Vector3(0.03f, 0.14f, 0.14f), new Color(0.82f, 0.83f, 0.86f), parts, cols);
+                a.Parts = parts.ToArray(); a.Colors = cols.ToArray();
+                return;
+            }
+            if (have.gameObject.activeSelf != on) have.gameObject.SetActive(on);
+        }
+
         public void Moved(int id, Vector3 pos, float yaw, float pitch, byte flags)
         {
             if (!_all.TryGetValue(id, out var a)) return;
