@@ -49,7 +49,7 @@ namespace Stratum.Core
                     ushort id = _get(x, y, z);
                     if (id != 0) Tick(x, y, z, id);
                 }
-                if (Snowing != null) { uint sr = _rng.Next(); int sx = bx + (int)(sr & 15), sz = bz + (int)((sr >> 4) & 15); if (Snowing(sx, sz)) Settle(sx, sz); }
+                if (Snowing != null) { uint sr = _rng.Next(); int sx = bx + (int)(sr & 15), sz = bz + (int)((sr >> 4) & 15); if (((sr >> 9) & 7) == 0 && Snowing(sx, sz)) Settle(sx, sz); }      // slowly: a storm whitens the ground over some minutes
             }
         }
 

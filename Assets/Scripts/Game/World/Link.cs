@@ -226,7 +226,7 @@ namespace Stratum.Game
         public override void OpenCart(int mob)
         {
             if (!Sim.TryGet(mob, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
-            var at = new Vector3Int(Mob.HoldX + m.Hold, 0, 0);
+            var at = new Vector3Int(Mob.HoldX + Sim.HoldOf(m), 0, 0);
             _open = true; _box = at;
             BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
         }

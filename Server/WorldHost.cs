@@ -840,7 +840,7 @@ namespace Stratum.Server
             int id = r.I32();
             if (!p.Alive || !_mobs.TryGet(id, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
             if ((m.X - p.X) * (m.X - p.X) + (m.Y - p.Y) * (m.Y - p.Y) + (m.Z - p.Z) * (m.Z - p.Z) > 7 * 7) return;
-            int x = Mob.HoldX + m.Hold;
+            int x = Mob.HoldX + _mobs.HoldOf(m);
             foreach (var o in _players.Values)
                 if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == 0 && o.BZ == 0)
                 {

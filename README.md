@@ -288,11 +288,8 @@ Nothing is queued. Held off on purpose:
 
 - The server owning inventory, health and movement; encrypting the whole session.
 
-Known shortcuts, should they start to matter:
-
-- Things lying on the ground are not saved, so they are gone after a server restart.
-- Night Vision brightens the night outside but not caves.
-- Goals and statistics are kept per computer, not per account.
-- A shield and a camel's rider are not drawn on other players' figures.
+Since 0.16.1 the earlier shortcuts are gone: what lies on the ground is saved (`drops.bin`), Night Vision lights
+caves (`_CaveGlow`), a shield shows on other players (a "~s" on the end of what they hold), and goals and statistics
+are kept with the account on a server (`PlayerRecord.notes`).
 
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.
