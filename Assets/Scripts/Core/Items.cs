@@ -20,7 +20,10 @@ namespace Stratum.Core
         public int ArmourSlot = -1;  // 0 head, 1 body, 2 legs, 3 feet
         public int Armour;           // protection points (20 in all stops 80% of a hit)
         public bool Ranged;          // the bow
-        public bool Drink;           // milk: drunk whatever your hunger, gives the bucket back
+        public bool Drink;           // milk and potions: drunk whatever your hunger; what held it comes back (Leaves)
+        public string Leaves;        // what's left in the hand after drinking
+        public string Effect;        // potions: what it does (Player.Fx by name), for EffectSecs seconds
+        public float EffectSecs;
         public Dictionary<char, int> Enchants;   // enchanted copies only
         public string Base;                      // enchanted copies: the plain item
         public ItemDef MemberwiseCopy() => (ItemDef)MemberwiseClone();
@@ -65,6 +68,15 @@ namespace Stratum.Core
         public static readonly List<Recipe> Recipes = new List<Recipe>();
 
         static ItemDef Add(ItemDef d) { Defs[d.Id] = d; Order.Add(d); return d; }
+
+        // Potions: what each is called, what it does and for how long, and the thing that goes in with the ember.
+        public static readonly (string key, string name, string effect, float secs, string with)[] Potions =
+        {
+            ("swift", "Swiftness", "Swift", 180, "sugar_cane"), ("leap", "Leaping", "Leap", 180, "egg"), ("strength", "Strength", "Strength", 180, "bone"),
+            ("regen", "Regeneration", "Regen", 45, "apple"), ("heal", "Healing", "Heal", 0, "berries"), ("fire", "Fire Resistance", "FireProof", 180, "coal"),
+            ("gills", "Water Breathing", "Gills", 180, "raw_fish"), ("night", "Night Vision", "NightEyes", 180, "carrot"), ("feather", "Slow Falling", "Feather", 90, "feather"),
+            ("haste", "Haste", "Haste", 180, "sunstone_shard"),
+        };
 
         static void ToolSet(string mat, string matName, int tier, int dur, float speed)
         {
@@ -134,6 +146,10 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "fire_striker", Name = "Fire Striker", MaxStack = 1, Durability = 64 });
             Add(new ItemDef { Id = "blast_powder", Name = "Blast Powder" });
             // 0.14: fishing, root crops, eggs
+            // Potions: a bottle, an ember and one more thing, mixed at a brewing stand.
+            Add(new ItemDef { Id = "bottle", Name = "Glass Bottle", MaxStack = 16 });
+            foreach (var (key, name, effect, secs, with) in Potions)
+                Add(new ItemDef { Id = "potion_" + key, Name = "Potion of " + name, MaxStack = 16, Drink = true, Leaves = "bottle", Effect = effect, EffectSecs = secs });
             Add(new ItemDef { Id = "shield", Name = "Shield", MaxStack = 1, Durability = 300 });
             Add(new ItemDef { Id = "fishing_rod", Name = "Fishing Rod", MaxStack = 1, Durability = 64 });
             Food("raw_fish", "Raw Fish", 2, 0.4f);
@@ -151,7 +167,7 @@ namespace Stratum.Core
             Add(new ItemDef { Id = "xp", Name = "Experience", MaxStack = 1000, Creative = false });
             Add(new ItemDef { Id = "water_bucket", Name = "Water Bucket", MaxStack = 1 });
             Add(new ItemDef { Id = "lava_bucket", Name = "Lava Bucket", MaxStack = 1 });
-            Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1 });
+            Add(new ItemDef { Id = "milk_bucket", Name = "Milk Bucket", MaxStack = 1, Drink = true, Food = 1, Saturation = 1, Leaves = "bucket" });
             Add(new ItemDef { Id = "hide", Name = "Hide" });
             Add(new ItemDef { Id = "feather", Name = "Feather" });
             Add(new ItemDef { Id = "bone", Name = "Bone" });
@@ -223,6 +239,9 @@ namespace Stratum.Core
             R("fire_striker", 1, null, ("iron_ingot", 1), ("flint", 1));
             R("blast_keg", 1, "workbench", ("blast_powder", 5), ("sand", 4));
             R("fishing_rod", 1, "workbench", ("stick", 3), ("thread", 2));
+            R("bottle", 3, "workbench", ("glass", 3));
+            R("brewing_stand", 1, "workbench", ("cobble", 3), ("ember", 1));
+            foreach (var (key, name, effect, secs, with) in Potions) R("potion_" + key, 1, "brewer", ("bottle", 1), ("ember", 1), (with, 1));
             R("piston", 1, "workbench", ("@planks", 3), ("cobble", 4), ("iron_ingot", 1), ("spark", 1));
             R("sticky_piston", 1, "workbench", ("piston", 1), ("clay", 2));
             R("dispenser", 1, "workbench", ("cobble", 7), ("bow", 1), ("spark", 1));

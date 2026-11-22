@@ -329,7 +329,7 @@ namespace Stratum.Game
                 {
                     _attackEvery = heldDef != null && heldDef.Tool == Tool.Sword ? 0.55f : heldDef != null && heldDef.Tool == Tool.Axe ? 0.9f : 0.5f;
                     _attackCool = _attackEvery;
-                    float dmg = heldDef?.Damage ?? 1;
+                    float dmg = (heldDef?.Damage ?? 1) + (P.Has(Player.Fx.Strength) ? 3 : 0);
                     if (!P.OnGround && P.Velocity.y < -1 && !P.InWater) { dmg *= 1.5f; Sfx.I?.Play("hit_hard", 0.6f, 1.3f); }
                     Link?.Strike(TargetMob, dmg);
                     Sfx.I?.Play(dmg >= 6 ? "hit_hard" : "hit", 0.7f);
@@ -439,7 +439,7 @@ namespace Stratum.Game
                 {
                     _eat = 0;
                     P.Eat(heldDef);
-                    if (heldDef.Drink) { P.Burning = 0; SwapHeld("bucket"); }
+                    if (heldDef.Drink) { if (heldDef.Leaves == "bucket") P.Burning = 0; SwapHeld(heldDef.Leaves ?? "bucket"); }
                     else if (!P.Creative) P.Inv.UseHeld();
                     Sfx.I?.Play("burp", 0.4f);
                 }
@@ -490,7 +490,7 @@ namespace Stratum.Game
                 if (_mining != Target) { _mining = Target; Progress = 0; }
                 var b = Blocks.Get(World.Get(Target.x, Target.y, Target.z));
                 var held = Items.Get(P.Inv.Held.Item);
-                float time = Mining.Time(b, held, P.Creative);
+                float time = Mining.Time(b, held, P.Creative) * (P.Has(Player.Fx.Haste) ? 0.7f : 1);
                 if (float.IsInfinity(time)) { Progress = 0; }
                 else if (P.Creative)
                 {
@@ -520,7 +520,7 @@ namespace Stratum.Game
         static bool IsUsable(ushort id)
         {
             var d = Blocks.Get(id);
-            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
+            return d.BaseId == Blocks.Lever || d.BaseId == Blocks.Button || id == Blocks.Workbench || id == Blocks.BrewStand || d.BaseId == Blocks.Furnace || id == Blocks.EnchantingTable || d.BaseId == Blocks.Anvil || d.Container || d.BaseId == Blocks.Bed || d.Opens || d.BaseId == Blocks.Sign || d.BaseId == Blocks.WallSign;
         }
 
         void Break(Vector3Int p)
@@ -588,6 +588,7 @@ namespace Stratum.Game
             if (!sneak)
             {
                 if (target == Blocks.Workbench) { OpenStation?.Invoke("workbench"); return; }
+                if (target == Blocks.BrewStand) { OpenStation?.Invoke("brewer"); return; }
                 if (tdef.BaseId == Blocks.Furnace) { OpenBox?.Invoke(Target); return; }
                 if (target == Blocks.EnchantingTable) { OpenStation?.Invoke("enchant"); return; }
                 if (tdef.BaseId == Blocks.Anvil) { OpenStation?.Invoke("anvil"); return; }

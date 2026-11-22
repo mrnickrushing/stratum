@@ -359,6 +359,7 @@ namespace Stratum.Game
         {
             _world.SetFocus(_player.Feet);
             _sky.Underwater = _player.HeadInWater;
+            _sky.NightVision = _player.Has(Player.Fx.NightEyes);
             Sfx.I.Daylight = _sky.DayFactor;
             float depth = Mathf.Clamp01((Chunk.SeaLevel - 6 - _player.Feet.y) / 30f);
             Sfx.I.Depth = depth;

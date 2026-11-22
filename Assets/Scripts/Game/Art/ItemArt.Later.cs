@@ -28,6 +28,17 @@ namespace Stratum.Game
             }
         }
 
+        // A round-bellied bottle with a cork; a potion fills it with its colour.
+        static void Bottle(Canvas c, Color liquid, bool full)
+        {
+            Color glass = new Color(0.82f, 0.93f, 0.97f, 0.55f), rim = new Color(0.55f, 0.72f, 0.8f, 1);
+            c.Disc(V(48, 36), 27, (dx, dy) => Mathf.Sqrt(dx * dx + dy * dy) > 0.86f ? rim : full ? (dy > 0.55f ? glass : Color.Lerp(Shade(liquid, 0.75f), Color.Lerp(liquid, Color.white, 0.25f), Mathf.Clamp01(dx * 0.5f + dy * 0.5f + 0.5f))) : glass);
+            c.Poly(new[] { V(39, 58), V(57, 58), V(57, 78), V(39, 78) }, (x, y) => x < 41.5f || x > 54.5f ? rim : glass);
+            c.Poly(new[] { V(37, 78), V(59, 78), V(59, 82), V(37, 82) }, (x, y) => rim);
+            c.Poly(new[] { V(41, 82), V(55, 82), V(54, 91), V(42, 91) }, (x, y) => Color.Lerp(Hex(0x9a6a3a), Hex(0xc89a5c), (x - 41) / 14f));
+            c.Disc(V(38, 44), 5, (dx, dy) => new Color(1, 1, 1, 0.75f), 8);
+        }
+
         // Things that place a block but are shown as themselves (a carrot, not a carrot plant).
         public static bool Painted(string id) => id == "carrot" || id == "potato";
 
@@ -55,6 +66,17 @@ namespace Stratum.Game
                     c.Disc(V(78, 30), 6, (dx, dy) => dy > 0 ? Hex(0xd83a2a) : Hex(0xf2f2ee));
                     c.Line(V(20, 18), V(30, 14), 4, (t, ss) => Hex(0x4a4c52));                                            // reel
                     return true;
+                case "bottle": Bottle(c, new Color(0.8f, 0.92f, 0.96f, 0.35f), false); return true;
+                case "potion_swift": Bottle(c, Hex(0x7fd8f0), true); return true;
+                case "potion_leap": Bottle(c, Hex(0x8ee05a), true); return true;
+                case "potion_strength": Bottle(c, Hex(0xb8322a), true); return true;
+                case "potion_regen": Bottle(c, Hex(0xf06a9a), true); return true;
+                case "potion_heal": Bottle(c, Hex(0xf22a4a), true); return true;
+                case "potion_fire": Bottle(c, Hex(0xf59a2a), true); return true;
+                case "potion_gills": Bottle(c, Hex(0x3a6ae0), true); return true;
+                case "potion_night": Bottle(c, Hex(0x3a3a9a), true); return true;
+                case "potion_feather": Bottle(c, Hex(0xe8e8f4), true); return true;
+                case "potion_haste": Bottle(c, Hex(0xf2d24a), true); return true;
                 case "starstone":
                     // A cut stone: pale blue facets round a bright table.
                     c.Poly(new[] { V(48, 88), V(80, 62), V(72, 22), V(48, 8), V(24, 22), V(16, 62) }, (x, y) => Color.Lerp(Hex(0x2f9ab8), Hex(0xa8f6f8), Mathf.Clamp01((x * 0.4f + y * 0.9f - 20) / 100f)));

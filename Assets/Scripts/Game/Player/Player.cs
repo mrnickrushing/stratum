@@ -171,14 +171,15 @@ namespace Stratum.Game
             }
             else
             {
-                float sp = mounted ? 7.6f : Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk;
+                float sp = (Has(Fx.Swift) ? 1.3f : 1) * (mounted ? 7.6f : Sneaking ? SneakSpeed : Blocking ? Walk * 0.45f : Sprinting ? Run : Walk);
                 var target = wish * sp;
                 float accel = OnGround ? 14 : 3;
                 Velocity.x = Mathf.Lerp(Velocity.x, target.x, 1 - Mathf.Exp(-dt * accel));
                 Velocity.z = Mathf.Lerp(Velocity.z, target.z, 1 - Mathf.Exp(-dt * accel));
                 Velocity.y -= Gravity * dt;
                 if (Velocity.y < -60) Velocity.y = -60;
-                if (jump && OnGround) { Velocity.y = mounted ? JumpSpeed * 1.3f : JumpSpeed; Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
+                if (Has(Fx.Feather) && Velocity.y < -3.2f) { Velocity.y = -3.2f; _fallStart = Feet.y; }
+                if (jump && OnGround) { Velocity.y = (mounted ? JumpSpeed * 1.3f : JumpSpeed) * (Has(Fx.Leap) ? 1.32f : 1); Exhaustion += Sprinting ? 0.2f : 0.05f; if (Sprinting) { Velocity.x += fwd.x * 1.2f; Velocity.z += fwd.z * 1.2f; } }
                 // Ladders: walk into them or jump to climb, sneak to hold on, otherwise slide down slowly.
                 if (OnLadder)
                 {
@@ -400,6 +401,7 @@ namespace Stratum.Game
             float fall = _fallStart - Feet.y;
             ushort under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
+            if (Has(Fx.Leap)) fall -= 2;
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
         }
@@ -407,6 +409,14 @@ namespace Stratum.Game
         void Survival(float dt)
         {
             if (OnGround && Feet.y > 1) LastGround = Feet;
+            for (int i = 0; i < FxLeft.Length; i++) if (FxLeft[i] > 0) FxLeft[i] = Mathf.Max(0, FxLeft[i] - dt);
+            if (!Creative && Health > 0)
+            {
+                if (Has(Fx.Regen) && (_fxRegen -= dt) <= 0) { _fxRegen = 2.2f; Health = Mathf.Min(MaxHealth, Health + 1); }
+                if (Has(Fx.Poison) && (_fxPoison -= dt) <= 0) { _fxPoison = 1.25f; if (Health > 1) Damage(1, false); }
+                if (Has(Fx.FireProof)) Burning = 0;
+                if (Has(Fx.Gills)) Air = MaxAir;
+            }
             if (Creative)
             {
                 Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet;
@@ -424,8 +434,8 @@ namespace Stratum.Game
             if (Feet.y < -20) Damage(4);
 
             // Lava burns hard and sets you alight; water puts the fire out.
-            if (InLava) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
-            if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire) Burning = Mathf.Max(Burning, 4);
+            if (InLava && !Has(Fx.FireProof)) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
+            if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire && !Has(Fx.FireProof)) Burning = Mathf.Max(Burning, 4);
             else _lavaHurt = 0;
             if (InWater) Burning = 0;
             if (Burning > 0)
@@ -468,7 +478,18 @@ namespace Stratum.Game
         {
             Food = Mathf.Min(20, Food + food.Food);
             Saturation = Mathf.Min(Food, Saturation + food.Saturation);
+            if (food.Id == "milk_bucket") System.Array.Clear(FxLeft, 0, FxLeft.Length);       // milk washes every potion out
+            if (food.Effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
+            else if (food.Effect != null && System.Enum.TryParse<Fx>(food.Effect, out var fx)) AddFx(fx, food.EffectSecs);
         }
+
+        // What a potion (or a bite) leaves working in the body, and for how long.
+        public enum Fx { Swift, Leap, Strength, Regen, FireProof, Gills, NightEyes, Feather, Haste, Poison }
+        public static readonly string[] FxNames = { "Swiftness", "Leaping", "Strength", "Regeneration", "Fire Resistance", "Water Breathing", "Night Vision", "Slow Falling", "Haste", "Poison" };
+        public readonly float[] FxLeft = new float[10];
+        public bool Has(Fx f) => FxLeft[(int)f] > 0;
+        public void AddFx(Fx f, float secs) { if (secs > FxLeft[(int)f]) FxLeft[(int)f] = secs; }
+        float _fxRegen, _fxPoison;
 
         // A blow from outside (a creature): armour takes some of it and the body is knocked back.
         public int XpLevel, XpPoints;

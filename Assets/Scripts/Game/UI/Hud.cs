@@ -651,12 +651,13 @@ namespace Stratum.Game
             }
             bool bench = _station == "workbench" || Near(Blocks.Workbench, 4);
             bool furnace = _station == "furnace" || Near(Blocks.Furnace, 4);
+            bool brewer = _station == "brewer" || Near(Blocks.BrewStand, 4);
             _craftSub.text = _station == "enchant" ? "Each offer costs levels and sunstone shards." : _station == "anvil" ? "Mend tools and add enchanted books, for levels." : _station == "trade" ? "Jade is what villagers count in." : _station == "chest" ? "" : "MAKE makes one (Shift: all you can). Click a picture to lay it out in the grid.";
             if (_station == "smelt") _craftSub.text = "Smelts ore and cooks food for as long as it has fuel.";
             if (WorkStation) { _craftTitle.text = _station == "enchant" ? "Enchanting Table" : _station == "anvil" ? "Anvil" : Trades.Jobs[Mathf.Clamp(_tradeJob, 0, Trades.Jobs.Length - 1)]; return; }
-            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : bench ? "Workbench" : "Crafting";
+            _craftTitle.text = _station == "smelt" ? "Furnace" : _station == "chest" ? Blocks.Get(World.Get(_boxAt.x, _boxAt.y, _boxAt.z)).Name : furnace && _station == "furnace" ? "Furnace" : _station == "brewer" ? "Brewing Stand" : bench ? "Workbench" : "Crafting";
             var list = Items.Recipes
-                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench))
+                .Select(r => (r, can: P.Inv.CanCraft(r), here: r.Station == null || r.Station == "workbench" && bench || r.Station == "brewer" && brewer))
                 .Select(x => (x.r, x.can, x.here, sec: Section(x.r, x.here)))
                 .OrderBy(x => x.sec).ThenByDescending(x => x.can).ToList();
             int shown = -1;
@@ -666,7 +667,7 @@ namespace Stratum.Game
                 if (several && sec != shown)
                 {
                     shown = sec;
-                    var head = UIKit.Label(_craftList, sec == 3 ? "By hand" : sec == 4 ? "Needs a station nearby" : r.Station == "furnace" ? "Furnace" : "Workbench", 20, UIKit.Accent, TextAnchor.LowerLeft, FontStyle.Bold);
+                    var head = UIKit.Label(_craftList, sec == 3 ? "By hand" : sec == 4 ? "Needs a station nearby" : r.Station == "furnace" ? "Furnace" : r.Station == "brewer" ? "Brewing Stand" : "Workbench", 20, UIKit.Accent, TextAnchor.LowerLeft, FontStyle.Bold);
                     head.rectTransform.sizeDelta = new Vector2(0, 34);
                 }
                 var row = UIKit.Panel(_craftList, "Recipe", new Color(0.16f, 0.17f, 0.21f, here ? 0.95f : 0.5f), UIKit.RoundSmall);
@@ -681,7 +682,7 @@ namespace Stratum.Game
                     int have = P.Inv.Count(x.item); bool ok = have >= x.count;
                     return $"<color=#{ColorUtility.ToHtmlStringRGB(ok ? UIKit.Good : UIKit.Bad)}>{Mathf.Min(have, x.count)}/{x.count} {Items.DisplayName(x.item)}</color>";
                 }));
-                if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : "at a Workbench";
+                if (!here) need = r.Station == "furnace" ? $"smelt {Items.DisplayName(r.In[0].item)} in a Furnace" : r.Station == "brewer" ? "at a Brewing Stand" : "at a Workbench";
                 var needL = UIKit.Label(row.transform, need, 20, UIKit.Dim, TextAnchor.UpperLeft);
                 needL.supportRichText = true;
                 needL.rectTransform.Place(0, 1, 88, -46, 380, 30);

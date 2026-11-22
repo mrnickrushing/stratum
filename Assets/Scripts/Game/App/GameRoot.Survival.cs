@@ -70,7 +70,10 @@ namespace Stratum.Game
             link.Hurt = (dmg, from, kind) =>
             {
                 if (_player.Asleep) WakeUp();
+                float before = _player.Health;
                 _player.Hit(dmg, from);
+                // A crawler's bite that gets through leaves poison behind.
+                if (kind == MobKind.Crawler && _player.Health < before && _difficulty >= 2) _player.AddFx(Player.Fx.Poison, 6);
             };
             link.Sleepers = (asleep, total) =>
             {

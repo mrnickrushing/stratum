@@ -135,8 +135,33 @@ namespace Stratum.Game
             _bubbles = new IconRow(_airBack, _air, Pixel(BubbleRows, blue), Pixel(BubbleRows, blue, true), Pixel(BubbleRows, blue, false, true), true);
         }
 
+        Text _fxText;
+        readonly System.Text.StringBuilder _fxLine = new System.Text.StringBuilder();
+
+        // What's working in the body just now, down the left side.
+        void ShowEffects()
+        {
+            if (_fxText == null)
+            {
+                _fxText = UIKit.Label(_root, "", 22, Color.white, TextAnchor.UpperLeft).Shadowed();
+                _fxText.rectTransform.Place(0, 0.5f, 24, 60, 420, 300);
+                _fxText.raycastTarget = false; _fxText.supportRichText = true;
+            }
+            _fxLine.Clear();
+            for (int i = 0; i < P.FxLeft.Length; i++)
+            {
+                float left = P.FxLeft[i];
+                if (left <= 0) continue;
+                string col = i == (int)Player.Fx.Poison ? "#9be06a" : "#ffe9a8";
+                _fxLine.Append("<color=").Append(col).Append('>').Append(Player.FxNames[i]).Append("</color>  ").Append((int)left / 60).Append(':').Append(((int)left % 60).ToString("00")).Append('\n');
+            }
+            string s = _fxLine.ToString();
+            if (_fxText.text != s) _fxText.text = s;
+        }
+
         void ShowIconRows(int armour)
         {
+            ShowEffects();
             _hearts.Set(P.Health / P.MaxHealth * 20, P.Health <= 4);
             _meals.Set(P.Food, P.Food <= 6);
             _plates.Set(armour);

@@ -88,7 +88,7 @@ namespace Stratum.Core
         {
             foreach (var r in recipes)
             {
-                if (r.Station == "furnace") continue;
+                if (r.Station == "furnace" || r.Station == "brewer") continue;
                 foreach (var (key, rows) in Patterns)
                 {
                     if (!(key[0] == '*' ? r.Out.EndsWith(key.Substring(1), StringComparison.Ordinal) : r.Out == key)) continue;
@@ -119,7 +119,7 @@ namespace Stratum.Core
             Recipe loose = null, wild = null;
             foreach (var r in Items.Recipes)
             {
-                if (r.Station == "furnace" || r.Station == "workbench" && n < 3) continue;
+                if (r.Station == "furnace" || r.Station == "brewer" || r.Station == "workbench" && n < 3) continue;
                 if (r.Shape != null)
                 {
                     if (r.Shape.Length != h || r.Shape[0].Length != w) continue;

@@ -89,6 +89,12 @@ namespace Stratum.Core
                 if (i == 0) Comparator = b.Id; else b.BaseId = Comparator;
             }
 
+            // A brewing stand: potions are mixed beside it.
+            b = Add("brewing_stand", "Brewing Stand", Tex.AnvilSide, Tex.AnvilSide, Tex.Stone);
+            b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Emit = 3; b.Hardness = 1; b.Tool = Tool.Pickaxe; b.Sound = Sound.Stone;
+            b.Boxes = new[] { Box.Px(1, 0, 1, 15, 2, 15), Box.Px(7, 2, 7, 9, 14, 9), Box.Px(2, 2, 6, 6, 8, 10), Box.Px(10, 2, 6, 14, 8, 10), Box.Px(6, 2, 10, 10, 8, 14) };
+            BrewStand = b.Id;
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

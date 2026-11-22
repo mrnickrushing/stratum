@@ -542,7 +542,7 @@ namespace Stratum.Server
                     int shaped = 0, wrong = 0; string firstWrong = "";
                     foreach (var rc in Items.Recipes)
                     {
-                        if (rc.Station == "furnace") continue;
+                        if (rc.Station == "furnace" || rc.Station == "brewer") continue;
                         if (rc.Shape != null) shaped++;
                         var cells = Crafting.Layout(rc); var grid = new Stack[9];
                         for (int i = 0; i < 9; i++) if (cells[i] != null) grid[i] = new Stack(cells[i] == "@planks" ? "oak_planks" : cells[i] == "@log" ? "oak_log" : cells[i], 1);
