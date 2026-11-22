@@ -266,10 +266,33 @@ frames sent and heard). `-connect host:port -name X -password P [-create]` alone
 - **Measured before touching the mesher** (2026-11-22, Radeon Vega 8 integrated graphics, view distance 10): 333
   chunks, 1.18 million triangles, 58 fps with vsync on. Merging faces was left alone.
 
+## Since 0.16
+
+- **Blocks**: snow settles where it snows (`Growth.Snowing`, `Blocks.SnowLayer`) and melts, like ice, beside anything
+  hot; vines (`Blocks.Vine`) hang on jungle and swamp trees, creep down and can be climbed; a cactus pricks; water
+  washes crops and flowers away; jumping on farmland flattens it; broken ice leaves water.
+- **Things**: sixteen dyes (`dye_<colour>`), sheep that take a dye (`Mob.Fleece`) and give wool of that colour, gold
+  tools and armour, bookshelves that strengthen the enchanting table (`Hud.Shelves`), splash potions (`splash_<key>`,
+  `Net.Msg.Splash`).
+- **Spark and rails**: repeaters with four delays (`Blocks.Repeaters`, right-click to step), a detector rail, a daylight
+  sensor, a note block, chutes that feed sideways (`Blocks.SideChute`) and draw in what lies on them, empty carts that
+  roll (`MobSim.RollCart`) and a chest cart (its store lives in `Containers` at `Mob.HoldX + Hold`).
+- **Modes**: Hard (creatures hit half as hard again, hunger can kill), Hardcore (Hard with one life; a spent world
+  can only be looked at), spectator (`/gamemode spectator`), a statistics page (G twice), `/tp x y z`.
+- **Villages**: the big house's chest has something in it, and each village has a guard (`MobKind.Guard`).
+- **Operators**: whoever makes the first account on a server, and anyone they `/op`.
+
 ## Next
 
-Everything on the list up to 0.15 is done. What is left is held off on purpose:
+Nothing is queued. Held off on purpose:
 
 - The server owning inventory, health and movement; encrypting the whole session.
+
+Known shortcuts, should they start to matter:
+
+- Things lying on the ground are not saved, so they are gone after a server restart.
+- Night Vision brightens the night outside but not caves.
+- Goals and statistics are kept per computer, not per account.
+- A shield and a camel's rider are not drawn on other players' figures.
 
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

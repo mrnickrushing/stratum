@@ -45,6 +45,28 @@ namespace Stratum.Game
         // Returns true if this file drew the item.
         static bool Later(Canvas c, string id)
         {
+            if (id.StartsWith("dye_"))
+            {
+                // A little dish heaped with powder of the colour.
+                int di = Blocks.DyeIndex(id.Substring(4));
+                if (di < 0) return false;
+                uint rgb = Blocks.Dyes[di].rgb;
+                Color col = new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f, 1);
+                c.Disc(V(48, 34), 34, (dx, dy) => Color.Lerp(Hex(0x8a6a4a), Hex(0x5a422c), Mathf.Clamp01(dy * 0.6f + 0.5f)), 14);
+                c.Disc(V(48, 46), 26, (dx, dy) => Color.Lerp(Shade(col, 0.75f), Color.Lerp(col, Color.white, 0.2f), Mathf.Clamp01(dx * 0.4f + dy * 0.6f + 0.5f)), 16);
+                return true;
+            }
+            if (id.StartsWith("splash_"))
+            {
+                // The same colours as the potions, in a round flask with a wide lip.
+                Color[] cols = { Hex(0x7fd8f0), Hex(0x8ee05a), Hex(0xb8322a), Hex(0xf06a9a), Hex(0xf22a4a), Hex(0xf59a2a), Hex(0x3a6ae0), Hex(0x3a3a9a), Hex(0xe8e8f4), Hex(0xf2d24a) };
+                int pi = System.Array.FindIndex(Items.Potions, p => "splash_" + p.key == id);
+                if (pi < 0) return false;
+                Bottle(c, cols[pi], true);
+                c.Poly(new[] { V(32, 78), V(64, 78), V(60, 86), V(36, 86) }, (x, y) => Hex(0xd8d2c0));
+                c.Line(V(30, 64), V(66, 64), 3, (t, ss) => Hex(0xf2e9c8));
+                return true;
+            }
             switch (id)
             {
                 case "blast_powder":
@@ -85,6 +107,13 @@ namespace Stratum.Game
                     c.Poly(new[] { V(48, 90), V(66, 52), V(56, 10), V(40, 8), V(30, 48) }, (x, y) => Color.Lerp(Hex(0x1a1030), Hex(0x8a4ae0), Mathf.Clamp01((x - 30) / 40f * 0.6f + (y - 8) / 82f * 0.5f)));
                     c.Poly(new[] { V(48, 90), V(40, 8), V(30, 48) }, (x, y) => Hex(0x120a24));
                     c.Disc(V(52, 46), 5, (dx, dy) => new Color(0.85f, 0.7f, 1f, 0.9f), 9);
+                    return true;
+                case "chest_cart":
+                    c.Poly(new[] { V(12, 22), V(84, 22), V(78, 48), V(18, 48) }, (x, y) => Color.Lerp(Hex(0x4a4c54), Hex(0x8a8e96), (y - 22) / 26f));
+                    c.Disc(V(28, 18), 8, (dx, dy) => Hex(0x2a2c30)); c.Disc(V(68, 18), 8, (dx, dy) => Hex(0x2a2c30));
+                    c.Poly(new[] { V(24, 48), V(72, 48), V(72, 80), V(24, 80) }, (x, y) => Color.Lerp(Hex(0x8a5a30), Hex(0xb07c44), Mathf.PerlinNoise(x * 0.4f, y * 0.06f)));
+                    c.Poly(new[] { V(24, 62), V(72, 62), V(72, 66), V(24, 66) }, (x, y) => Hex(0x3a3c42));
+                    c.Poly(new[] { V(44, 56), V(52, 56), V(52, 68), V(44, 68) }, (x, y) => Hex(0xd8b04a));
                     return true;
                 case "starstone":
                     // A cut stone: pale blue facets round a bright table.

@@ -534,7 +534,7 @@ namespace Stratum.Server
                     Check(missing == "", "every recipe makes and uses things that exist" + (missing != "" ? ":" + missing : ""));
                     int unmade = 0; string which = "";
                     foreach (var id in Blocks.Palette)
-                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && id != Blocks.Stillstone && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
+                        if (id >= Blocks.ByKey["orange_wool"] && id != Blocks.StarOre && id != Blocks.Stillstone && id != Blocks.Vine && !Items.Recipes.Exists(r => r.Out == Blocks.Keys[id])) { unmade++; which += " " + Blocks.Keys[id]; }
                     Check(unmade == 0, "every block added since the 0.11 building set can be crafted (ores are dug)" + which);
                 }
                 // Crafting: every recipe, laid out the way the recipe list lays it out, makes that thing and no other.
@@ -1379,6 +1379,102 @@ namespace Stratum.Server
                 Run(0.3f);
                 Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f); Put(0, 11, 13, Blocks.Lever); Run(0.4f); Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f);
                 Check(fired == 2, $"a dispenser goes off once each time power arrives ({fired})");
+
+                // A repeater set slower passes power on later than a quick one.
+                float When(ushort repeaterBase)
+                {
+                    var rw = new Patch(); Signal rs = null;
+                    rs = new Signal(rw.Get, (x, y, z, id) => { rw.Set(x, y, z, id); rs.Wake(x, y, z); });
+                    void P2(int x, int y, int z, ushort id) { rw.Set(x, y, z, id); rs.Wake(x, y, z); }
+                    P2(1, 11, 0, (ushort)(repeaterBase + 1 * 2)); P2(2, 11, 0, Blocks.SparkLamp); P2(0, 11, 0, Blocks.Lever);
+                    for (int i = 0; i < 10; i++) rs.Tick(0.05f, null);
+                    P2(0, 11, 0, (ushort)(Blocks.Lever + 1));
+                    for (int i = 1; i <= 40; i++) { rs.Tick(0.05f, null); if (rw.Get(2, 11, 0) == Blocks.SparkLamp + 1) return i * 0.05f; }
+                    return -1;
+                }
+                float quick = When(Blocks.Repeaters[0]), slow = When(Blocks.Repeaters[3]);
+                Check(quick > 0 && slow > quick + 0.2f, $"a repeater set to its longest wait passes power on later ({quick:0.00} s against {slow:0.00} s)");
+
+                // A detector rail gives power while something is on it.
+                Put(0, 11, 20, Blocks.DetectorRail); Put(1, 11, 20, Blocks.SparkLamp);
+                Run(0.3f);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp, "a detector rail with nothing on it gives no power");
+                var cart = new List<(float, float, float)> { (0.5f, 11.06f, 20.5f) };
+                for (int i = 0; i < 8; i++) sig.Tick(0.05f, cart);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp + 1 && mw.Get(0, 11, 20) == Blocks.DetectorRail + 1, "with a cart on it, it lights the lamp beside it");
+                Run(1.2f);
+                Check(mw.Get(1, 11, 20) == Blocks.SparkLamp && mw.Get(0, 11, 20) == Blocks.DetectorRail, "and stops once the cart has gone");
+                Check(Rails.Is(Blocks.DetectorRail) && Rails.Ends((ushort)(Blocks.DetectorRail + 3)) == (1, 3, -1), "a detector rail is a rail, whichever way it is on");
+
+                // A daylight sensor follows the sun; a note block sounds once each time power arrives.
+                bool day = false; int notes = 0, lastNote = -1;
+                sig.IsDay = () => day; sig.Played = (x, y, z, pitch) => { notes++; lastNote = pitch; };
+                Put(0, 11, 24, Blocks.DaylightSensor); Put(1, 11, 24, (ushort)(Blocks.NoteBlock + 3 * 2));
+                Run(1.5f);
+                Check(notes == 0 && mw.Get(0, 11, 24) == Blocks.DaylightSensor, "a daylight sensor is off at night");
+                day = true; Run(1.6f);
+                Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor + 1 && notes == 1 && lastNote == 3, $"at sunrise it comes on, and the note block beside it sounds its note once ({notes}, note {lastNote})");
+                day = false; Run(1.6f);
+                Check(mw.Get(0, 11, 24) == Blocks.DaylightSensor && notes == 1, "at sunset it goes off again");
+            }
+
+            // A village guard sees off a ghoul; on Hard, creatures hit half as hard again.
+            {
+                var gw = new MobSim(new Patch().Get, 8) { Spawning = false, Time01 = 0.9f };
+                var guard = gw.Spawn(MobKind.Guard, 0.5f, 11, 0.5f); guard.HomeX = 0; guard.HomeZ = 0;
+                var ghoul = gw.Spawn(MobKind.Ghoul, 6.5f, 11, 0.5f);
+                var nobody = new List<Seen>();
+                for (int i = 0; i < 20 * 20 && ghoul.Health > 0; i++) gw.Tick(0.05f, nobody);
+                Check(ghoul.Health <= 0 && guard.Health == guard.Def.Health, $"a village guard sees off a ghoul (ghoul health {ghoul.Health:0})");
+                float Blow(int difficulty)
+                {
+                    var hs = new MobSim(new Patch().Get, 8) { Spawning = false, Time01 = 0.9f, Difficulty = difficulty };
+                    hs.Spawn(MobKind.Ghoul, 1.5f, 11, 0.5f);
+                    var who = new List<Seen> { new Seen { Id = 1, X = 0.5f, Y = 11, Z = 0.5f, Alive = true, Key = "kid" } };
+                    float got = 0; hs.HitPlayer += (id, dmg, fx, fz, from) => { if (got == 0) got = dmg; };
+                    for (int i = 0; i < 20 * 6 && got == 0; i++) hs.Tick(0.05f, who);
+                    return got;
+                }
+                float normal = Blow(2), hard = Blow(3);
+                Check(normal > 0 && Math.Abs(hard - normal * 1.5f) < 0.01f, $"on Hard a ghoul hits half as hard again ({normal:0.0} against {hard:0.0})");
+                // Dyed sheep give wool of their colour.
+                var ss = new MobSim(new Patch().Get, 8) { Spawning = false };
+                var sheep = ss.Spawn(MobKind.Sheep, 0.5f, 11, 0.5f);
+                ss.Use(sheep.Id, "dye_purple", 0.5f, 0.5f, "kid");
+                var wool = ss.Use(sheep.Id, "shears", 0.5f, 0.5f, "kid");
+                Check(wool is (string woolItem, int woolCount) && woolItem == "purple_wool" && woolCount > 0 && Mob.FleeceOf(sheep.More) == Blocks.DyeIndex("purple"), "a sheep dyed purple is purple to everyone and gives purple wool");
+            }
+
+            // Chutes: one draws in what lies on it; a side chute feeds the chest it points at.
+            {
+                var cw = new Patch();
+                cw.Set(0, 11, 0, Blocks.Chute); cw.Set(0, 10, 0, Blocks.Chest);
+                cw.Set(5, 11, 0, (ushort)(Blocks.SideChute + 1)); cw.Set(6, 11, 0, Blocks.Chest); cw.Set(5, 12, 0, Blocks.Chest);
+                var boxes = new Containers(); var chutes = new Chutes(boxes, cw.Get, (x, z) => true);
+                chutes.Add(0, 11, 0); chutes.Add(5, 11, 0);
+                var lying = new DropSim(cw.Get);
+                lying.Toss("cobble", 6, 0, 0.5f, 13, 0.5f, 0, 0, 0, 0);
+                boxes.Set(5, 12, 0, 3, new Stack("coal", 4));
+                for (int i = 0; i < 20 * 12; i++) { lying.Tick(0.05f); if (i % 8 == 0) lying.Feed(chutes.Take); chutes.Tick(0.05f); }
+                int under = 0; foreach (var st in boxes.At(0, 10, 0)) if (st.Item == "cobble") under += st.Count;
+                int side = 0; foreach (var st in boxes.At(6, 11, 0)) if (st.Item == "coal") side += st.Count;
+                Check(lying.All.Count == 0 && under == 6, $"what lies on a chute is drawn in and passed to the chest below ({under} of 6, {lying.All.Count} left lying)");
+                Check(side == 4, $"a side chute takes from the chest above it and feeds the chest it points at ({side} of 4)");
+
+                // An empty cart on a powered booster with a block behind it rolls off down the line and stops at the end.
+                var rw = new Patch();
+                rw.Set(-1, 11, 0, Blocks.Stone); rw.Set(0, 11, 0, (ushort)(Blocks.BoosterRail + 1)); rw.Set(0, 11, 1, (ushort)(Blocks.Lever + 1));
+                for (int x = 1; x <= 9; x++) rw.Set(x, 11, 0, (ushort)(Blocks.Rail + 1));
+                var rs = new MobSim(rw.Get, 2) { Spawning = false };
+                var cart = rs.Park(MobKind.Cart, 0.5f, 11.06f, 0.5f, 90);
+                var nobody = new List<Seen>();
+                for (int i = 0; i < 20 * 12; i++) rs.Tick(0.05f, nobody);
+                Check(cart.X > 9.4f && cart.X < 10.05f && cart.Roll == 0, $"an empty cart on a powered booster rolls down the line and stops at its end (x {cart.X:0.0})");
+                var still = rs.Park(MobKind.Cart, 4.5f, 11.06f, 0.5f, 90);
+                for (int i = 0; i < 20 * 3; i++) rs.Tick(0.05f, nobody);
+                Check(Math.Abs(still.X - 4.5f) < 0.01f, "a cart on plain level rail stays where it was put");
+                var cc = rs.Park(MobKind.ChestCart, 2.5f, 11.06f, 0.5f, 90);
+                Check(cc.Hold > 0 && rs.Mount(cc.Id, 2.5f, 11, 0.5f, out _, out _, out _, out _) == null, "a chest cart has a store of its own and can't be ridden");
             }
 
             // A keg blows a hole, sets off the keg beside it, and leaves obsidian standing.

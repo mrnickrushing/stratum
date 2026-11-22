@@ -35,6 +35,7 @@ namespace Stratum.Game
         public int bx, by, bz;
         public double minutesPlayed;
         public bool keepInventory;         // nothing is dropped on death
+        public bool dead;                  // a hardcore world whose one life is spent: it can only be looked at
         [NonSerialized] public string Folder;
     }
 

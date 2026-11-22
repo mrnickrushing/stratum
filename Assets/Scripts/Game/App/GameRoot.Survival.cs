@@ -19,12 +19,12 @@ namespace Stratum.Game
         bool _hasBed; Vector3Int _bed;
         float _sleptFor;
 
-        public static readonly string[] DifficultyNames = { "Peaceful", "Easy", "Normal" };
+        public static readonly string[] DifficultyNames = { "Peaceful", "Easy", "Normal", "Hard", "Hardcore" };       // Hardcore plays as Hard, with one life
 
         void SetupSurvival(Link link, int difficulty)
         {
-            _link = link; _difficulty = Mathf.Clamp(difficulty, 0, 2);
-            _player.Difficulty = _difficulty;
+            _link = link; _difficulty = Mathf.Clamp(difficulty, 0, 4);
+            _player.Difficulty = Mathf.Min(_difficulty, 3);
             _player.Toast = s => _hud?.Toast(s);
             _creatures = Creatures.Create(_world, _cam.transform);
             _dropViews = DropViews.Create(_world, _blockMat);
@@ -54,6 +54,8 @@ namespace Stratum.Game
             _act.Link = link; _act.Creatures = _creatures;
             _act.OpenBox = at => link.OpenBox(at);
             _act.UseBed = TrySleep;
+            _player.Trampled = (at, def) => _act.DropFor(def, at);
+            _act.Stat = name => Stat(name);
             // A gate stone carries whoever touches it to the Quiet, and the one there carries them home (their bed, or the spawn).
             _act.Travel = () =>
             {
@@ -93,6 +95,13 @@ namespace Stratum.Game
                 _hud.Sleeping(true, total > 1 ? $"Sleeping...  {asleep}/{total} players in bed" : "Sleeping...");
             };
             link.MobSound = MobSfx;
+            link.Noted = (at, pitch) => Sfx.I?.PlayAt("note_" + Mathf.Clamp(pitch, 0, 7), at, 0.9f, 1);
+            link.Splashed = (at, effect, secs) =>
+            {
+                Sfx.I?.PlayAt("splash", at, 0.7f, 1.5f);
+                _act.Puff(at, 1.2f);
+                if ((at - (_player.Feet + Vector3.up * 0.9f)).sqrMagnitude < 4 * 4 && _player.Health > 0) _player.TakePotion(effect, secs);
+            };
             link.Boomed = (at, power) =>
             {
                 Sfx.I?.PlayAt("thunder", at, 1f, 1.5f + UnityEngine.Random.value * 0.3f);
@@ -106,6 +115,7 @@ namespace Stratum.Game
         void TeardownSurvival()
         {
             _waiting.Clear(); _waitTold = false;          // saved with the player before this; the next world has its own
+            SaveStats();
             if (_creatures != null) Destroy(_creatures.gameObject);
             if (_dropViews != null) Destroy(_dropViews.gameObject);
             if (_self != null) Destroy(_self.gameObject);
@@ -168,7 +178,7 @@ namespace Stratum.Game
         // Walking over something that fits in the pack picks it up; Q throws what's in the hand (Ctrl: the whole stack).
         void PickUp(Keyboard kb)
         {
-            if (_player.Health <= 0 || _state != State.Playing) return;
+            if (_player.Health <= 0 || _state != State.Playing || _player.Spectator) return;
             float now = Time.unscaledTime;
             var body = _player.Feet + Vector3.up * 0.9f;
             foreach (var d in _link.Drops)
@@ -212,7 +222,7 @@ namespace Stratum.Game
         void Give(string item, int count, int wear)
         {
             if (_player == null || Items.Get(item) == null || count <= 0) return;
-            if (item == "xp") { _player.AddXp(count); return; }
+            if (item == "xp") { _player.AddXp(count); Stat("kills"); return; }
             int left = count;
             if (wear > 0)
             {
@@ -421,6 +431,17 @@ namespace Stratum.Game
                     return true;
                 case "/tp":
                 case "/tpa":
+                {
+                    // Three numbers: a place rather than a person.
+                    var c = arg.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (c.Length == 3 && float.TryParse(c[0], out float tx) && float.TryParse(c[1], out float ty) && float.TryParse(c[2], out float tz))
+                    {
+                        if (Online) return false;           // the server decides who may
+                        if (Mathf.Abs(tx) > 3e6f || Mathf.Abs(tz) > 3e6f || ty < -20 || ty > 400) { _hud.AddChat("", "That's off the edge of the world."); return true; }
+                        Teleport(new Vector3(tx, ty, tz), $"Went to {tx:0} {ty:0} {tz:0}");
+                        return true;
+                    }
+                }
                     if (!Online || _avatars == null) { _hud.AddChat("", "There's nobody else here to go to."); return true; }
                     if (arg.Length == 0) { _hud.AddChat("", "Who to? /tp <name>  (online: " + string.Join(", ", _avatars.Names) + ")"); return true; }
                     foreach (int id in _avatars.Ids)
@@ -455,8 +476,16 @@ namespace Stratum.Game
                 {
                     if (Online) { _hud.AddChat("", "On a server the world's mode is set by whoever runs it."); return true; }
                     string gm = arg.ToLowerInvariant();
+                    if (_meta.dead) { _hud.AddChat("", "This was a hardcore world: it can only be looked at now."); return true; }
+                    if (gm == "spectator" || gm == "sp" || gm == "3")
+                    {
+                        Spectate(true);
+                        _hud.AddChat("", "Spectator: you fly through everything and touch nothing. /gamemode survival to come back.");
+                        return true;
+                    }
                     bool? want = gm == "creative" || gm == "c" || gm == "1" ? true : gm == "survival" || gm == "s" || gm == "0" ? false : (bool?)null;
-                    if (want == null) { _hud.AddChat("", "/gamemode survival or /gamemode creative"); return true; }
+                    if (want == null) { _hud.AddChat("", "/gamemode survival, /gamemode creative or /gamemode spectator"); return true; }
+                    Spectate(false);
                     _player.Creative = _meta.creative = want.Value;
                     if (!want.Value) _player.Flying = false;
                     Save();
@@ -481,6 +510,14 @@ namespace Stratum.Game
                     return true;
             }
             return false;
+        }
+
+        // Looking on: flying through everything, touching nothing, seen by nothing.
+        void Spectate(bool on)
+        {
+            _player.Spectator = on;
+            if (on) { _player.Flying = true; _player.Velocity = Vector3.zero; if (_player.Riding != null) _player.GetOut(); }
+            else if (!_player.Creative) _player.Flying = false;
         }
 
         // A thing by its key or its name ("oak_planks", "Oak Planks", "oak planks").
@@ -550,12 +587,14 @@ namespace Stratum.Game
         public override void Toss(Core.Stack s, Vector3 o, Vector3 v) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(o.x).F32(o.y).F32(o.z).F32(v.x).F32(v.y).F32(v.z).Bool(false));
         public override void Spill(Vector3 at, Core.Stack s) => Send(new Packet(Net.Msg.Toss).Str(s.Item).U16(s.Count).U16(s.Wear).F32(at.x).F32(at.y).F32(at.z).F32(0).F32(0).F32(0).Bool(true));
         public override void TakeDrop(int id) => Send(new Packet(Net.Msg.TakeDrop).I32(id));
+        public override void OpenCart(int mob) => Send(new Packet(Net.Msg.OpenCart).I32(mob));
         public void ReceivedDrops(Reader r)
         {
             Drops.Clear();
             int n = r.U16();
             for (int i = 0; i < n; i++) Drops.Add(new DropState { Id = r.I32(), Item = r.Str(), Count = r.U16(), Pos = new Vector3(r.F32(), r.F32(), r.F32()) });
         }
+        public override void Splash(Vector3 at, string effect, float secs) => Send(new Packet(Net.Msg.Splash).F32(at.x).F32(at.y).F32(at.z).Str(effect).F32(secs));
         public override void Fertilize(Vector3Int at) => Send(new Packet(Net.Msg.Fertilize).I32(at.x).I32(at.y).I32(at.z));
         public override void Mount(int mob) => Send(new Packet(Net.Msg.Mount).I32(mob));
         public override void Park(MobKind kind, Vector3 at, float yaw) => Send(new Packet(Net.Msg.Park).U8((byte)kind).F32(at.x).F32(at.y).F32(at.z).F32(yaw));

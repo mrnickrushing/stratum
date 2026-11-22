@@ -126,12 +126,13 @@ namespace Stratum.Game
             }
 
             // Double-tap space to fly in Creative.
-            if (jumpPressed && Creative)
+            if (jumpPressed && Creative && !Spectator)
             {
                 if (Time.time - _lastSpace < 0.3f) { Flying = !Flying; Velocity.y = 0; _lastSpace = -1; }
                 else _lastSpace = Time.time;
             }
-            if (!Creative) Flying = false;
+            if (Spectator) Flying = true;
+            else if (!Creative) Flying = false;
 
             var fwd = Quaternion.Euler(0, Yaw, 0) * Vector3.forward;
             var right = Quaternion.Euler(0, Yaw, 0) * Vector3.right;
@@ -192,7 +193,7 @@ namespace Stratum.Game
 
             bool wasGround = OnGround;
             _hitWall = false;
-            MoveAll(Velocity * dt);
+            if (Spectator) { Feet += Velocity * dt; OnGround = false; } else MoveAll(Velocity * dt);
             if (!wasGround && OnGround) Land();
             if (OnGround || Flying) _fallStart = Feet.y;
             else if (Feet.y > _fallStart) _fallStart = Feet.y;
@@ -392,6 +393,9 @@ namespace Stratum.Game
             }
         }
 
+        public System.Action<Vector3Int, BlockDef> Trampled;    // a crop was knocked out of the ground
+        float _prick;
+        public bool Spectator;           // looking on: flies through everything, can't be hurt, touches nothing
         public bool Blocking;            // shield raised
         public int View;                 // 0 through the eyes, 1 from behind, 2 from in front
         public float ViewBack;           // how far the camera stands off
@@ -401,6 +405,14 @@ namespace Stratum.Game
             float fall = _fallStart - Feet.y;
             ushort under = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
             if (fall > 1.2f && under != 0) Sfx.I?.Block("step", under, Mathf.Clamp01(fall / 6) * 0.8f + 0.3f);
+            // Landing on farmland from a jump flattens it back to earth (and whatever grew there comes out).
+            if (!Creative && fall > 0.55f && Blocks.Get(under).BaseId == Blocks.Farmland)
+            {
+                var at = new Vector3Int(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.2f), Mathf.FloorToInt(Feet.z));
+                ushort crop = World.Get(at.x, at.y + 1, at.z);
+                World.Set(at.x, at.y, at.z, Blocks.Dirt);
+                if (Blocks.Get(crop).Grows == 1 && World.Set(at.x, at.y + 1, at.z, 0)) Trampled?.Invoke(at + Vector3Int.up, Blocks.Get(crop));
+            }
             if (Has(Fx.Leap)) fall -= 2;
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
@@ -417,7 +429,7 @@ namespace Stratum.Game
                 if (Has(Fx.FireProof)) Burning = 0;
                 if (Has(Fx.Gills)) Air = MaxAir;
             }
-            if (Creative)
+            if (Creative || Spectator)
             {
                 Health = MaxHealth; Air = MaxAir; Food = 20; _lastFeet = Feet;
                 // Building can't kill you, and neither can a slip off a sky island: back to the last ground.
@@ -434,6 +446,17 @@ namespace Stratum.Game
             if (Feet.y < -20) Damage(4);
 
             // Lava burns hard and sets you alight; water puts the fire out.
+            // A cactus pricks whoever leans on it or stands on it.
+            if (!Creative && (_prick -= dt) <= 0)
+            {
+                bool hit = World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y - 0.1f), Mathf.FloorToInt(Feet.z)) == Blocks.Cactus;
+                for (int k = 0; k < 8 && !hit; k++)
+                {
+                    float ox = (k & 1) == 0 ? -0.42f : 0.42f, oz = (k & 2) == 0 ? -0.42f : 0.42f, oy = (k & 4) == 0 ? 0.2f : 1.4f;
+                    hit = World.Get(Mathf.FloorToInt(Feet.x + ox), Mathf.FloorToInt(Feet.y + oy), Mathf.FloorToInt(Feet.z + oz)) == Blocks.Cactus;
+                }
+                if (hit) { _prick = 0.5f; Damage(1); }
+            }
             if (InLava && !Has(Fx.FireProof)) { Burning = 8; if ((_lavaHurt -= dt) <= 0) { _lavaHurt = 0.5f; Damage(4); } }
             if (!Creative && World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + 0.2f), Mathf.FloorToInt(Feet.z)) == Blocks.Fire && !Has(Fx.FireProof)) Burning = Mathf.Max(Burning, 4);
             else _lavaHurt = 0;
@@ -465,7 +488,7 @@ namespace Stratum.Game
             {
                 _starve += dt;
                 // Hunger alone never kills: on easy it stops at half health, on normal at half a heart.
-                float floor = Difficulty == 1 ? 10 : 1;
+                float floor = Difficulty == 1 ? 10 : Difficulty >= 3 ? 0 : 1;      // on Hard, hunger can finish you
                 if (_starve > 4) { _starve = 0; if (Health > floor) Damage(1, false); }
             }
             else _starve = 0;
@@ -479,8 +502,13 @@ namespace Stratum.Game
             Food = Mathf.Min(20, Food + food.Food);
             Saturation = Mathf.Min(Food, Saturation + food.Saturation);
             if (food.Id == "milk_bucket") System.Array.Clear(FxLeft, 0, FxLeft.Length);       // milk washes every potion out
-            if (food.Effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
-            else if (food.Effect != null && System.Enum.TryParse<Fx>(food.Effect, out var fx)) AddFx(fx, food.EffectSecs);
+            TakePotion(food.Effect, food.EffectSecs);
+        }
+
+        public void TakePotion(string effect, float secs)
+        {
+            if (effect == "Heal") Health = Mathf.Min(MaxHealth, Health + 8);
+            else if (effect != null && System.Enum.TryParse<Fx>(effect, out var fx)) AddFx(fx, secs);
         }
 
         // What a potion (or a bite) leaves working in the body, and for how long.
@@ -506,7 +534,7 @@ namespace Stratum.Game
 
         public void Hit(float amount, Vector3 from)
         {
-            if (Creative || Health <= 0) return;
+            if (Creative || Spectator || Health <= 0) return;
             // A raised shield stops what comes from in front (and takes the wear for it).
             if (Blocking && Inv.HasShield)
             {
@@ -533,7 +561,7 @@ namespace Stratum.Game
 
         public void Damage(float amount, bool flinch)
         {
-            if (Creative || Health <= 0 || amount <= 0) return;
+            if (Creative || Spectator || Health <= 0 || amount <= 0) return;
             Health -= amount;
             _sinceHurt = 0;
             Sfx.I?.Play("hurt", 0.8f);

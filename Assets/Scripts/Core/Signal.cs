@@ -36,22 +36,23 @@ namespace Stratum.Core
         public static bool IsWire(ushort id) => id != 0 && Base(id) == Blocks.SparkWire;
         static bool IsLever(ushort id) => id != 0 && Base(id) == Blocks.Lever;
         static bool IsButton(ushort id) => id != 0 && Base(id) == Blocks.Button;
-        static bool IsPlate(ushort id) => id != 0 && Base(id) == Blocks.PressurePlate;
+        static bool IsPlate(ushort id) => id != 0 && (Base(id) == Blocks.PressurePlate || Base(id) == Blocks.DetectorRail);       // stood on, or ridden over
         static bool IsTorch(ushort id) => id != 0 && Base(id) == Blocks.SparkTorch;
         static bool IsLamp(ushort id) => id != 0 && Base(id) == Blocks.SparkLamp;
-        static bool IsRepeater(ushort id) => id != 0 && Base(id) == Blocks.Repeater;
+        static bool IsRepeater(ushort id) => id != 0 && Blocks.Get(id).Repeat;
         static bool Opens(ushort id) => id != 0 && Blocks.Get(id).Opens;
         static bool IsEmitter(ushort id) => id != 0 && Blocks.Get(id).Emitter;
         static bool IsMachine(ushort id) => id != 0 && Blocks.Get(id).Machine;
         // Where an observer or comparator puts its power: an observer behind itself, a comparator in front.
-        static (int, int, int) OutOf(BlockDef d, int x, int y, int z) => d.Watcher ? (x - DX[d.Dir], y - DY[d.Dir], z - DZ[d.Dir]) : (x + DX[d.Dir], y + DY[d.Dir], z + DZ[d.Dir]);
+        static (int, int, int) OutOf(BlockDef d, int x, int y, int z) => d.Sensor ? (x, y - 1, z) : d.Watcher ? (x - DX[d.Dir], y - DY[d.Dir], z - DZ[d.Dir]) : (x + DX[d.Dir], y + DY[d.Dir], z + DZ[d.Dir]);
         static int V(ushort id) => id - Blocks.Get(id).BaseId;
 
         // Lever, button and plate: the low bit is "on". Torch: variant 0 is lit. Repeater: low bit on, facing = output.
         static bool On(ushort id) =>
             IsEmitter(id) || IsMachine(id) ? (V(id) & 1) == 1 :
             IsLever(id) || IsButton(id) || IsRepeater(id) ? (V(id) & 1) == 1 :
-            IsPlate(id) || IsWire(id) || IsLamp(id) ? V(id) == 1 :
+            IsPlate(id) ? (V(id) & 1) == 1 :
+            IsWire(id) || IsLamp(id) ? V(id) == 1 :
             IsTorch(id) ? V(id) == 0 : false;
 
         public static bool IsPart(ushort id) => IsWire(id) || IsLever(id) || IsButton(id) || IsPlate(id) || IsTorch(id) || IsLamp(id) || IsRepeater(id) || id == Blocks.BlastKeg
@@ -116,7 +117,7 @@ namespace Stratum.Core
                     ushort id = _get(x, y, z);
                     if (!IsPlate(id)) continue;
                     _plates[(x, y, z)] = _time;
-                    if (!On(id)) Put(x, y, z, (ushort)(Blocks.PressurePlate + 1));
+                    if (!On(id)) Put(x, y, z, (ushort)(id + 1));
                 }
             if (_plates.Count > 0)
             {
@@ -126,7 +127,7 @@ namespace Stratum.Core
                     foreach (var (x, y, z) in up)
                     {
                         _plates.Remove((x, y, z));
-                        if (IsPlate(_get(x, y, z)) && On(_get(x, y, z))) Put(x, y, z, Blocks.PressurePlate);
+                        if (IsPlate(_get(x, y, z)) && On(_get(x, y, z))) Put(x, y, z, (ushort)(_get(x, y, z) - 1));
                     }
             }
             if (_later.Count > 0)
@@ -142,6 +143,13 @@ namespace Stratum.Core
                         if (cur == 0 || Base(cur) != Base(id) || cur == id) continue;   // broken or changed meanwhile
                         Put(x, y, z, id);
                     }
+            }
+            // At dawn and dusk the daylight sensors look again.
+            if (IsDay != null && (_dayCheck -= dt) <= 0)
+            {
+                _dayCheck = 1;
+                bool day = IsDay();
+                if (day != _wasDay) { _wasDay = day; foreach (var sc in _sensors) _dirty.Add(sc); _sensors.Clear(); }
             }
             if (_blinks.Count > 0)
             {
@@ -281,7 +289,7 @@ namespace Stratum.Core
                     ushort n = _get(nx, ny, nz);
                     if ((IsLever(n) || IsButton(n) || IsPlate(n) || IsTorch(n)) && On(n)) fed = true;
                     else if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) fed = true;
-                    else if (IsEmitter(n) && On(n) && OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z)) fed = true;
+                    else if (IsEmitter(n) && On(n) && (Blocks.Get(n).Sensor || OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z))) fed = true;
                     else if (_strong.Contains((nx, ny, nz)) && Conductor(n)) fed = true;
                 }
                 if (fed) { _level[c] = 15; buckets[15].Add(c); }
@@ -331,6 +339,20 @@ namespace Stratum.Core
                     }
                     else if (id == Blocks.BlastKeg) { if (Powered(c, x, y, z)) _set(x, y, z, Blocks.KegLit); }
                     else if (def.Piston) Push(c, id, def, Powered(c, x, y, z));
+                    else if (def.Note)
+                    {
+                        // A note block sounds each time power arrives.
+                        bool p = Powered(c, x, y, z), on = (V(id) & 1) == 1;
+                        if (p == on) continue;
+                        _set(x, y, z, (ushort)(p ? id + 1 : id - 1));
+                        if (p) Played?.Invoke(x, y, z, def.Variant >> 1);
+                    }
+                    else if (def.Sensor)
+                    {
+                        _sensors.Add(c);
+                        bool want = IsDay != null && IsDay() && OpenSky(x, y, z), on = (V(id) & 1) == 1;
+                        if (want != on) Later(c, (ushort)(want ? id + 1 : id - 1));
+                    }
                     else if (def.Machine)
                     {
                         // A dispenser throws one thing out each time power arrives.
@@ -360,8 +382,8 @@ namespace Stratum.Core
                     {
                         int f = def.Facing, b = (f + 2) & 3;
                         bool inOn = InputAt(x + DX[b], y, z + DZ[b], f);
-                        ushort want = (ushort)(Blocks.Repeater + f * 2 + (inOn ? 1 : 0));
-                        if (want != id) Later(c, want);
+                        ushort want = (ushort)(def.BaseId + f * 2 + (inOn ? 1 : 0));
+                        if (want != id) Later(c, want, def.Slow);
                     }
                     else if (IsButton(id) && On(id) && !_later.ContainsKey(c))
                         _later[c] = (_time + ButtonFor, (ushort)(id - 1));
@@ -396,6 +418,17 @@ namespace Stratum.Core
                 }
             }
             finally { _applying = false; }
+        }
+
+        public Action<int, int, int, int> Played;             // a note block sounded: where, and which of its eight notes
+        public Func<bool> IsDay;                              // is the sun up (for daylight sensors)
+        readonly HashSet<(int, int, int)> _sensors = new HashSet<(int, int, int)>();
+        bool _wasDay; float _dayCheck;
+
+        bool OpenSky(int x, int y, int z)
+        {
+            for (int yy = y + 1; yy < Chunk.Height; yy++) if (Blocks.Get(_get(x, yy, z)).Opaque) return false;
+            return true;
         }
 
         public Action<int, int, int, int> Fired;              // a dispenser went off: where, and which way it faces
@@ -449,10 +482,11 @@ namespace Stratum.Core
             }
         }
 
-        void Later((int, int, int) c, ushort id)
+        void Later((int, int, int) c, ushort id) => Later(c, id, 0);
+        void Later((int, int, int) c, ushort id, float extra)
         {
             if (_later.TryGetValue(c, out var l) && l.id == id) return;
-            _later[c] = (_time + Delay, id);
+            _later[c] = (_time + Delay + extra, id);
         }
 
         // The sides a powered wire points into: all four for a lone dot, both ends of a straight line, else none.
@@ -481,7 +515,7 @@ namespace Stratum.Core
                     return true;
                 }
                 if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) return true;
-                if (IsEmitter(n) && On(n) && OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z)) return true;
+                if (IsEmitter(n) && On(n) && (Blocks.Get(n).Sensor || OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z))) return true;
                 if (IsWire(n) && _level.ContainsKey((nx, ny, nz)))
                 {
                     if (d == 4) return true;                                 // wire lying on top

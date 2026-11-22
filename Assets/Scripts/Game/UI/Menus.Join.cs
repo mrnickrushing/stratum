@@ -275,7 +275,7 @@ namespace Stratum.Game
         // "Sky Islands · Survival · Easy": the sort of world (unless its name says it), then how it's played.
         static string WorldLine(WorldInfo w)
         {
-            string mode = w.Creative ? "Creative" : "Survival · " + new[] { "Peaceful", "Easy", "Normal" }[Mathf.Clamp(w.Difficulty, 0, 2)];
+            string mode = w.Creative ? "Creative" : "Survival · " + new[] { "Peaceful", "Easy", "Normal", "Hard" }[Mathf.Clamp(w.Difficulty, 0, 3)];
             string kind = Core.WorldGen.KindName(w.Kind);
             return w.Kind == Core.WorldKind.Normal || w.Name.IndexOf(kind, StringComparison.OrdinalIgnoreCase) >= 0 ? mode : kind + " · " + mode;
         }

@@ -106,6 +106,69 @@ namespace Stratum.Core
             b = Rock("stillstone", "Stillstone", Tex.Stillstone, 2.5f, 1); Stillstone = b.Id;
             b = Add("gate_stone", "Gate Stone", Tex.GateStone); b.Hardness = 6; b.Tool = Tool.Pickaxe; b.TierNeeded = 4; b.Sound = Sound.Stone; b.Emit = 9; GateStone = b.Id;
 
+            // A dusting of snow: settles on the ground where it snows, melts by a fire, and anything can be built over it.
+            b = Add("snow_layer", "Snow Layer", Tex.Snow); b.Shape = Shape.Boxes; b.Solid = false; b.Opaque = false; b.Opacity = 0; b.Replaceable = true;
+            b.Hardness = 0.1f; b.Tool = Tool.Shovel; b.Sound = Sound.Snow; b.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16) }; SnowLayer = b.Id;
+            // Vines: hang on the side of things, creep downward, and can be climbed.
+            Vine = Facings("vine", "Vine", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.Climb = true; d.OnWall = true; d.FlatIcon = true;
+                d.Hardness = 0.2f; d.Sound = Sound.Leaves; d.DropItem = ""; d.Top = d.Bottom = d.Side = Tex.Vine;
+                d.Boxes = new[] { Box.Px(0, 0, 15, 16, 16, 16) };
+            });
+
+            // Repeaters that wait longer: right-click one to step through the four.
+            Repeaters[0] = Repeater;
+            for (int i = 0; i < 8; i++) Defs[Repeater + i].Repeat = true;
+            for (int n = 1; n < 4; n++)
+            {
+                int slow = n;
+                Repeaters[n] = Facings("repeater_slow" + n, "Repeater", 8, (d, i) =>
+                {
+                    d.Variant = i & 1; d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Hardness = 0; d.Sound = Sound.Stone;
+                    d.Top = (i & 1) == 1 ? Tex.RepeaterOn : Tex.RepeaterOff; d.Side = d.Bottom = Tex.Stone; d.FlatIcon = true; d.DropItem = "repeater";
+                    // The second pin stands further back the longer it waits.
+                    d.Boxes = new[] { Box.Px(0, 0, 0, 16, 2, 16), Box.Px(7, 2, 3, 9, 6, 5), Box.Px(7, 2, 9 + slow, 9, 6, 11 + slow) };
+                    if ((i & 1) == 1) d.Emit = 4;
+                    d.Repeat = true; d.Slow = slow * 0.1f;
+                }, i => i / 2);
+                Defs[Repeaters[n]].Creative = false; Palette.Remove(Repeaters[n]);
+            }
+            // A rail that gives power while a cart (or anyone) is on it. Twelve blocks: shape * 2 + on.
+            DetectorRail = Facings("detector_rail", "Detector Rail", 12, (d, i) =>
+            {
+                int shape = i / 2;
+                d.Variant = i; d.Shape = Shape.Boxes; d.Solid = false; d.Opaque = false; d.Opacity = 0; d.Cutout = true; d.FlatIcon = true;
+                d.Hardness = 0.7f; d.Tool = Tool.Pickaxe; d.Sound = Sound.Metal; d.Top = d.Bottom = d.Side = Tex.DetectorRail;
+                if (shape < 2) d.Boxes = new[] { Box.Px(0, 0, 0, 16, 1, 16) };
+                else d.Boxes = new[] { Box.Px(0, 0, 0, 16, 1, 4), Box.Px(0, 4, 4, 16, 5, 8), Box.Px(0, 8, 8, 16, 9, 12), Box.Px(0, 12, 12, 16, 13, 16) };
+                if ((i & 1) == 1) d.Emit = 3;
+            }, i => i / 2 < 2 ? i / 2 : i / 2 - 2);
+            // A plate that gives power while daylight falls on it.
+            for (int i = 0; i < 2; i++)
+            {
+                b = Add(i == 0 ? "daylight_sensor" : "daylight_sensor_on", "Daylight Sensor", Tex.SensorTop, Tex.OakPlanks, Tex.OakPlanks);
+                b.Shape = Shape.Boxes; b.Opaque = false; b.Opacity = 0; b.Hardness = 0.4f; b.Tool = Tool.Axe; b.Sound = Sound.Wood; b.Boxes = new[] { Box.Px(0, 0, 0, 16, 6, 16) };
+                b.Variant = i; b.Emitter = true; b.Sensor = true;
+                if (i == 0) DaylightSensor = b.Id; else { b.BaseId = DaylightSensor; b.DropItem = "daylight_sensor"; b.Creative = false; Palette.Remove(b.Id); }
+            }
+            // A block that plays a note when power reaches it; right-click to step through its eight notes.
+            for (int i = 0; i < 16; i++)
+            {
+                b = Add(i == 0 ? "note_block" : "note_block_" + i, "Note Block", Tex.OakPlanks, Tex.NoteSide, Tex.OakPlanks);
+                b.Hardness = 0.8f; b.Tool = Tool.Axe; b.Sound = Sound.Wood; b.Variant = i; b.Machine = true; b.Note = true;
+                if (i == 0) NoteBlock = b.Id; else { b.BaseId = NoteBlock; b.DropItem = "note_block"; b.Creative = false; Palette.Remove(b.Id); }
+            }
+
+            // A chute put against the side of a container feeds into it sideways instead of straight down.
+            SideChute = Facings("chute_side", "Chute", 4, (d, f) =>
+            {
+                d.Shape = Shape.Boxes; d.Opaque = false; d.Opacity = 0; d.Hardness = 3; d.Tool = Tool.Pickaxe; d.TierNeeded = 1; d.Sound = Sound.Metal; d.Container = true;
+                d.Top = Tex.ChuteTop; d.Side = d.Bottom = Tex.ChuteSide; d.DropItem = "chute";
+                d.Boxes = new[] { Box.Px(0, 10, 0, 16, 16, 16), Box.Px(4, 4, 4, 12, 10, 12), Box.Px(6, 4, 12, 10, 8, 16) };
+            });
+            Defs[SideChute].Creative = false; Palette.Remove(SideChute);
+
             // What fire eats.
             for (int i = 1; i < _next; i++)
             {

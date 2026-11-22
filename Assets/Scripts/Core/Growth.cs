@@ -49,15 +49,48 @@ namespace Stratum.Core
                     ushort id = _get(x, y, z);
                     if (id != 0) Tick(x, y, z, id);
                 }
+                if (Snowing != null) { uint sr = _rng.Next(); int sx = bx + (int)(sr & 15), sz = bz + (int)((sr >> 4) & 15); if (Snowing(sx, sz)) Settle(sx, sz); }
             }
         }
 
+        public Func<int, int, bool> Snowing;                // is snow falling on this column just now (the host knows the weather)
+
+        bool Warm(int x, int y, int z)
+        {
+            for (int dy = -2; dy <= 2; dy++)
+                for (int dz = -2; dz <= 2; dz++)
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        int yy = y + dy;
+                        if ((uint)yy < Chunk.Height && Blocks.Get(_get(x + dx, yy, z + dz)).Emit >= 11) return true;
+                    }
+            return false;
+        }
+
+        // Where it is snowing, a column now and then gets a dusting on top.
+        void Settle(int x, int z)
+        {
+            for (int y = 230; y > 40; y--)
+            {
+                ushort id = _get(x, y, z);
+                if (id == 0) continue;
+                var d = Blocks.Get(id);
+                if (d.Solid && d.Shape == Shape.Cube && d.Fluid == 0 && id != Blocks.Ice && _get(x, y + 1, z) == 0 && !Warm(x, y + 1, z)) _set(x, y + 1, z, Blocks.SnowLayer);
+                return;
+            }
+        }
+
+        public Action<int, int, int> FoundPart;
         public Action<int, int, int> FoundFire;             // a fire block nobody is watching (the land was saved burning)
 
         void Tick(int x, int y, int z, ushort id)
         {
             var d = Blocks.Get(id);
             if (id == Blocks.Fire) { FoundFire?.Invoke(x, y, z); return; }
+            if (d.Sensor) { FoundPart?.Invoke(x, y, z); return; }       // a daylight sensor nobody has woken since the land loaded
+            // Ice and settled snow melt beside something hot; vines creep down.
+            if (id == Blocks.Ice || id == Blocks.SnowLayer) { if (Warm(x, y, z)) _set(x, y, z, id == Blocks.Ice ? Blocks.Water : (ushort)0); return; }
+            if (d.BaseId == Blocks.Vine) { if (y > 2 && _get(x, y - 1, z) == 0 && _rng.Value() < 0.12f) _set(x, y - 1, z, id); return; }
             if (d.Grows == 1)
             {
                 var below = Blocks.Get(_get(x, y - 1, z));

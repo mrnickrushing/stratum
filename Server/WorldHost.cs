@@ -39,6 +39,7 @@ namespace Stratum.Server
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public int BoxMob;                           // or the chest cart (its creature number)
             public int Tosses;                           // this second
             public readonly (int x, int y, int z, long at)[] Broke = new (int, int, int, long)[8]; public int BrokeAt;   // blocks they just broke (what falls out of them is theirs to drop)
             public bool SeesDrops => (Features & GameServer.KnowsDrops) != 0;
@@ -52,7 +53,7 @@ namespace Stratum.Server
         Decay _leaves;
         Fire _fire;
         Blasts _blasts;
-        float _bolt = 30;
+        float _bolt = 30, _feed;
         readonly Random _dice = new Random();
         readonly ServerConfig _cfg;
         public readonly ServerWorld World;
@@ -119,6 +120,7 @@ namespace Stratum.Server
             _fire = new Fire(World.Get, World.Put) { Loaded = World.IsLoaded, Spreads = cfg.Difficulty > 0 && !cfg.Creative };
             _blasts = new Blasts(World.Get, World.Put) { Loaded = World.IsLoaded };
             World.Growth.FoundFire = _fire.Found;
+            World.Growth.Snowing = (x, z) => _weather != null && _weather.State != 0 && World.Gen.BiomeAt(x, z) is Biome b && (b == Biome.Tundra || b == Biome.Taiga || b == Biome.Peaks);
             _drops.Burns = (x, y, z) => (uint)y < Chunk.Height && (World.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(World.Get(x, y, z)));
             World.Changed += (x, y, z, id) => { if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z); };
             _blasts.Broke = (x, y, z, d) =>
@@ -142,6 +144,13 @@ namespace Stratum.Server
             _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
             World.Signal.Fired = (x, y, z, dir) => Machines.Dispense(_boxes, _drops, _mobs, World.Get, World.Put, x, y, z, dir, _dice);
             World.Signal.Holds = (x, y, z) => Machines.Holds(_boxes, x, y, z);
+            World.Signal.IsDay = () => _mobs.IsDay && _weather.State != 2;
+            World.Signal.Played = (x, y, z, pitch) =>
+            {
+                var f = new Packet(Net.Msg.Note).I32(x).I32(y).I32(z).U8((byte)pitch).Bytes();
+                foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 48 * 48) o.Conn.Send(f);
+            };
+            World.Growth.FoundPart = (x, y, z) => World.Signal.Wake(x, y, z);
             _mobs.Laid += m => _drops.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             _leaves = new Decay(World.Get, World.Put);
             _leaves.Fell = (x, y, z, d) =>
@@ -171,6 +180,12 @@ namespace Stratum.Server
                     else if (p != null && !p.SeesDrops) Give(p, item, n);
                     else _drops.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
                 }
+                // A broken chest cart spills what it carried.
+                if (m.Kind == MobKind.ChestCart && _boxes.Has(Mob.HoldX + m.Hold, 0, 0))
+                {
+                    foreach (var o in _players.Values) if (o.HasBox && o.BX == Mob.HoldX + m.Hold) o.HasBox = false;
+                    foreach (var st in _boxes.Remove(Mob.HoldX + m.Hold, 0, 0)) if (!st.Empty) _drops.Scatter(st.Item, st.Count, st.Wear, m.X, m.Y + 0.5f, m.Z);
+                }
                 if (p == null) return;
                 if (m.Def.Boss) Broadcast(SaidPacket("", $"{p.Name} defeated the {m.Def.Name}!"));
             };
@@ -189,7 +204,7 @@ namespace Stratum.Server
             _loop = new Thread(Loop) { Name = "world " + Def.Id };
             _loop.Start();
             Log.Info($"world \"{Def.Name}\" ({Def.Id}): {System.IO.Path.GetFullPath(_cfg.Dir)}, seed {World.Meta.seed}, " +
-                     $"{WorldGen.KindName(World.Gen.Kind)}, {(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal" }[Math.Clamp(_cfg.Difficulty, 0, 2)]}");
+                     $"{WorldGen.KindName(World.Gen.Kind)}, {(_cfg.Creative ? "creative" : "survival")}, {new[] { "peaceful", "easy", "normal", "hard" }[Math.Clamp(_cfg.Difficulty, 0, 3)]}");
         }
 
         // A logged-in player chose this world.
@@ -247,7 +262,7 @@ namespace Stratum.Server
                     World.Growth.Tick(dt, _near);
                     _bodies.Clear();
                     foreach (var pl in _players.Values) if (pl.Joined && pl.Alive) _bodies.Add((pl.X, pl.Y, pl.Z));
-                    foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+                    foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && (!m.Def.Vehicle || m.Kind != MobKind.Boat)) _bodies.Add((m.X, m.Y, m.Z));
                     World.Signal.Tick(dt, _bodies);
                     TickMobs(dt);
                     if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); if (drops ^= true) SendDrops(); }
@@ -344,6 +359,8 @@ namespace Stratum.Server
                     case Net.Msg.Park: Park(p, r); break;
                     case Net.Msg.Portal: Portal(p, r); break;
                     case Net.Msg.Toss: Toss(p, r); break;
+                    case Net.Msg.Splash: Splash(p, r); break;
+                    case Net.Msg.OpenCart: OpenCart(p, r); break;
                     case Net.Msg.TakeDrop: TakeDrop(p, r); break;
                     case Net.Msg.Ping: c.Send(_hub.Pong(r.F64())); break;
                 }
@@ -516,7 +533,7 @@ namespace Stratum.Server
             if (id == Blocks.Fire) _fire.Found(x, y, z); else if (id == Blocks.KegLit) _blasts.Prime(x, y, z);
             if (id == 0 || Blocks.Get(id).BaseId != Blocks.Get(cur).BaseId) { p.Broke[p.BrokeAt] = (x, y, z, Environment.TickCount64); p.BrokeAt = (p.BrokeAt + 1) % p.Broke.Length; }
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
-            if (id == Blocks.Chute) _chutes.Add(x, y, z);
+            if (Chutes.Is(id)) _chutes.Add(x, y, z);
             World.Water.Wake(x, y, z);
             World.Signal.Wake(x, y, z);
             if (_boxes.Signs.Remove(Containers.Key(x, y, z))) { _boxes.Dirty = true; Broadcast(new Packet(Net.Msg.Sign).I32(x).I32(y).I32(z).Str("")); }
@@ -564,6 +581,18 @@ namespace Stratum.Server
                 _weather.Set(w, w == 0 ? 900 : 480);
                 Broadcast(SaidPacket("", $"{p.Name} changed the weather to {WeatherSim.Name(w)}"));
                 return;
+            }
+            if (text.StartsWith("/tp "))
+            {
+                // Three numbers: an operator going to a place (a name is handled by the game itself).
+                var c = text.Substring(4).Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                if (c.Length == 3 && float.TryParse(c[0], out float tx) && float.TryParse(c[1], out float ty) && float.TryParse(c[2], out float tz))
+                {
+                    if (!_hub.IsOp(p.Name)) { p.Conn.Send(SaidPacket("", "Only this server's operators can go to a place by its numbers.")); return; }
+                    if (Math.Abs(tx) > 3e6f || Math.Abs(tz) > 3e6f || ty < -20 || ty > 400) { p.Conn.Send(SaidPacket("", "That's off the edge of the world.")); return; }
+                    p.Conn.Send(new Packet(Net.Msg.Arrived).F32(tx).F32(ty).F32(tz));
+                    return;
+                }
             }
             if (text == "/ops") { p.Conn.Send(SaidPacket("", "Operators: " + string.Join(", ", _hub.OpNames()))); return; }
             if (text.StartsWith("/op ") || text.StartsWith("/deop ") || text == "/op" || text == "/deop")
@@ -626,6 +655,7 @@ namespace Stratum.Server
             _mobs.Time01 = (float)World.Meta.time;
             _mobs.Tick(dt, _seen);
             _drops.Tick(dt);
+            if ((_feed -= dt) <= 0) { _feed = 0.4f; _drops.Feed(_chutes.Take); }
             _leaves.Tick(dt);
             _fire.Tick(dt);
             _blasts.Tick(dt);
@@ -665,6 +695,17 @@ namespace Stratum.Server
                 _drops.Scatter(item, count, wear, x, y, z);
             }
             else _drops.Toss(item, count, wear, x, y, z, vx, vy, vz, 1.2f);
+        }
+
+        // A splash potion burst: everyone near hears of it (their own games decide whether it reached them).
+        void Splash(Player p, Reader r)
+        {
+            float x = r.F32(), y = r.F32(), z = r.F32(); string effect = r.Str(); float secs = Math.Clamp(r.F32(), 0, 300);
+            if (++p.Tosses > 40 || !p.Alive || effect.Length > 16 || float.IsNaN(x + y + z)) return;
+            float dx = x - p.X, dy = y - (p.Y + 1), dz = z - p.Z;
+            if (dx * dx + dy * dy + dz * dz > 12 * 12) return;
+            var f = new Packet(Net.Msg.Splashed).F32(x).F32(y).F32(z).Str(effect).F32(secs).Bytes();
+            foreach (var o in _players.Values) if (o.Joined && (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < 32 * 32) o.Conn.Send(f);
         }
 
         void TakeDrop(Player p, Reader r)
@@ -783,17 +824,37 @@ namespace Stratum.Server
             p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(y).I32(z).Stacks(_boxes.At(x, y, z)));
         }
 
+        // A chest cart's store lives at a place of its own (Mob.HoldX + its number); it is within reach while the cart is.
+        bool CartNear(Player p) => _mobs.TryGet(p.BoxMob, out var m) && m.Kind == MobKind.ChestCart && m.Dead <= 0 && (m.X - p.X) * (m.X - p.X) + (m.Y - p.Y) * (m.Y - p.Y) + (m.Z - p.Z) * (m.Z - p.Z) < 8 * 8;
+        bool BoxReach(Player p, int x, int y, int z) => x >= Mob.HoldX ? CartNear(p) : InReach(p, x, y, z);
+
+        void OpenCart(Player p, Reader r)
+        {
+            int id = r.I32();
+            if (!p.Alive || !_mobs.TryGet(id, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
+            if ((m.X - p.X) * (m.X - p.X) + (m.Y - p.Y) * (m.Y - p.Y) + (m.Z - p.Z) * (m.Z - p.Z) > 7 * 7) return;
+            int x = Mob.HoldX + m.Hold;
+            foreach (var o in _players.Values)
+                if (o != p && o.Joined && o.HasBox && o.BX == x && o.BY == 0 && o.BZ == 0)
+                {
+                    if (!CartNear(o)) { o.HasBox = false; continue; }
+                    p.Conn.Send(SaidPacket("", $"{o.Name} is using that. Wait for them to close it.")); return;
+                }
+            p.HasBox = true; p.BX = x; p.BY = 0; p.BZ = 0; p.BoxMob = id;
+            p.Conn.Send(new Packet(Net.Msg.Box).I32(x).I32(0).I32(0).Stacks(_boxes.At(x, 0, 0)));
+        }
+
         void BoxSlot(Player p, Reader r)
         {
             int x = r.I32(), y = r.I32(), z = r.I32(), slot = r.U8(); var st = r.Slot();
             bool hasSeen = r.More; var seen = hasSeen ? r.Slot() : default;       // 0.7.2: what the player saw in the slot before changing it
             if (!p.HasBox || p.BX != x || p.BY != y || p.BZ != z || slot >= Containers.MaxSlots) return;
-            if (!InReach(p, x, y, z)) { p.HasBox = false; return; }
-            if (!Blocks.Get(World.Get(x, y, z)).Container) return;
+            if (!BoxReach(p, x, y, z)) { p.HasBox = false; return; }
+            if (x < Mob.HoldX && !Blocks.Get(World.Get(x, y, z)).Container) return;
             if (slot >= Math.Max(Containers.ChestSlots, _boxes.At(x, y, z).Length)) return;      // a satchel is as big as what fell into it
             bool furnace = Blocks.Get(World.Get(x, y, z)).BaseId == Blocks.Furnace;
             if (Smelting.Hidden(st.Item) || furnace && slot > Smelting.Out) return;
-            if (World.Get(x, y, z) == Blocks.Chute && slot >= Chutes.Slots) return;                     // a chute has five slots              // the fire and the progress are the furnace's own
+            if (Chutes.Is(World.Get(x, y, z)) && slot >= Chutes.Slots) return;                     // a chute has five slots              // the fire and the progress are the furnace's own
             // What they did is applied to what the slot really holds (a furnace may have changed it since they looked).
             var want = st;
             if (furnace && !hasSeen) return;       // a furnace changes under the player's hands: only games that say what they saw may use one

@@ -245,7 +245,7 @@ namespace Stratum.Game
             ((RectTransform)_biomeBtn.transform).Place(0, 1, 458, -378, 372, 68);
             _modeBtn = UIKit.Button(card.transform, "Mode: Survival", () => { _newCreative = !_newCreative; UpdateMode(); }, 28);
             ((RectTransform)_modeBtn.transform).Place(0, 1, 70, -462, 372, 68);
-            _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 3; UpdateMode(); }, 28);
+            _diffBtn = UIKit.Button(card.transform, "Difficulty: Normal", () => { _newDifficulty = (_newDifficulty + 1) % 5; UpdateMode(); }, 28);
             ((RectTransform)_diffBtn.transform).Place(0, 1, 458, -462, 372, 68);
             _keepBtn = UIKit.Button(card.transform, "", () => { _newKeep = !_newKeep; UpdateMode(); }, 28);
             ((RectTransform)_keepBtn.transform).Place(0, 1, 70, -546, 760, 68);
@@ -272,11 +272,13 @@ namespace Stratum.Game
             _diffBtn.SetText("Difficulty: " + GameRoot.DifficultyNames[_newDifficulty]);
             _diffBtn.gameObject.SetActive(!_newCreative);
             _keepBtn.SetText(_newKeep ? "When you fall: keep your things" : "When you fall: things drop in a satchel");
-            _keepBtn.gameObject.SetActive(!_newCreative);
+            _keepBtn.gameObject.SetActive(!_newCreative && _newDifficulty != 4);
             var hint = _new.transform.Find("Card/ModeHint")?.GetComponent<Text>();
             if (hint != null) hint.text = Core.WorldGen.KindHints[(int)_newKind] + "\n" + (_newCreative ? "Every block in the palette, instant breaking, flight. Nothing can hurt you." :
                 _newDifficulty == 0 ? "Gather, craft and build. No monsters, and you never go hungry." :
                 _newDifficulty == 1 ? "Monsters come out at night but hit softly. Hunger won't take you below half health." :
+                _newDifficulty == 3 ? "More monsters, and they hit half as hard again. Hunger can finish you." :
+                _newDifficulty == 4 ? "Hard, with one life: fall once and the world can only be looked at, never played again." :
                 "Monsters at night and in the dark. Keep fed, build a shelter, sleep in a bed.");
         }
 

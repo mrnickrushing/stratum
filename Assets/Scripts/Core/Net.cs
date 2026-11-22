@@ -24,11 +24,15 @@ namespace Stratum.Core
             Hello = 1, Move = 2, WantChunks = 3, SetBlock = 4, Chat = 5, Keep = 6, Ping = 7, Voice = 8,
             Strike = 9, Shoot = 10, UseMob = 11, OpenBox = 12, BoxSlot = 13, CloseBox = 14, Sleep = 15, Drop = 16, SignText = 17, Fertilize = 18, Mount = 19, Park = 20, Portal = 21,
             Toss = 22, TakeDrop = 23,   // 0.14: things on the ground
+            Splash = 24,                // 0.16: a splash potion burst (x, y, z, effect, seconds)
+            OpenCart = 25,              // 0.16: look into a chest cart (its creature number); a Box comes back
             // server -> client
             Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73, Heard = 74,
             Mobs = 75, Hurt = 76, Give = 77, Box = 78, BoxSet = 79, Sleepers = 80, MobSound = 81, Sign = 82, Mounted = 83, Arrived = 84,
             Drops = 86,          // 0.14: what lies on the ground nearby
             Boom = 87,           // 0.14: a blast (x, y, z, power), to be heard and seen
+            Splashed = 88,       // 0.16: a splash potion burst near (x, y, z, effect, seconds)
+            Note = 89,           // 0.16: a note block sounded (x, y, z, which of its eight notes)
             TakeBack = 85,       // 0.7.3: things the player took that weren't there any more (item, count)
         }
 

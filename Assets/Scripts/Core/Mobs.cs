@@ -9,7 +9,9 @@ namespace Stratum.Core
         // 0.14
         Bloat, Hound,
         // 0.15
-        Glob, Shade, Snapper, King, Count }
+        Glob, Shade, Snapper, King,
+        // 0.16
+        ChestCart, Guard, Count }
 
     public sealed class MobDef
     {
@@ -49,11 +51,19 @@ namespace Stratum.Core
         public bool Tame, Sit;                // a friend to someone; told to stay
         public string OwnerKey = "";          // whose (their account, or "me" in a single-player world)
         public float SwimVY;                  // swimmers: how fast they mean to rise or sink
+        // Carts with nobody in them: the rail they are on, the side they came in by, how far along it and how fast.
+        public bool OnRail; public int RailX, RailY, RailZ, From; public float Along, Roll;
+        public int Hold;                      // chest carts: which store is theirs (Containers, at HoldX + Hold)
+        public const int HoldX = 30000000;
         public float WayX, WayZ, WayAt; public bool HasWay;      // the next step of a path round what's in the way
 
         public const byte MBaby = 1, MLove = 2, MRest = 32, MTame = 64, MSit = 128;       // MRest: bred a little while ago, not hungry yet
         public byte More => (byte)((Baby > 0 ? MBaby : 0) | (Love > 0 ? MLove : 0) | (Job << 2) | (BreedCool > 0 ? MRest : 0) | (Tame ? MTame : 0) | (Sit ? MSit : 0));
         public static int JobOf(byte more) => (more >> 2) & 7;
+        // A sheep's colour (which of Blocks.Dyes) rides in its job and its sit flag, neither of which a sheep has a use for.
+        public int Fleece { get => Job | (Sit ? 8 : 0); set { Job = (byte)(value & 7); Sit = (value & 8) != 0; } }
+        public static int FleeceOf(byte more) => JobOf(more) | ((more & MSit) != 0 ? 8 : 0);
+        public static string WoolOf(int fleece) => Blocks.Dyes[Math.Clamp(fleece, 0, Blocks.Dyes.Length - 1)].key + "_wool";
 
         public const byte FHurt = 1, FDead = 2, FAttack = 4, FBurning = 8, FSheared = 16, FWater = 32, FAngry = 64, FStuck = 128;
 
@@ -136,6 +146,9 @@ namespace Stratum.Core
             D(new MobDef { Kind = MobKind.King, Name = "Hollow King", Health = 400, Speed = 3.0f, HalfW = 0.8f, Height = 4.2f, Hostile = true, Boss = true, Blinks = true,
                 Fireproof = true, Damage = 8, Reach = 3.2f, AttackEvery = 1.4f, Sight = 70, Xp = 500,
                 Drops = new[] { ("hollow_crown", 1, 1, 1f), ("starstone", 4, 8, 1f), ("shade_shard", 6, 10, 1f) } });
+            // The Village Guard: slow, heavy and on the villagers' side. It sees off whatever comes for them.
+            D(new MobDef { Kind = MobKind.Guard, Name = "Village Guard", Health = 60, Speed = 1.7f, HalfW = 0.45f, Height = 2.5f, Damage = 7, Reach = 2.2f, Sight = 16 });
+            D(new MobDef { Kind = MobKind.ChestCart, Name = "Chest Cart", Health = 4, HalfW = 0.5f, Height = 1.2f, Vehicle = true, Drops = new[] { ("chest_cart", 1, 1, 1f) } });
             D(new MobDef { Kind = MobKind.Cart, Name = "Minecart", Health = 4, HalfW = 0.5f, Height = 0.8f, Vehicle = true, Drops = new[] { ("minecart", 1, 1, 1f) } });
         }
 
@@ -145,12 +158,13 @@ namespace Stratum.Core
         readonly Dictionary<int, Mob> _byId = new Dictionary<int, Mob>();
         readonly Func<int, int, int, ushort> _get;
         readonly Random _r;
-        int _nextId = 1;
+        int _nextId = 1, _nextHold = 1;
         float _spawnTimer;
 
         public Func<int, int, bool> Loaded = (x, z) => true;      // is the ground there (columns, world coords)
         public Func<int, int, Biome> BiomeAt;
-        public int Difficulty = 2;                                // 0 peaceful, 1 easy, 2 normal
+        public int Difficulty = 2;                                // 0 peaceful, 1 easy, 2 normal, 3 hard
+        float Hits => Difficulty == 1 ? 0.6f : Difficulty >= 3 ? 1.5f : 1;     // how hard creatures hit
         public float Time01 = 0.3f;                               // time of day (0.25 sunrise, 0.75 sunset)
         public bool Spawning = true;
         public string Dimension = "";                             // "" the overworld, "ember" the Ember Deep
@@ -201,7 +215,7 @@ namespace Stratum.Core
         public MobKind? Mount(int id, float px, float py, float pz, out float x, out float y, out float z, out float yaw)
         {
             x = y = z = yaw = 0;
-            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || !(m.Def.Vehicle || m.Tame && m.Kind == MobKind.Camel)) return null;
+            if (!_byId.TryGetValue(id, out var m) || m.Dead > 0 || m.Kind == MobKind.ChestCart || !(m.Def.Vehicle || m.Tame && m.Kind == MobKind.Camel)) return null;
             float dx = m.X - px, dy = m.Y - py, dz = m.Z - pz;
             if (dx * dx + dy * dy + dz * dz > 7 * 7) return null;
             x = m.X; y = m.Y; z = m.Z; yaw = m.Yaw;
@@ -216,6 +230,7 @@ namespace Stratum.Core
             var m = Spawn(kind, x, y, z);
             m.Yaw = yaw; m.Kept = true;
             if (kind == MobKind.Camel) { m.Tame = true; m.OwnerKey = who ?? ""; }      // the camel someone rode here
+            if (kind == MobKind.ChestCart) m.Hold = _nextHold++;
             return m;
         }
 
@@ -258,6 +273,72 @@ namespace Stratum.Core
             else { Sound?.Invoke(m, "hurt"); if (m.Def.Blinks && (!m.Def.Boss || Rand() < 0.3f)) Blink(m, m.X, m.Z, 6, 14); }
         }
 
+        // An empty cart on rails: boosters with power drive it (away from a block at their end when it stands still),
+        // boosters without power stop it, slopes speed it up and slow it down, and it stops where the rails end.
+        void RollCart(Mob m, float dt)
+        {
+            if (!m.OnRail)
+            {
+                int cx = (int)Math.Floor(m.X), cy = (int)Math.Floor(m.Y + 0.3f), cz = (int)Math.Floor(m.Z);
+                if (!Rails.Is(_get(cx, cy, cz))) { cy--; if (!Rails.Is(_get(cx, cy, cz))) return; }
+                m.OnRail = true; m.RailX = cx; m.RailY = cy; m.RailZ = cz; m.From = Rails.Ends(_get(cx, cy, cz)).a; m.Along = 0.5f; m.Roll = 0;
+            }
+            for (int hop = 0; hop < 4; hop++)
+            {
+                ushort id = _get(m.RailX, m.RailY, m.RailZ);
+                if (!Rails.Is(id)) { m.OnRail = false; m.Roll = 0; return; }
+                var (a, b, up) = Rails.Ends(id);
+                if (m.From != a && m.From != b) m.From = a;
+                int to = m.From == a ? b : a;
+                if (hop == 0)
+                {
+                    if (Rails.Booster(id))
+                    {
+                        if (Signal.BoosterPowered(_get, m.RailX, m.RailY, m.RailZ))
+                        {
+                            if (m.Roll < 0.2f)
+                            {
+                                // From a standstill it goes away from whatever blocks one end.
+                                bool Wall(int dir) => Blocks.Get(_get(m.RailX + Rails.DX[dir], m.RailY, m.RailZ + Rails.DZ[dir])).Solid;
+                                if (Wall(to) && !Wall(m.From)) { m.From = to; m.Along = 1 - m.Along; to = m.From == a ? b : a; m.Roll = 1; }
+                                else if (Wall(m.From)) m.Roll = 1;
+                            }
+                            if (m.Roll > 0) m.Roll = Math.Min(9, m.Roll + 10 * dt);
+                        }
+                        else m.Roll = Math.Max(0, m.Roll - 14 * dt);
+                    }
+                    if (up >= 0)
+                    {
+                        if (up == to) { m.Roll -= 6 * dt; if (m.Roll <= 0) { m.From = to; m.Along = 1 - m.Along; m.Roll = 0.4f; to = m.From == a ? b : a; } }
+                        else m.Roll += 6 * dt;
+                    }
+                    m.Roll = Math.Max(0, m.Roll - 0.5f * dt);
+                    if (m.Roll <= 0.02f) { m.Roll = 0; }
+                    m.Along += m.Roll * dt / Rails.Length(id);
+                }
+                if (m.Along < 1) { Place(m, id); return; }
+                // On to the next rail: level, a step up (off the top of a slope) or a step down.
+                int nx = m.RailX + Rails.DX[to], nz = m.RailZ + Rails.DZ[to], back = (to + 2) & 3;
+                int found = int.MinValue;
+                foreach (int dy in new[] { up == to ? 1 : 0, 0, -1 })
+                {
+                    ushort n = _get(nx, m.RailY + dy, nz);
+                    if (Rails.Is(n) && Rails.Joins(n, back) && Loaded(nx, nz)) { found = dy; break; }
+                }
+                if (found == int.MinValue) { m.Along = 1; m.Roll = 0; Place(m, id); return; }      // the end of the line
+                m.RailX = nx; m.RailY += found; m.RailZ = nz; m.From = back; m.Along -= 1;
+            }
+            Place(m, _get(m.RailX, m.RailY, m.RailZ));
+        }
+
+        void Place(Mob m, ushort rail)
+        {
+            var (lx, ly, lz) = Rails.Along(rail, m.From, Math.Clamp(m.Along, 0, 1));
+            float px = m.X, pz = m.Z;
+            m.X = m.RailX + lx; m.Y = m.RailY + ly; m.Z = m.RailZ + lz;
+            if (Math.Abs(m.X - px) + Math.Abs(m.Z - pz) > 0.001f) m.Yaw = (float)(Math.Atan2(m.X - px, m.Z - pz) * 180 / Math.PI);
+        }
+
         // A blast at (x, y, z): everything near is thrown back and hurt, less the further away it stands.
         public void Blast(float x, float y, float z, float power, List<Seen> players)
         {
@@ -278,7 +359,7 @@ namespace Stratum.Core
                 if (!p.Alive || p.Creative) continue;
                 float dx = p.X - x, dy = p.Y + 0.9f - y, dz = p.Z - z, dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
                 if (dist > reach) continue;
-                float dmg = (1 - dist / reach) * power * 5 * (Difficulty == 1 ? 0.6f : 1);
+                float dmg = (1 - dist / reach) * power * 5 * Hits;
                 if (dmg >= 0.5f) HitPlayer?.Invoke(p.Id, dmg, x, z, cause);
             }
         }
@@ -344,11 +425,18 @@ namespace Stratum.Core
                 if ((who ?? "") == m.OwnerKey) m.Sit = !m.Sit;
                 return null;
             }
+            if (m.Kind == MobKind.Sheep && item != null && item.StartsWith("dye_"))
+            {
+                // Dyed: its wool grows that colour from now on.
+                int c = Blocks.DyeIndex(item.Substring(4));
+                if (c >= 0) { m.Fleece = c; m.Kept = true; Sound?.Invoke(m, "say"); }
+                return null;
+            }
             if (item == "shears" && m.Kind == MobKind.Sheep && !m.Sheared)
             {
                 m.Sheared = true; m.Regrow = 240 + Rand() * 240;
                 Sound?.Invoke(m, "say");
-                return ("white_wool", 1 + _r.Next(3));
+                return (Mob.WoolOf(m.Fleece), 1 + _r.Next(3));
             }
             return null;
         }
@@ -378,7 +466,7 @@ namespace Stratum.Core
                 int n = min + _r.Next(max - min + 1);
                 if (n > 0) l.Add((item, n));
             }
-            if (m.Kind == MobKind.Sheep && !m.Sheared) l.Add(("white_wool", 1));
+            if (m.Kind == MobKind.Sheep && !m.Sheared) l.Add((Mob.WoolOf(m.Fleece), 1));
             if (m.Def.Xp > 0) l.Add(("xp", m.Def.Xp + _r.Next(m.Def.Xp + 1)));
             return l;
         }
@@ -404,8 +492,9 @@ namespace Stratum.Core
                 if (m.Kind == MobKind.Arrow) { Arrow(m, dt, players); continue; }
                 if (m.Def.Vehicle)
                 {
-                    // A boat or cart that nobody is in stays where it was left.
+                    // A boat that nobody is in stays where it was left; a cart on rails rolls.
                     m.Hurt = Math.Max(0, m.Hurt - dt);
+                    if (m.Kind != MobKind.Boat && m.Dead <= 0) RollCart(m, dt);
                     if (m.Dead > 0 && (m.Dead -= dt) <= 0) Remove(m);
                     continue;
                 }
@@ -515,7 +604,7 @@ namespace Stratum.Core
         // The animals worth keeping between visits: anything fed or born to a player.
         public void Write(System.IO.BinaryWriter w)
         {
-            w.Write(3);
+            w.Write(4);
             int n = 0; foreach (var m in All) if (m.Kept && m.Dead <= 0) n++;
             w.Write(n);
             foreach (var m in All)
@@ -525,13 +614,14 @@ namespace Stratum.Core
                 w.Write(m.Baby); w.Write(m.BreedCool); w.Write(m.Sheared); w.Write(m.Regrow);
                 w.Write(m.Job); w.Write(m.HomeX); w.Write(m.HomeZ);
                 w.Write(m.Tame); w.Write(m.Sit); w.Write(m.OwnerKey ?? "");
+                w.Write(m.Hold);
             }
         }
 
         public void Read(System.IO.BinaryReader r)
         {
             int ver = r.ReadInt32();
-            if (ver < 1 || ver > 3) return;
+            if (ver < 1 || ver > 4) return;
             int n = r.ReadInt32();
             for (int i = 0; i < n; i++)
             {
@@ -543,12 +633,14 @@ namespace Stratum.Core
                 if (ver >= 2) { job = r.ReadByte(); homeX = r.ReadSingle(); homeZ = r.ReadSingle(); }
                 bool tame = false, sit = false; string owner = "";
                 if (ver >= 3) { tame = r.ReadBoolean(); sit = r.ReadBoolean(); owner = r.ReadString(); }
+                int hold = ver >= 4 ? r.ReadInt32() : 0;
                 if ((int)k < 0 || (int)k >= Defs.Length) continue;
                 var m = Spawn(k, x, y + 0.05f, z);
                 m.Yaw = yaw; m.Health = health; m.Baby = baby; m.BreedCool = breedCool;
                 m.Sheared = sheared; m.Regrow = regrow; m.Kept = true;
                 if (ver >= 2) { m.Job = job; m.HomeX = homeX; m.HomeZ = homeZ; }
                 m.Tame = tame; m.Sit = sit; m.OwnerKey = owner;
+                m.Hold = hold; if (hold >= _nextHold) _nextHold = hold + 1;
             }
         }
 
@@ -642,8 +734,9 @@ namespace Stratum.Core
 
             // A Shade caught out in daylight slips away for good.
             if (d.Blinks && !d.Boss && IsDay && !Ember.In(m.X) && !Quiet.In(m.X) && Rand() < dt * 0.2f && SkyOpen((int)Math.Floor(m.X), (int)Math.Floor(m.Y + 1), (int)Math.Floor(m.Z))) { m.Health = 0; m.Dead = 0.01f; return; }
-            bool pet = m.Tame && m.Kind == MobKind.Hound;
-            if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
+            bool pet = m.Tame && m.Kind == MobKind.Hound || m.Kind == MobKind.Guard;
+            if (m.Kind == MobKind.Guard) Watch(m, dt, ref wx, ref wz, ref speed, ref pet);
+            else if (pet) Pet(m, dt, players, ref wx, ref wz, ref speed);
             Seen? target = null;
             if (!pet && (d.Hostile && Difficulty > 0 || m.Angry))
             {
@@ -684,7 +777,7 @@ namespace Stratum.Core
                         float vy = ty / Math.Max(0.1f, time) + 10 * time;      // lift for the fall
                         float spread = (3 - Difficulty) * 0.5f;
                         Shoot(-m.Id, ex, ey, ez, tx / flat * v + (Rand() - 0.5f) * spread, vy, tz / flat * v + (Rand() - 0.5f) * spread,
-                            d.Damage * (Difficulty == 1 ? 0.6f : 1));
+                            d.Damage * Hits);
                         Sound?.Invoke(m, "shoot");
                     }
                 }
@@ -712,7 +805,7 @@ namespace Stratum.Core
                         if (dist < d.Reach + 0.3f && Math.Abs(dy) < 2 && m.Cool <= 0)
                         {
                             m.Cool = d.AttackEvery; m.Windup = 0.2f;
-                            HitPlayer?.Invoke(t.Id, d.Damage * (Difficulty == 1 ? 0.6f : 1), m.X, m.Z, m);
+                            HitPlayer?.Invoke(t.Id, d.Damage * Hits, m.X, m.Z, m);
                         }
                     }
                     else { m.Target = -1; m.SwimVY = -0.6f; }
@@ -749,7 +842,7 @@ namespace Stratum.Core
                             m.Cool = d.AttackEvery;
                             if (dist < d.Reach + 0.6f && Math.Abs(dy) < 2.4f)
                             {
-                                float dmg = d.Damage * (Difficulty == 1 ? 0.6f : 1) * (m.Kind == MobKind.Glob ? (m.Job == 0 ? 1 : m.Job == 1 ? 0.6f : 0.2f) : 1);
+                                float dmg = d.Damage * Hits * (m.Kind == MobKind.Glob ? (m.Job == 0 ? 1 : m.Job == 1 ? 0.6f : 0.2f) : 1);
                                 HitPlayer?.Invoke(t.Id, dmg, m.X, m.Z, m);
                             }
                         }
@@ -785,7 +878,7 @@ namespace Stratum.Core
                         float a = Rand() * 6.283f, r = 3 + Rand() * 7;
                         m.GoalX = m.X + (float)Math.Cos(a) * r; m.GoalZ = m.Z + (float)Math.Sin(a) * r; m.HasGoal = true;
                         // Villagers stay about their village.
-                        if (m.Kind == MobKind.Villager && (m.X - m.HomeX) * (m.X - m.HomeX) + (m.Z - m.HomeZ) * (m.Z - m.HomeZ) > 22 * 22)
+                        if ((m.Kind == MobKind.Villager || m.Kind == MobKind.Guard) && (m.X - m.HomeX) * (m.X - m.HomeX) + (m.Z - m.HomeZ) * (m.Z - m.HomeZ) > 22 * 22)
                         { m.GoalX = m.HomeX + (Rand() - 0.5f) * 12; m.GoalZ = m.HomeZ + (Rand() - 0.5f) * 12; }
                     }
                     else m.HasGoal = false;
@@ -840,6 +933,26 @@ namespace Stratum.Core
                 if (jumpy && m.OnGround && Rand() < dt * 1.2f) m.VY = 6;
             }
             if (m.InWater && !d.Swims) m.VY = Math.Max(m.VY, d.Floats ? 1.5f : 1.0f);
+        }
+
+        // A village guard goes for the nearest hostile thing within reach of its village; otherwise it walks its rounds
+        // like a villager (so the wandering below is left to carry on).
+        void Watch(Mob m, float dt, ref float wx, ref float wz, ref float speed, ref bool busy)
+        {
+            m.Flee = 0; m.Angry = false; m.Target = -1;
+            Mob foe = null; float best = 14 * 14;
+            foreach (var o in All)
+            {
+                if (!o.Def.Hostile || o.Dead > 0 || o.Def.Boss || o.Kind == MobKind.Arrow || o.Kind == MobKind.Bloat) continue;
+                float fx = o.X - m.X, fy = o.Y - m.Y, fz = o.Z - m.Z, d2 = fx * fx + fy * fy * 4 + fz * fz;
+                if (d2 < best) { best = d2; foe = o; }
+            }
+            if (foe == null) { busy = false; return; }
+            m.HasGoal = false;
+            wx = foe.X - m.X; wz = foe.Z - m.Z; speed *= 1.6f;
+            m.Yaw = (float)(Math.Atan2(wx, wz) * 180 / Math.PI);
+            if (wx * wx + wz * wz > 5) Way(m, foe.X, foe.Y, foe.Z, ref wx, ref wz);
+            else if (m.Cool <= 0) { m.Cool = 1.2f; m.Windup = 0.25f; Hurt(foe, m.Def.Damage, m.X, m.Z, 0, 1.2f); }
         }
 
         // A friend's turn: stay if told, see off anything hostile nearby, otherwise keep up with its owner.
@@ -1112,7 +1225,7 @@ namespace Stratum.Core
                 if (dx * dx + dz * dz > 80 * 80) continue;
                 if (m.Def.Hostile) hostile++; else passive++;
             }
-            int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : HostileCap;
+            int hostileCap = Difficulty == 0 ? 0 : Difficulty == 1 ? HostileCap - 3 : Difficulty >= 3 ? HostileCap + 3 : HostileCap;
             if (Quiet.In(p.X))
             {
                 // Only Shades walk the Quiet, by day or night.
@@ -1162,6 +1275,20 @@ namespace Stratum.Core
             if (v == null || !Loaded(v.X, v.Z)) return;
             int want = Math.Max(2, v.Houses + 1), have = 0;
             foreach (var m in All) if (m.Kind == MobKind.Villager && Math.Abs(m.HomeX - v.X) < 1 && Math.Abs(m.HomeZ - v.Z) < 1) have++;
+            // And one guard to a village.
+            bool guarded = false;
+            foreach (var m in All) if (m.Kind == MobKind.Guard && Math.Abs(m.HomeX - v.X) < 1 && Math.Abs(m.HomeZ - v.Z) < 1) guarded = true;
+            if (!guarded && Difficulty > 0)
+                for (int tries = 0; tries < 6; tries++)
+                {
+                    int gx = v.X + _r.Next(-6, 7), gz = v.Z + _r.Next(-6, 7);
+                    if (!Loaded(gx, gz)) continue;
+                    int gy = Ground(gx, gz, v.Y + 12, 24, out ushort gf);
+                    if (gy == int.MinValue || Blocks.Get(gf).Fluid != 0 || Body.Blocked(_get, gx + 0.5f, gy, gz + 0.5f, 0.45f, 2.5f)) continue;
+                    var g = Spawn(MobKind.Guard, gx + 0.5f, gy, gz + 0.5f);
+                    g.Kept = true; g.HomeX = v.X; g.HomeZ = v.Z;
+                    break;
+                }
             if (have >= want) return;
             for (int tries = 0; tries < 6; tries++)
             {

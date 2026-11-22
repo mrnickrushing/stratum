@@ -16,6 +16,7 @@ namespace Stratum.Game
         public abstract void Toss(Stack s, Vector3 from, Vector3 velocity);    // thrown from the pack
         public abstract void Spill(Vector3 at, Stack s);                       // fallen out of a block just broken
         public abstract void TakeDrop(int id);                                 // picked up: it arrives through Gave
+        public abstract void OpenCart(int mob);                                // a chest cart's store: it comes back through BoxOpened
 
         public abstract void Strike(int mob, float damage);
         public abstract void Shoot(Vector3 from, Vector3 velocity, float damage);
@@ -43,6 +44,9 @@ namespace Stratum.Game
         public Action<MobKind, string, Vector3> MobSound;
         public Action<string> Said;
         public Action<Vector3, float> Boomed;                   // a blast: where, how strong
+        public Action<Vector3, int> Noted;                      // a note block sounded: where, which note
+        public Action<Vector3, string, float> Splashed;         // a splash potion burst: where, what it does, for how long
+        public virtual void Splash(Vector3 at, string effect, float secs) => Splashed?.Invoke(at, effect, secs);
     }
 
     // Single player: the creatures live on this computer, and chests are kept in the world's folder.
@@ -58,7 +62,7 @@ namespace Stratum.Game
         public readonly Decay Leaves;
         public readonly Fire Flames;
         public readonly Blasts Blasts;
-        float _bolt = 20;
+        float _bolt = 20, _feed;
         readonly System.Random _dice = new System.Random();
         public readonly Containers Boxes = new Containers();
         public Furnaces Furnaces;
@@ -95,6 +99,9 @@ namespace Stratum.Game
                 foreach (var (item, n) in Sim.Loot(m))
                     if (item == "xp") { if (killer > 0) Gave?.Invoke(item, n, 0); }
                     else Ground.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
+                // A broken chest cart spills what it carried.
+                if (m.Kind == MobKind.ChestCart && Boxes.Has(Mob.HoldX + m.Hold, 0, 0))
+                    foreach (var s in Boxes.Remove(Mob.HoldX + m.Hold, 0, 0)) if (!s.Empty) Ground.Scatter(s.Item, s.Count, s.Wear, m.X, m.Y + 0.5f, m.Z);
             };
             Sim.Sound += (m, what) => MobSound?.Invoke(m.Kind, what, new Vector3(m.X, m.Y, m.Z));
             // Breaking a chest or opening a satchel hands over what was in it.
@@ -108,6 +115,7 @@ namespace Stratum.Game
             Flames = new Fire(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z), Spreads = difficulty > 0 && !player.Creative };
             Blasts = new Blasts(world.Get, (x, y, z, id) => world.Set(x, y, z, id)) { Loaded = (x, z) => world.IsReady(x, z) };
             if (world.Growth != null) world.Growth.FoundFire = Flames.Found;
+            if (world.Growth != null) world.Growth.Snowing = (x, z) => Weather.State != 0 && world.Gen.BiomeAt(x, z) is Biome b && (b == Biome.Tundra || b == Biome.Taiga || b == Biome.Peaks);
             Ground.Burns = (x, y, z) => (uint)y < Chunk.Height && (world.Get(x, y, z) == Blocks.Fire || Blocks.IsLava(world.Get(x, y, z)));
             Blasts.Broke = (x, y, z, d) =>
             {
@@ -122,6 +130,9 @@ namespace Stratum.Game
             {
                 world.Signal.Fired = (x, y, z, dir) => { Machines.Dispense(Boxes, Ground, Sim, world.Get, (bx, by, bz, id) => world.Set(bx, by, bz, id), x, y, z, dir, _dice); MobSound?.Invoke(MobKind.Arrow, "shoot", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)); };
                 world.Signal.Holds = (x, y, z) => Machines.Holds(Boxes, x, y, z);
+                world.Signal.IsDay = () => Sim.IsDay && Weather.State != 2;
+                world.Signal.Played = (x, y, z, pitch) => Noted?.Invoke(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), pitch);
+                if (world.Growth != null) world.Growth.FoundPart = (x, y, z) => world.Signal.Wake(x, y, z);
             }
             Sim.Laid += m => Ground.Toss("egg", 1, 0, m.X, m.Y + 0.2f, m.Z, 0, 1, 0);
             world.Changed += (x, y, z, old, id) =>
@@ -129,7 +140,7 @@ namespace Stratum.Game
                 if (id == Blocks.Fire) Flames.Found(x, y, z);
                 if (id == Blocks.KegLit) Blasts.Prime(x, y, z);
                 if (id == 0 && Decay.IsLog(Blocks.Get(old))) Leaves.LogBroken(x, y, z);
-                if (id == Blocks.Chute) Chutes?.Add(x, y, z);
+                if (Core.Chutes.Is(id)) Chutes?.Add(x, y, z);
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
                 // A broken chest spills on the ground (a satchel hands its things straight back to the pack).
@@ -143,14 +154,15 @@ namespace Stratum.Game
         public override void Tick(float dt)
         {
             _seen.Clear();
-            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item, Key = "me" });
+            _seen.Add(new Seen { Id = 1, X = _player.Feet.x, Y = _player.Feet.y, Z = _player.Feet.z, Sneaking = _player.Sneaking, Creative = _player.Creative || _player.Spectator, Alive = _player.Health > 0, Sleeping = _player.Asleep, Held = _player.Inv.Held.Item, Key = "me" });
             Sim.Time01 = _sky.Time01;
             Weather.Tick(dt);
             Furnaces.Tick(dt);
             Chutes.Tick(dt);
+            if ((_feed -= dt) <= 0) { _feed = 0.4f; Ground.Feed(Chutes.Take); }
             _bodies.Clear();
             _bodies.Add((_player.Feet.x, _player.Feet.y, _player.Feet.z));
-            foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
+            foreach (var m in Sim.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && (!m.Def.Vehicle || m.Kind != MobKind.Boat)) _bodies.Add((m.X, m.Y, m.Z));      // carts count: they set off detector rails
             _world.Signal?.Tick(dt, _bodies);
             _sky.Weather = Sim.Weather = Weather.State;
             Sim.Tick(dt, _seen);
@@ -209,6 +221,14 @@ namespace Stratum.Game
             if (Ground.Take(id, f.x, f.y, f.z) is (string item, int count, int wear)) Gave?.Invoke(item, count, wear);
         }
 
+        public override void OpenCart(int mob)
+        {
+            if (!Sim.TryGet(mob, out var m) || m.Kind != MobKind.ChestCart || m.Dead > 0) return;
+            var at = new Vector3Int(Mob.HoldX + m.Hold, 0, 0);
+            _open = true; _box = at;
+            BoxOpened?.Invoke(at, Boxes.At(at.x, at.y, at.z));
+        }
+
         public override void OpenBox(Vector3Int at)
         {
             // A dusty chest fills itself the first time it's opened, and is an ordinary chest from then on.
@@ -227,7 +247,7 @@ namespace Stratum.Game
             if (!_open || at != _box) return;
             bool furnace = Blocks.Get(_world.Get(at.x, at.y, at.z)).BaseId == Blocks.Furnace;
             if (furnace && slot > Smelting.Out) return;
-            if (_world.Get(at.x, at.y, at.z) == Blocks.Chute && slot >= Chutes.Slots) return;
+            if (Core.Chutes.Is(_world.Get(at.x, at.y, at.z)) && slot >= Chutes.Slots) return;
             Boxes.Set(at.x, at.y, at.z, slot, s);
             if (furnace) Furnaces.Wake(at.x, at.y, at.z);
             _world.Signal?.Wake(at.x, at.y, at.z);          // a comparator beside it looks again

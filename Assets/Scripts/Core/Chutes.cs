@@ -25,6 +25,20 @@ namespace Stratum.Core
         public Action<int, int, int> Fed;                     // a furnace was given something: wake it
         public int Count => _all.Count;
 
+        static readonly int[] DX = { 0, 1, 0, -1 }, DZ = { 1, 0, -1, 0 };
+        public static bool Is(ushort id) => id == Blocks.Chute || id != 0 && Blocks.Get(id).BaseId == Blocks.SideChute;
+
+        // Something lying on a chute is drawn in: as many of it as there is room for. Returns how many went.
+        public int Take(int x, int y, int z, string item, int count, int wear)
+        {
+            if (wear > 0 || !Is(_get(x, y, z)) || Smelting.Hidden(item)) return 0;
+            var a = _boxes.At(x, y, z);
+            int took = 0;
+            while (took < count && Insert(x, y, z, a, 0, Slots - 1, item)) took++;
+            if (took > 0) Add(x, y, z);
+            return took;
+        }
+
         public Chutes(Containers boxes, Func<int, int, int, ushort> get, Func<int, int, bool> loaded) { _boxes = boxes; _get = get; _loaded = loaded; }
 
         // A chute was put down here.
@@ -62,7 +76,7 @@ namespace Stratum.Core
                 else return false;
                 return true;
             }
-            lo = 0; hi = block == Blocks.Chute ? Slots - 1 : Containers.ChestSlots - 1;
+            lo = 0; hi = Is(block) ? Slots - 1 : Containers.ChestSlots - 1;
             return true;
         }
 
@@ -71,7 +85,7 @@ namespace Stratum.Core
         {
             lo = hi = -1;
             var d = Blocks.Get(block);
-            if (!d.Container || block == Blocks.Satchel || block == Blocks.Chute) return false;      // a chute above pushes for itself
+            if (!d.Container || block == Blocks.Satchel || Is(block)) return false;      // a chute above pushes for itself
             if (d.BaseId == Blocks.Furnace) { lo = hi = Smelting.Out; return true; }
             lo = 0; hi = Containers.ChestSlots - 1;
             return true;
@@ -106,20 +120,24 @@ namespace Stratum.Core
             {
                 var (x, y, z) = Containers.Unkey(k);
                 if (!_loaded(x, z)) continue;
-                if (_get(x, y, z) != Blocks.Chute || !_boxes.TryGet(k, out var a)) { _all.Remove(k); continue; }
+                ushort self = _get(x, y, z);
+                if (!Is(self) || !_boxes.TryGet(k, out var a)) { _all.Remove(k); continue; }
+                // Straight down, or sideways the way a side chute points.
+                int ox = x, oy = y - 1, oz = z;
+                if (self != Blocks.Chute) { int f = Blocks.Get(self).Facing; ox = x + DX[f]; oy = y; oz = z + DZ[f]; }
 
                 // Down: the first thing it holds, into what's underneath.
-                ushort below = _get(x, y - 1, z);
+                ushort below = _get(ox, oy, oz);
                 for (int i = 0; i < Slots; i++)
                 {
                     var s = a[i];
                     if (s.Empty || s.Wear > 0 || Smelting.Hidden(s.Item)) continue;
                     if (!Into(below, s.Item, out int lo, out int hi)) continue;
-                    var tb = _boxes.At(x, y - 1, z);
-                    if (!Insert(x, y - 1, z, tb, lo, hi, s.Item)) continue;
+                    var tb = _boxes.At(ox, oy, oz);
+                    if (!Insert(ox, oy, oz, tb, lo, hi, s.Item)) continue;
                     Set(x, y, z, a, i, s.Count > 1 ? new Stack(s.Item, s.Count - 1) : Stack.None);
-                    if (Blocks.Get(below).BaseId == Blocks.Furnace) Fed?.Invoke(x, y - 1, z);
-                    else if (below == Blocks.Chute) Add(x, y - 1, z);
+                    if (Blocks.Get(below).BaseId == Blocks.Furnace) Fed?.Invoke(ox, oy, oz);
+                    else if (Is(below)) Add(ox, oy, oz);
                     break;
                 }
 

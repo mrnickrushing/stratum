@@ -468,9 +468,10 @@ namespace Stratum.Core
                         case Biome.Jungle:
                             if (rng.Value() < 0.3f) BigOak(ch, ox, gy + 1, oz, ref rng);
                             else Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 8, 13);
+                            Vines(ch, ox, gy + 1, oz, ref rng);
                             break;
                         case Biome.Savanna: Parasol(ch, ox, gy + 1, oz, ref rng); break;
-                        case Biome.Swamp: Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 3, 5); break;
+                        case Biome.Swamp: Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 3, 5); Vines(ch, ox, gy + 1, oz, ref rng); break;
                         case Biome.BirchWood:
                             if (rng.Value() < 0.75f) Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.BirchLog, Blocks.BirchLeaves, 5, 8);
                             else Broadleaf(ch, ox, gy + 1, oz, ref rng, Blocks.OakLog, Blocks.OakLeaves, 4, 6);
@@ -505,6 +506,18 @@ namespace Stratum.Core
             var d = Blocks.Get(below);
             if (y >= 2 && !(d.Solid && d.Shape == Shape.Cube)) ch.Set(x, y - 1, z, Blocks.Dirt);
             return true;
+        }
+
+        // Vines up some sides of a trunk standing at (x, y, z).
+        static void Vines(Chunk ch, int x, int y, int z, ref Rng rng)
+        {
+            for (int k = 0; k < 4; k++)
+            {
+                int len = rng.Range(0, 7);
+                if (len < 2) continue;
+                int dx = k == 1 ? 1 : k == 3 ? -1 : 0, dz = k == 0 ? 1 : k == 2 ? -1 : 0;
+                for (int i = 0; i < len; i++) Put(ch, x + dx, y + i, z + dz, (ushort)(Blocks.Vine + ((k + 2) & 3)), false);
+            }
         }
 
         // A savanna tree: a bare trunk and a wide, flat crown.
