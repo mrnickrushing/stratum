@@ -39,12 +39,18 @@ namespace Stratum.Server
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
+            public int Tosses;                           // this second
+            public readonly (int x, int y, int z, long at)[] Broke = new (int, int, int, long)[8]; public int BrokeAt;   // blocks they just broke (what falls out of them is theirs to drop)
+            public bool SeesDrops => (Features & GameServer.KnowsDrops) != 0;
             public long NextPortal;                      // when they may next ask for a portal to be found or built
             public bool HasSafe; public float SX, SY, SZ;  // where they last stood on something (a satchel after a fall into the sky goes there)
             public bool Alive => (Flags & Net.Dead) == 0;
             public bool Asleep => (Flags & Net.Asleep) != 0;
         }
 
+        DropSim _drops;
+        Decay _leaves;
+        readonly Random _dice = new Random();
         readonly ServerConfig _cfg;
         public readonly ServerWorld World;
         readonly ConcurrentQueue<(Connection c, byte[] f)> _inbox = new ConcurrentQueue<(Connection, byte[])>();
@@ -105,6 +111,13 @@ namespace Stratum.Server
             _chutes.LoadSaved();
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
+            _drops = new DropSim(World.Get) { Loaded = (x, z) => World.IsLoaded(x, z) };
+            _leaves = new Decay(World.Get, World.Put);
+            _leaves.Fell = (x, y, z, d) =>
+            {
+                var b = Mining.Bonus(d, _dice); if (b != null) _drops.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+                b = Mining.Bonus2(d, _dice); if (b != null) _drops.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+            };
             _mobs.VillageNear = (x, z) => World.Gen.Villages.Near(x, z, 96);
             _mobs.Seed = World.Meta.seed;
             _weather = new WeatherSim(World.Meta.seed ^ Environment.TickCount);
@@ -118,8 +131,16 @@ namespace Stratum.Server
             };
             _mobs.Died += (m, killer) =>
             {
-                if (killer <= 0 || !_players.TryGetValue(killer, out var p) || !p.Joined) return;
-                foreach (var (item, n) in _mobs.Loot(m)) Give(p, item, n);
+                _players.TryGetValue(killer, out var p);
+                if (p != null && !p.Joined) p = null;
+                // What it carried falls where it fell; the experience goes to whoever struck the last blow.
+                foreach (var (item, n) in _mobs.Loot(m))
+                {
+                    if (item == "xp") { if (p != null) Give(p, item, n); }
+                    else if (p != null && !p.SeesDrops) Give(p, item, n);
+                    else _drops.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
+                }
+                if (p == null) return;
                 if (m.Def.Boss) Broadcast(SaidPacket("", $"{p.Name} defeated the {m.Def.Name}!"));
             };
             _mobs.Sound += (m, what) =>
@@ -167,6 +188,7 @@ namespace Stratum.Server
         {
             const double Tick = 0.05;
             var clock = Stopwatch.StartNew();
+            bool drops = false;
             double last = 0, nextMoves = 0, nextClock = 0, nextSave = 60, nextUnload = 30, nextStats = 300, nextSecond = 1, nextMobs = 0;
             var made = new List<Chunk>();
             while (!_stop)
@@ -197,13 +219,13 @@ namespace Stratum.Server
                     foreach (var m in _mobs.All) if (m.Dead <= 0 && m.Kind != MobKind.Arrow && !m.Def.Vehicle) _bodies.Add((m.X, m.Y, m.Z));
                     World.Signal.Tick(dt, _bodies);
                     TickMobs(dt);
-                    if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); }
+                    if (now >= nextMobs) { nextMobs = now + 0.1; SendMobs(); if (drops ^= true) SendDrops(); }
                     World.Meta.time += dt / 1200.0;     // Sky.DayLength
                     if (World.Meta.time >= 1) { World.Meta.time -= 1; World.Meta.day++; }
 
                     if (now >= nextMoves) { nextMoves = now + 0.1; SendMoves(); }
                     if (now >= nextClock) { nextClock = now + 5; Broadcast(ClockPacket()); KickSilent(); }
-                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.VoiceFrames = 0; p.Strikes = 0; p.Shots = 0; } CheckSleep(); }
+                    if (now >= nextSecond) { nextSecond = now + 1; foreach (var p in _players.Values) { p.Edits = 0; p.Tosses = 0; p.VoiceFrames = 0; p.Strikes = 0; p.Shots = 0; } CheckSleep(); }
                     if (now >= nextSave) { nextSave = now + 60; SaveAll(false); }
                     if (now >= nextUnload) { nextUnload = now + 30; World.Maintain(Needed, true); }
                     if (now >= nextStats) { nextStats = now + 300; Log.Info($"{_onlineCount} online, {World.Loaded} chunks loaded, {_mobs.All.Count} creatures, day {World.Meta.day}"); }
@@ -291,6 +313,8 @@ namespace Stratum.Server
                     case Net.Msg.Mount: Mount(p, r); break;
                     case Net.Msg.Park: Park(p, r); break;
                     case Net.Msg.Portal: Portal(p, r); break;
+                    case Net.Msg.Toss: Toss(p, r); break;
+                    case Net.Msg.TakeDrop: TakeDrop(p, r); break;
                     case Net.Msg.Ping: c.Send(_hub.Pong(r.F64())); break;
                 }
             }
@@ -458,6 +482,8 @@ namespace Stratum.Server
                 return;
             }
             World.SetRaw(x, y, z, id);
+            if (id == 0 && Decay.IsLog(Blocks.Get(cur))) _leaves.LogBroken(x, y, z);
+            if (id == 0 || Blocks.Get(id).BaseId != Blocks.Get(cur).BaseId) { p.Broke[p.BrokeAt] = (x, y, z, Environment.TickCount64); p.BrokeAt = (p.BrokeAt + 1) % p.Broke.Length; }
             Broadcast(BlockPacket(x, y, z, id, p.Conn.Id));
             if (id == Blocks.Chute) _chutes.Add(x, y, z);
             World.Water.Wake(x, y, z);
@@ -466,7 +492,13 @@ namespace Stratum.Server
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container)
                 foreach (var o in _players.Values) if (o.HasBox && o.BX == x && o.BY == y && o.BZ == z) o.HasBox = false;
             if (Blocks.Get(cur).Container && !Blocks.Get(id).Container && _boxes.Has(x, y, z))
-                foreach (var st in _boxes.Remove(x, y, z)) if (!st.Empty && !Smelting.Hidden(st.Item)) p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
+                foreach (var st in _boxes.Remove(x, y, z))
+                {
+                    if (st.Empty || Smelting.Hidden(st.Item)) continue;
+                    // A broken chest spills on the ground (a satchel hands its things straight back to its owner's pack).
+                    if (p.SeesDrops && cur != Blocks.Satchel) _drops.Scatter(st.Item, st.Count, st.Wear, x + 0.5f, y + 0.4f, z + 0.5f);
+                    else p.Conn.Send(new Packet(Net.Msg.Give).Str(st.Item).U16(st.Count).U16(st.Wear));
+                }
         }
 
         // Whether someone else has the container at this place open.
@@ -528,6 +560,57 @@ namespace Stratum.Server
                 if (p.Joined) _seen.Add(new Seen { Id = p.Conn.Id, X = p.X, Y = p.Y, Z = p.Z, Sneaking = (p.Flags & Net.Sneaking) != 0, Creative = _cfg.Creative, Alive = p.Alive, Sleeping = p.Asleep, Held = p.Held });
             _mobs.Time01 = (float)World.Meta.time;
             _mobs.Tick(dt, _seen);
+            _drops.Tick(dt);
+            _leaves.Tick(dt);
+        }
+
+        // ------------------------------------------------------------------ things on the ground
+
+        // Thrown from a pack, or fallen out of a block the player just broke.
+        void Toss(Player p, Reader r)
+        {
+            string item = r.Str(); int count = r.U16(), wear = r.U16();
+            float x = r.F32(), y = r.F32(), z = r.F32(), vx = r.F32(), vy = r.F32(), vz = r.F32(); bool mined = r.Bool();
+            if (++p.Tosses > 40 || !p.Alive || Items.Get(item) == null || count <= 0 || Smelting.Hidden(item)) return;
+            float dx = x - p.X, dy = y - (p.Y + 1), dz = z - p.Z;
+            if (float.IsNaN(dx + dy + dz) || dx * dx + dy * dy + dz * dz > (Net.Reach + 3) * (Net.Reach + 3)) return;
+            if (mined)
+            {
+                // Only beside a block this player really broke a moment ago (a refused edit drops nothing).
+                long now = Environment.TickCount64; bool ok = false;
+                foreach (var b in p.Broke) if (now - b.at < 2000 && Math.Abs(b.x + 0.5f - x) <= 2.5f && Math.Abs(b.y + 0.5f - y) <= 3.5f && Math.Abs(b.z + 0.5f - z) <= 2.5f) { ok = true; break; }
+                if (!ok || _cfg.Creative) return;
+                _drops.Scatter(item, count, wear, x, y, z);
+            }
+            else _drops.Toss(item, count, wear, x, y, z, vx, vy, vz, 1.2f);
+        }
+
+        void TakeDrop(Player p, Reader r)
+        {
+            int id = r.I32();
+            if (!p.Alive) return;
+            if (_drops.Take(id, p.X, p.Y, p.Z) is (string item, int count, int wear))
+                p.Conn.Send(new Packet(Net.Msg.Give).Str(item).U16(count).U16(wear));
+        }
+
+        // Each player hears what lies within sight of them, five times a second.
+        void SendDrops()
+        {
+            foreach (var p in _players.Values)
+            {
+                if (!p.Joined || !p.SeesDrops) continue;
+                int n = 0;
+                foreach (var d in _drops.All) { float dx = d.X - p.X, dz = d.Z - p.Z; if (dx * dx + dz * dz < 48 * 48) n++; }
+                var pk = new Packet(Net.Msg.Drops).U16(Math.Min(n, 300));
+                int k = 0;
+                foreach (var d in _drops.All)
+                {
+                    float dx = d.X - p.X, dz = d.Z - p.Z;
+                    if (dx * dx + dz * dz >= 48 * 48 || k++ >= 300) continue;
+                    pk.I32(d.Id).Str(d.Item).U16(d.Count).F32(d.X).F32(d.Y).F32(d.Z);
+                }
+                p.Conn.Send(pk);
+            }
         }
 
         // Each player hears about the creatures within sight of them, ten times a second.

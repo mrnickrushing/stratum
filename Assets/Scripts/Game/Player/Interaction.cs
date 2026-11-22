@@ -430,7 +430,7 @@ namespace Stratum.Game
             _swing = 0;
             // A plant on top goes with it.
             ushort above = World.Get(p.x, p.y + 1, p.z);
-            if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch)) Break(p + Vector3Int.up);
+            if (above != 0 && (Blocks.Get(above).Shape == Shape.Cross || Blocks.Get(above).Shape == Shape.Torch && !Blocks.Get(above).OnWall)) Break(p + Vector3Int.up);
             if (P.Creative) { Unsupported(p); return; }
             var held = Items.Get(P.Inv.Held.Item);
             if (Mining.Drops(def, held))
@@ -438,17 +438,13 @@ namespace Stratum.Game
                 var (item, n) = Mining.Drop(def, held);
                 n = Mining.Bounty(def, held, _rng, n);
                 if (!P.Creative) P.AddXp(Mining.XpFor(def, _rng));
-                if (item != null)
-                {
-                    int left = Gain(item, n);
-                    if (left < n) Sfx.I?.Play("pickup", 0.35f, 1.4f);
-                }
+                if (item != null) Fall(p, item, n);
             }
             else if (def.TierNeeded > 0) Toast?.Invoke("Needs a better pickaxe");
             var bonus = Mining.Bonus(def, _rng);
-            if (bonus != null && Gain(bonus, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus != null) Fall(p, bonus, 1);
             var bonus2 = Mining.Bonus2(def, _rng);
-            if (bonus2 != null && Gain(bonus2, 1) == 0) Sfx.I?.Play("pickup", 0.35f, 1.4f);
+            if (bonus2 != null) Fall(p, bonus2, 1);
             Unsupported(p);
             if (held != null && held.Durability > 0 && def.Hardness > 0 && P.Inv.WearHeld())
             {
@@ -553,6 +549,12 @@ namespace Stratum.Game
             bool isFlowerPot = Blocks.Keys[def.BaseId].StartsWith("flower_pot");
             if (def.Shape == Shape.Cross && !isFlowerPot && !CanStand(id, at)) return;
             if (def.Shape == Shape.Cross && isFlowerPot && !Blocks.Get(below).Solid) return;
+            // A torch held against the side of something solid hangs on it.
+            if (id == Blocks.Torch && TargetNormal.y == 0 && target != 0 && Blocks.Get(target).Solid && at == Target + TargetNormal)
+            {
+                Place(at, (ushort)(Blocks.WallTorch + DirOf(-TargetNormal)), id);
+                return;
+            }
             if (def.Shape == Shape.Torch && !Blocks.Get(below).Solid) return;
             if ((Carpet(def) || def.BaseId == Blocks.Candle) && below == 0) return;
             int f = DirOf(look);
@@ -651,7 +653,7 @@ namespace Stratum.Game
 
         static bool Carpet(BlockDef d) => d.Shape == Shape.Boxes && !d.Solid && Blocks.Keys[d.BaseId].StartsWith("carpet_");
         static bool NeedsFloor(ushort id, BlockDef d) =>
-            d.Shape == Shape.Cross || d.Shape == Shape.Torch || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
+            d.Shape == Shape.Cross || d.Shape == Shape.Torch && !d.OnWall || d.BaseId == Blocks.Sign || d.Door && (d.Variant & 1) == 0 || Rails.Is(id) || Signal.NeedsFloor(id)
             || Carpet(d) || d.BaseId == Blocks.Candle;
         static bool OnWall(BlockDef d) => d.OnWall || d.BaseId == Blocks.Ladder || d.BaseId == Blocks.WallSign || d.BaseId == Blocks.Button;
 
@@ -663,7 +665,7 @@ namespace Stratum.Game
             {
                 var q = p - Dir4[k];
                 var hung = Blocks.Get(World.Get(q.x, q.y, q.z));
-                if (hung.Id != 0 && OnWall(hung) && hung.Facing == k && World.Set(q.x, q.y, q.z, 0)) GiveDrop(hung);
+                if (hung.Id != 0 && OnWall(hung) && hung.Facing == k && World.Set(q.x, q.y, q.z, 0)) GiveDrop(hung, q);
             }
             for (int guard = 0; guard < 64; guard++)
             {
@@ -673,7 +675,7 @@ namespace Stratum.Game
                 if (id == 0 || !NeedsFloor(id, d)) return;
                 if (d.Door) World.Set(up.x, up.y + 1, up.z, 0);
                 World.Set(up.x, up.y, up.z, 0);
-                GiveDrop(d);
+                GiveDrop(d, up);
                 if (id != Blocks.SugarCane) return;
                 p = up;                      // a column of cane comes down together
             }
@@ -703,13 +705,20 @@ namespace Stratum.Game
             if (edit.Spent != null) P.Inv.Add(edit.Spent, 1);
         }
 
-        void GiveDrop(BlockDef d)
+        void GiveDrop(BlockDef d, Vector3Int at)
         {
             if (P.Creative) return;
             var (item, n) = Mining.Drop(d);
-            if (item != null && n > 0) Gain(item, n);
+            if (item != null && n > 0) Fall(at, item, n);
             var b2 = Mining.Bonus2(d, _rng);
-            if (b2 != null) Gain(b2, 1);
+            if (b2 != null) Fall(at, b2, 1);
+        }
+
+        // What a broken block gives falls out where it stood, to be walked over.
+        void Fall(Vector3Int at, string item, int n)
+        {
+            if (Link != null) Link.Spill(new Vector3(at.x + 0.5f, at.y + 0.35f, at.z + 0.5f), new Stack(item, n));
+            else Gain(item, n);
         }
 
         void Place(Vector3Int at, ushort block, ushort item)

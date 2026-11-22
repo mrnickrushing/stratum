@@ -884,6 +884,38 @@ namespace Stratum.Server
                     b.Send(new Packet(Net.Msg.Chat).Str("hello Ada"));
                     Check(a.Wait(Net.Msg.Said, r => r.Str() == "Bea" && r.Str() == "hello Ada") != null, "chat reaches the other player");
 
+                    // Things on the ground, for a game that knows about them.
+                    using (var d = new Bot(port) { Features = 31 })
+                    {
+                        d.Create("Dot", "dot-password", world: "");
+                        Check(d.Welcome(), "Dot joins with a game that shows things on the ground");
+                        d.Move(px + 0.5f, py + 1, pz + 2.5f);
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.Toss).Str("gold_ingot").U16(1).U16(0).F32(px + 0.5f).F32(py + 3).F32(pz + 2.5f).F32(0).F32(0).F32(0).Bool(true));
+                        d.Send(new Packet(Net.Msg.Toss).Str("cobble").U16(4).U16(0).F32(px + 0.5f).F32(py + 3).F32(pz + 2.5f).F32(0).F32(0).F32(0).Bool(false));
+                        int dropId = 0; bool gold = false;
+                        Check(d.Wait(Net.Msg.Drops, r =>
+                        {
+                            int n = r.U16(); bool any = false;
+                            for (int i = 0; i < n; i++) { int id = r.I32(); string it = r.Str(); int c = r.U16(); float qx = r.F32(), qy = r.F32(), qz = r.F32(); if (it == "cobble" && c == 4) { dropId = id; any = true; } if (it == "gold_ingot") gold = true; }
+                            return any;
+                        }, 3000) != null && !gold, "what she throws down lies on the ground for everyone; something said to have fallen from a block she never broke does not appear");
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        Check(d.Wait(Net.Msg.Give, null, 500) == null, "it can't be picked up the instant it leaves the hand");
+                        Thread.Sleep(1500);
+                        float lx = 0, ly = 0, lz = 0;
+                        // The newest word on where it lies (it was still falling in the first ones).
+                        for (int k = 0; k < 40; k++)
+                            d.Wait(Net.Msg.Drops, r => { int n = r.U16(); for (int i = 0; i < n; i++) { int id = r.I32(); r.Str(); r.U16(); float qx = r.F32(), qy = r.F32(), qz = r.F32(); if (id == dropId) { lx = qx; ly = qy; lz = qz; } } return true; }, 120);
+                        d.Move(lx, ly, lz);
+                        Thread.Sleep(150);
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        string gotIt = null; int gotN = 0;
+                        d.Wait(Net.Msg.Give, r => { gotIt = r.Str(); gotN = r.U16(); return true; }, 2000);
+                        Check(gotIt == "cobble" && gotN == 4, $"a moment later she picks it up (got {gotN} {gotIt}, it lay at {lx:0.0} {ly:0.0} {lz:0.0}, she stood by {px} {py} {pz})");
+                        d.Send(new Packet(Net.Msg.TakeDrop).I32(dropId));
+                        Check(d.Wait(Net.Msg.Give, null, 400) == null, "and only once");
+                    }
                     // A chest: Ada fills a slot, Bea sees it, breaking it hands the things to Ada.
                     a.Send(new Packet(Net.Msg.SetBlock).I32(px).I32(py + 1).I32(pz).U16(Blocks.Chest).U16(0));
                     Check(b.Wait(Net.Msg.Block, r => r.I32() == px && r.I32() == py + 1 && r.I32() == pz && r.U16() == Blocks.Chest) != null, "Ada places a chest");
@@ -1121,6 +1153,7 @@ namespace Stratum.Server
                 using (var a = new Bot(srv4.Port)) { a.Login("\u212Ait", "other-password"); Check(a.Refused() != null, "nor log in as Kit without Kit's password"); }
                 srv4.Stop();
                 ReviewChecks();
+                MechanicsChecks();
                 EmberChecks();
                 WorldChecks(Path.Combine(dir, "worlds-test"));
                 KindChecks(Path.Combine(dir, "kinds-test"));
@@ -1129,6 +1162,57 @@ namespace Stratum.Server
             finally { try { Directory.Delete(dir, true); } catch { } }
             Console.WriteLine(_fails == 0 ? "ALL PASSED" : $"{_fails} FAILED");
             return _fails == 0 ? 0 : 1;
+        }
+
+        // A little world in a dictionary for trying rules out: stone up to y = 10, air above.
+        sealed class Patch
+        {
+            public readonly Dictionary<(int, int, int), ushort> Cells = new Dictionary<(int, int, int), ushort>();
+            public ushort Get(int x, int y, int z) => Cells.TryGetValue((x, y, z), out var b) ? b : y <= 10 ? Blocks.Stone : (ushort)0;
+            public void Set(int x, int y, int z, ushort id) => Cells[(x, y, z)] = id;
+        }
+
+        // 0.14: things on the ground, loose blocks, leaves without a trunk.
+        static void MechanicsChecks()
+        {
+            var w = new Patch();
+            var drops = new DropSim(w.Get);
+            drops.Toss("cobble", 3, 0, 0.5f, 14, 0.5f, 2, 1, 0);
+            drops.Toss("cobble", 2, 0, 0.5f, 14, 0.5f, 2, 1, 0);
+            for (int i = 0; i < 200; i++) drops.Tick(0.05f);
+            Check(drops.All.Count == 1 && drops.All[0].Count == 5 && Math.Abs(drops.All[0].Y - 11) < 0.05f && drops.All[0].Rest,
+                $"things thrown down land on the ground, lie still and pile together ({drops.All.Count} stacks, y {(drops.All.Count > 0 ? drops.All[0].Y : 0):0.00})");
+            int id = drops.All[0].Id; float dx = drops.All[0].X;
+            Check(drops.Take(id, dx + 30, 11, 0.5f) == null, "they can't be picked up from far away");
+            var got = drops.Take(id, dx, 11, 0.5f);
+            Check(got is (string it, int n, int _) && it == "cobble" && n == 5 && drops.All.Count == 0, "walking over them picks the whole stack up, once");
+            Check(drops.Take(id, dx, 11, 0.5f) == null, "and a second taker gets nothing");
+            drops.Toss("cobble", 1, 0, 0.5f, 12, 0.5f, 0, 0, 0);
+            for (int i = 0; i < 20 * 301; i++) drops.Tick(0.05f);
+            Check(drops.All.Count == 0, "what nobody picks up is gone after five minutes");
+
+            // Sand with nothing under it falls, and what was on top follows.
+            var water = new Water(w.Get, w.Set);
+            w.Set(3, 20, 3, Blocks.Sand); w.Set(3, 21, 3, Blocks.Sand);
+            water.Wake(3, 20, 3);
+            for (int i = 0; i < 400 && water.Busy; i++) water.Tick(0.05f);
+            Check(w.Get(3, 11, 3) == Blocks.Sand && w.Get(3, 12, 3) == Blocks.Sand && w.Get(3, 20, 3) == 0 && w.Get(3, 21, 3) == 0, "sand with nothing under it falls to the ground, and the sand on top of it follows");
+
+            // A tree: cut the trunk and the leaves go; leaves by another trunk stay.
+            var t = new Patch();
+            for (int y = 11; y <= 14; y++) t.Set(0, y, 0, Blocks.OakLog);
+            for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == 0) t.Set(x, y, z, Blocks.OakLeaves);
+            for (int y = 11; y <= 14; y++) t.Set(20, y, 0, Blocks.OakLog);
+            t.Set(21, 14, 0, Blocks.OakLeaves);
+            var decay = new Decay(t.Get, t.Set); int fell = 0; decay.Fell = (x, y, z, d) => fell++;
+            for (int y = 11; y <= 13; y++) { t.Set(0, y, 0, 0); decay.LogBroken(0, y, 0); }
+            for (int i = 0; i < 200; i++) decay.Tick(0.05f);
+            Check(fell == 0, "leaves stay while any of the trunk is left");
+            t.Set(0, 14, 0, 0); decay.LogBroken(0, 14, 0);
+            for (int i = 0; i < 200; i++) decay.Tick(0.05f);
+            int left = 0; for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) for (int y = 14; y <= 15; y++) if (t.Get(x, y, z) == Blocks.OakLeaves) left++;
+            Check(left == 0 && fell == 49 && t.Get(21, 14, 0) == Blocks.OakLeaves, $"with the whole trunk cut the leaves fall away, and another tree's leaves stay ({left} left, {fell} fell)");
+            Check(Blocks.Get((ushort)(Blocks.WallTorch + 2)).OnWall && Mining.Drop(Blocks.Get((ushort)(Blocks.WallTorch + 2))).item == "torch", "a torch on a wall gives a torch back");
         }
 
         // Things a read through the code turned up (0.13).

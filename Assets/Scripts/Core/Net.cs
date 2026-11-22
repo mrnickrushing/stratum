@@ -23,9 +23,11 @@ namespace Stratum.Core
             // client -> server
             Hello = 1, Move = 2, WantChunks = 3, SetBlock = 4, Chat = 5, Keep = 6, Ping = 7, Voice = 8,
             Strike = 9, Shoot = 10, UseMob = 11, OpenBox = 12, BoxSlot = 13, CloseBox = 14, Sleep = 15, Drop = 16, SignText = 17, Fertilize = 18, Mount = 19, Park = 20, Portal = 21,
+            Toss = 22, TakeDrop = 23,   // 0.14: things on the ground
             // server -> client
             Welcome = 64, Refuse = 65, Chunk = 66, Block = 67, Joined = 68, Left = 69, Moved = 70, Clock = 71, Said = 72, Pong = 73, Heard = 74,
             Mobs = 75, Hurt = 76, Give = 77, Box = 78, BoxSet = 79, Sleepers = 80, MobSound = 81, Sign = 82, Mounted = 83, Arrived = 84,
+            Drops = 86,          // 0.14: what lies on the ground nearby
             TakeBack = 85,       // 0.7.3: things the player took that weren't there any more (item, count)
         }
 

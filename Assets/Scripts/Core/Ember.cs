@@ -278,7 +278,7 @@ namespace Stratum.Core
             for (int dz = -2; dz <= 2; dz++)
                 for (int dx = -1; dx <= 4; dx++)
                 {
-                    for (int y = by; y < by + 5; y++) set(bx + dx, y, bz + dz, 0);
+                    for (int y = by; y < by + 5; y++) if (!Blocks.Get(get(bx + dx, y, bz + dz)).Container) set(bx + dx, y, bz + dz, 0);      // a chest in the way stays, with what's in it
                     if (!Blocks.Get(get(bx + dx, by - 1, bz + dz)).Solid || toEmber && Math.Abs(dz) <= 1) set(bx + dx, by - 1, bz + dz, Blocks.Obsidian);
                 }
             for (int dx = 0; dx < 4; dx++) { set(bx + dx, by - 1, bz, Blocks.Obsidian); set(bx + dx, by + 3, bz, Blocks.Obsidian); }

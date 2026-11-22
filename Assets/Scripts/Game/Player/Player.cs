@@ -78,6 +78,7 @@ namespace Stratum.Game
         public Vector3 Feet { get => transform.position; set => transform.position = value; }
         public Vector3 EyePos => Head.position;
 
+        float _lastForward = -9; bool _tapSprint;
         void Update()
         {
             float dt = Mathf.Min(Time.deltaTime, 0.05f);
@@ -96,7 +97,10 @@ namespace Stratum.Game
                 if (Keys.Down(Act.Left)) move.x -= 1;
                 jump = Keys.Down(Act.Jump);
                 jumpPressed = Keys.Pressed(Act.Jump);
-                sprintKey = Keys.Down(Act.Sprint);
+                // Tapping forward twice quickly sprints for as long as forward is held.
+                if (Keys.Pressed(Act.Forward)) { if (Time.unscaledTime - _lastForward < 0.3f) _tapSprint = true; _lastForward = Time.unscaledTime; }
+                if (!Keys.Down(Act.Forward)) _tapSprint = false;
+                sprintKey = Keys.Down(Act.Sprint) || _tapSprint;
                 sneakKey = Keys.Down(Act.Sneak);
                 down = sneakKey;
             }

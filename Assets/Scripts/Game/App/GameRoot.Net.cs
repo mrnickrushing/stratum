@@ -129,10 +129,10 @@ namespace Stratum.Game
                 byte[] sealedLogin;
                 try { sealedLogin = Secure.Seal(keyMod, keyExp, nonce, secret ?? "", invite ?? "", out loginKey); }
                 catch (Exception e) { Debug.LogWarning("[Stratum] couldn't seal the login: " + e); net.Dispose(); _pendingNet = null; _menus.ShowJoin("This computer couldn't encrypt the login. Please tell whoever runs the server."); yield break; }
-                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str("").Str("").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(sealedLogin).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             }
             else   // a server from before 0.8 has no key to seal to
-                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(15).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
+                hello.Str(secret ?? "").Str(invite ?? "").Str(Application.version + " " + Application.platform).Str(world ?? "").I32(31).U8((byte)Extras.Outfit).Blob(new byte[0]).Blob(Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : new byte[0]);
             net.Send(hello);
 
             Reader welcome = null; t = 0;
@@ -433,6 +433,9 @@ namespace Stratum.Game
                 }
                 case Net.Msg.Mobs:
                     (_link as RemoteLink)?.Received(r);
+                    break;
+                case Net.Msg.Drops:
+                    (_link as RemoteLink)?.ReceivedDrops(r);
                     break;
                 case Net.Msg.Arrived:
                     Land(new Vector3(r.F32(), r.F32() + 0.01f, r.F32()));

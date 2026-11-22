@@ -11,6 +11,11 @@ namespace Stratum.Game
     public abstract class Link
     {
         public readonly List<MobState> Mobs = new List<MobState>();
+        public readonly List<DropState> Drops = new List<DropState>();     // what lies on the ground nearby
+
+        public abstract void Toss(Stack s, Vector3 from, Vector3 velocity);    // thrown from the pack
+        public abstract void Spill(Vector3 at, Stack s);                       // fallen out of a block just broken
+        public abstract void TakeDrop(int id);                                 // picked up: it arrives through Gave
 
         public abstract void Strike(int mob, float damage);
         public abstract void Shoot(Vector3 from, Vector3 velocity, float damage);
@@ -48,6 +53,9 @@ namespace Stratum.Game
         readonly string _file, _mobFile;
         readonly int _difficulty;
         public readonly MobSim Sim;
+        public readonly DropSim Ground;
+        public readonly Decay Leaves;
+        readonly System.Random _dice = new System.Random();
         public readonly Containers Boxes = new Containers();
         public Furnaces Furnaces;
         public Chutes Chutes;
@@ -76,15 +84,33 @@ namespace Stratum.Game
             _mobFile = folder != null ? Path.Combine(folder, "creatures.bin") : null;
             if (_mobFile != null) try { Sim.LoadFile(_mobFile); } catch (Exception e) { Debug.LogWarning("creatures unreadable: " + e.Message); }
             Sim.HitPlayer += (id, dmg, fx, fz, from) => Hurt?.Invoke(dmg, new Vector3(fx, _player.Feet.y, fz), from.Kind);
-            Sim.Died += (m, killer) => { if (killer > 0) foreach (var (item, n) in Sim.Loot(m)) Gave?.Invoke(item, n, 0); };
+            Ground = new DropSim(world.Get) { Loaded = (x, z) => world.IsReady(x, z) };
+            // What a creature carried falls where it fell; the experience goes to whoever struck the last blow.
+            Sim.Died += (m, killer) =>
+            {
+                foreach (var (item, n) in Sim.Loot(m))
+                    if (item == "xp") { if (killer > 0) Gave?.Invoke(item, n, 0); }
+                    else Ground.Scatter(item, n, 0, m.X, m.Y + 0.4f, m.Z);
+            };
             Sim.Sound += (m, what) => MobSound?.Invoke(m.Kind, what, new Vector3(m.X, m.Y, m.Z));
             // Breaking a chest or opening a satchel hands over what was in it.
+            Leaves = new Decay(world.Get, (x, y, z, id) => world.Set(x, y, z, id));
+            Leaves.Fell = (x, y, z, d) =>
+            {
+                var b = Mining.Bonus(d, _dice); if (b != null) Ground.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+                b = Mining.Bonus2(d, _dice); if (b != null) Ground.Scatter(b, 1, 0, x + 0.5f, y + 0.4f, z + 0.5f);
+            };
             world.Changed += (x, y, z, old, id) =>
             {
+                if (id == 0 && Decay.IsLog(Blocks.Get(old))) Leaves.LogBroken(x, y, z);
                 if (id == Blocks.Chute) Chutes?.Add(x, y, z);
                 if (Boxes.Signs.Remove(Containers.Key(x, y, z))) { Boxes.Dirty = true; SignChanged?.Invoke(new Vector3Int(x, y, z), ""); }
                 if (!Blocks.Get(old).Container || Blocks.Get(id).Container || !Boxes.Has(x, y, z)) return;
-                foreach (var s in Boxes.Remove(x, y, z)) if (!s.Empty && !Smelting.Hidden(s.Item)) Gave?.Invoke(s.Item, s.Count, s.Wear);
+                // A broken chest spills on the ground (a satchel hands its things straight back to the pack).
+                foreach (var s in Boxes.Remove(x, y, z))
+                    if (s.Empty || Smelting.Hidden(s.Item)) continue;
+                    else if (old == Blocks.Satchel) Gave?.Invoke(s.Item, s.Count, s.Wear);
+                    else Ground.Scatter(s.Item, s.Count, s.Wear, x + 0.5f, y + 0.4f, z + 0.5f);
             };
         }
 
@@ -102,6 +128,10 @@ namespace Stratum.Game
             _world.Signal?.Tick(dt, _bodies);
             _sky.Weather = Sim.Weather = Weather.State;
             Sim.Tick(dt, _seen);
+            Ground.Tick(dt);
+            Leaves.Tick(dt);
+            Drops.Clear();
+            foreach (var d in Ground.All) Drops.Add(new DropState { Id = d.Id, Item = d.Item, Count = d.Count, Pos = new Vector3(d.X, d.Y, d.Z) });
             Mobs.Clear();
             foreach (var m in Sim.All)
                 Mobs.Add(new MobState { Id = m.Id, Kind = m.Kind, Pos = new Vector3(m.X, m.Y, m.Z), Yaw = m.Yaw, Pitch = m.Pitch, Flags = m.Flags, Health = m.Health / m.Def.Health, More = m.More });
@@ -127,6 +157,14 @@ namespace Stratum.Game
         {
             var got = Sim.Use(mob, item, _player.Feet.x, _player.Feet.z);
             if (got is (string it, int n)) Gave?.Invoke(it, n, 0);
+        }
+
+        public override void Toss(Stack s, Vector3 from, Vector3 v) => Ground.Toss(s.Item, s.Count, s.Wear, from.x, from.y, from.z, v.x, v.y, v.z, 1.2f);
+        public override void Spill(Vector3 at, Stack s) => Ground.Scatter(s.Item, s.Count, s.Wear, at.x, at.y, at.z);
+        public override void TakeDrop(int id)
+        {
+            var f = _player.Feet;
+            if (Ground.Take(id, f.x, f.y, f.z) is (string item, int count, int wear)) Gave?.Invoke(item, count, wear);
         }
 
         public override void OpenBox(Vector3Int at)

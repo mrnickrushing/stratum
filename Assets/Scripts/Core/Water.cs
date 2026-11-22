@@ -24,7 +24,7 @@ namespace Stratum.Core
 
         public Water(Func<int, int, int, ushort> get, Action<int, int, int, ushort> set) { _get = get; _set = set; }
 
-        public bool Busy => _next[0].Count > 0 || _next[1].Count > 0;
+        public bool Busy => _next[0].Count > 0 || _next[1].Count > 0 || _loose.Count > 0;
 
         static long Key(int x, int y, int z) => ((long)(x & 0x3FFFFFF) << 38) | ((long)(z & 0x3FFFFFF) << 12) | (long)(y & 0xFFF);
 
@@ -40,14 +40,56 @@ namespace Stratum.Core
         // Something changed at (x, y, z): the fluids there and around it take another look.
         public void Wake(int x, int y, int z)
         {
+            Loose(x, y, z); Loose(x, y + 1, z);
             Queue(x, y, z);
             Queue(x + 1, y, z); Queue(x - 1, y, z);
             Queue(x, y + 1, z); Queue(x, y - 1, z);
             Queue(x, y, z + 1); Queue(x, y, z - 1);
         }
 
+        // ---- loose blocks (sand, gravel): with nothing under them they fall, a block at a time
+        readonly List<(int x, int y, int z)> _loose = new List<(int, int, int)>(), _falling = new List<(int, int, int)>();
+        readonly HashSet<long> _looseQueued = new HashSet<long>();
+        float _fallTimer;
+        const float FallEvery = 0.07f;
+
+        void Loose(int x, int y, int z)
+        {
+            if ((uint)y >= Chunk.Height || !Blocks.Get(_get(x, y, z)).Falls) return;
+            if (_looseQueued.Add(Key(x, y, z))) _loose.Add((x, y, z));
+        }
+
+        static bool FallsThrough(ushort id)
+        {
+            if (id == 0) return true;
+            var d = Blocks.Get(id);
+            return d.Fluid != 0 || d.Replaceable;
+        }
+
+        void Fall(float dt)
+        {
+            if (_loose.Count == 0) { _fallTimer = 0; return; }
+            if ((_fallTimer -= dt) > 0) return;
+            _fallTimer = FallEvery;
+            _falling.Clear();
+            int n = Math.Min(_loose.Count, Budget);
+            for (int i = 0; i < n; i++) _falling.Add(_loose[i]);
+            _loose.RemoveRange(0, n);
+            foreach (var p in _falling) _looseQueued.Remove(Key(p.x, p.y, p.z));
+            foreach (var (x, y, z) in _falling)
+            {
+                ushort id = _get(x, y, z);
+                if (!Blocks.Get(id).Falls || y <= 0 || !Here(x, z) || !FallsThrough(_get(x, y - 1, z))) continue;
+                _set(x, y, z, 0);
+                _set(x, y - 1, z, id);
+                Wake(x, y, z);            // whatever rested on it follows, and water closes in
+                Wake(x, y - 1, z);        // and it keeps falling
+            }
+        }
+
         public void Tick(float dt)
         {
+            Fall(dt);
             for (int q = 0; q < 2; q++)
             {
                 if (_next[q].Count == 0) { _timer[q] = 0; continue; }

@@ -27,6 +27,7 @@ namespace Stratum.Server
             public List<string> tokens { get; set; } = new List<string>();
             public int fails { get; set; }
             public long lockedUntil { get; set; }
+            [System.Text.Json.Serialization.JsonIgnore] public long nextTry;
         }
 
         sealed class Store
@@ -116,7 +117,13 @@ namespace Stratum.Server
 
                     case Mode.Login:
                         if (a == null) return new Result($"There's no account called {name} here. Check the spelling, or make one.");
-                        if (a.lockedUntil > now) return new Result("Too many wrong passwords. Wait a minute and try again.");
+                        // After too many wrong passwords, guesses are slowed to one every few seconds for a minute. The
+                        // right password still gets in, so nobody can lock someone else out by guessing at their name.
+                        if (a.lockedUntil > now)
+                        {
+                            if (now < a.nextTry) return new Result("Too many wrong passwords. Wait a few seconds and try again.");
+                            a.nextTry = now + 3 * TimeSpan.TicksPerSecond;
+                        }
                         if (a.hash == "")
                         {
                             if (secret.Length < MinPassword || secret.Length > MaxPassword) return new Result($"Your password was reset. Type a new one of {MinPassword}-{MaxPassword} characters.");
@@ -125,7 +132,7 @@ namespace Stratum.Server
                         }
                         else if (!Matches(a, secret))
                         {
-                            if (++a.fails >= 5) { a.fails = 0; a.lockedUntil = now + TimeSpan.TicksPerMinute; }
+                            if (++a.fails >= 5) { a.fails = 0; a.lockedUntil = now + TimeSpan.TicksPerMinute; a.nextTry = now + 3 * TimeSpan.TicksPerSecond; }
                             Save();
                             return new Result("Wrong password.");
                         }
