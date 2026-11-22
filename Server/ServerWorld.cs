@@ -249,6 +249,7 @@ namespace Stratum.Server
         public bool hasBed { get; set; }
         public int xpLevel { get; set; }
         public int xpPoints { get; set; }
+        public string notes { get; set; } = "";       // goals reached and statistics, as the game wrote them
         public int bx { get; set; }
         public int by { get; set; }
         public int bz { get; set; }

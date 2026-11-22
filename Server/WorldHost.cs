@@ -28,7 +28,7 @@ namespace Stratum.Server
             public bool Joined;
             public float X, Y, Z, Yaw, Pitch;
             public byte Flags;
-            public string Held = "";
+            public string Held = ""; public bool Shield;
             public bool Moved;
             public int CX => (int)Math.Floor(X / 16f);
             public int CZ => (int)Math.Floor(Z / 16f);
@@ -74,6 +74,7 @@ namespace Stratum.Server
         readonly List<(float, float)> _near = new List<(float, float)>();
         WeatherSim _weather;
         string MobFile => System.IO.Path.Combine(_cfg.Dir, "creatures.bin");
+        string DropFile => System.IO.Path.Combine(_cfg.Dir, "drops.bin");
         string BoxFile => System.IO.Path.Combine(_cfg.Dir, "containers.bin");
         readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
         readonly Dictionary<long, List<Player>> _waiters = new Dictionary<long, List<Player>>();
@@ -117,6 +118,7 @@ namespace Stratum.Server
             _mobs = new MobSim(World.Get, World.Meta.seed) { Difficulty = cfg.Difficulty, BiomeAt = World.Gen.BiomeAt };
             _mobs.Loaded = (x, z) => World.IsLoaded(x, z);
             _drops = new DropSim(World.Get) { Loaded = (x, z) => World.IsLoaded(x, z) };
+            try { _drops.LoadFile(DropFile); } catch (Exception e) { Log.Warn("drops.bin unreadable: " + e.Message); }
             _fire = new Fire(World.Get, World.Put) { Loaded = World.IsLoaded, Spreads = cfg.Difficulty > 0 && !cfg.Creative };
             _blasts = new Blasts(World.Get, World.Put) { Loaded = World.IsLoaded };
             World.Growth.FoundFire = _fire.Found;
@@ -312,6 +314,7 @@ namespace Stratum.Server
             World.Meta.weather = _weather.State; World.Meta.weatherLeft = _weather.Left;
             try { World.SaveMeta(); } catch (Exception e) { Log.Warn("could not save world.json: " + e.Message); }
             try { _mobs.SaveFile(MobFile); } catch (Exception e) { Log.Warn("could not save creatures: " + e.Message); }
+            try { _drops.SaveFile(DropFile); } catch (Exception e) { Log.Warn("could not save what lies on the ground: " + e.Message); }
             if (_boxes.Dirty) { try { _boxes.Save(BoxFile); } catch (Exception e) { Log.Warn("could not save containers: " + e.Message); } }
             foreach (var p in _players.Values) if (p.Joined) SavePlayer(p);
         }
@@ -407,7 +410,8 @@ namespace Stratum.Server
                 .Str(name).Str(res.Token ?? "")
                 .F32(p.Rec.food).F32(p.Rec.saturation).Bool(p.Rec.hasBed).I32(p.Rec.bx).I32(p.Rec.by).I32(p.Rec.bz).U8((byte)_cfg.Difficulty).I32(p.Rec.xpLevel).I32(p.Rec.xpPoints)
                 .U8((byte)World.Gen.Kind)                                   // 0.4: what sort of world (older clients stop reading before it)
-                .Bool(_cfg.Keep);                                           // 0.5.1: things are kept on death here
+                .Bool(_cfg.Keep)                                            // 0.5.1: things are kept on death here
+                .Str(p.Rec.notes ?? "");                                    // 0.17: goals reached and statistics, kept with the account
             p.Conn.Send(w);
             foreach (var kv in _boxes.Signs)
             {
@@ -469,6 +473,8 @@ namespace Stratum.Server
             byte flags = r.U8(); string held = r.Str();
             if (Math.Abs(x) > 3e7 || y < -64 || y > 512 || Math.Abs(z) > 3e7) return;
             p.X = x; p.Y = y; p.Z = z; p.Yaw = yaw; p.Pitch = Math.Clamp(pitch, -90, 90); p.Flags = flags;
+            // A "~s" on the end says there's a shield in the other hand (passed on, and no part of what is held).
+            p.Shield = held.EndsWith("~s"); if (p.Shield) held = held.Substring(0, held.Length - 2);
             p.Held = held.Length > 40 ? "" : held;
             p.Moved = true;
             if (y > 1 && y < Chunk.Height)
@@ -643,6 +649,7 @@ namespace Stratum.Server
             if (st.Length >= Inventory.Size && st.Length <= Inventory.Size + Net.MaxExtraStacks) p.Rec.SetStacks(st);     // past the pack: what the cursor or a station held
             p.Rec.hasBed = r.Bool(); p.Rec.bx = r.I32(); p.Rec.by = r.I32(); p.Rec.bz = r.I32();
             p.Rec.xpLevel = Math.Clamp(r.I32(), 0, 10000); p.Rec.xpPoints = Math.Clamp(r.I32(), 0, 100000);
+            if (r.More) { string notes = r.Str(); if (notes.Length <= 4000) p.Rec.notes = notes; }      // 0.17: goals reached and statistics
         }
 
         // ------------------------------------------------------------------ creatures
@@ -996,7 +1003,7 @@ namespace Stratum.Server
             {
                 if (!p.Joined || !p.Moved) continue;
                 p.Moved = false;
-                var f = new Packet(Net.Msg.Moved).I32(p.Conn.Id).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).U8(p.Flags).Str(p.Held).Bytes();
+                var f = new Packet(Net.Msg.Moved).I32(p.Conn.Id).F32(p.X).F32(p.Y).F32(p.Z).F32(p.Yaw).F32(p.Pitch).U8(p.Flags).Str(p.Shield ? p.Held + "~s" : p.Held).Bytes();
                 foreach (var o in _players.Values) if (o.Joined && o != p) o.Conn.Send(f);
             }
         }

@@ -70,6 +70,33 @@ namespace Stratum.Core
 
         void Remove(Drop d) { All.Remove(d); _byId.Remove(d.Id); }
 
+        // What lies about is kept between visits (with how long each thing has lain there).
+        public void SaveFile(string path)
+        {
+            var tmp = path + ".tmp";
+            using (var w = new System.IO.BinaryWriter(System.IO.File.Create(tmp)))
+            {
+                w.Write(1); w.Write(All.Count);
+                foreach (var d in All) { w.Write(d.Item); w.Write(d.Count); w.Write(d.Wear); w.Write(d.X); w.Write(d.Y); w.Write(d.Z); w.Write(d.Age); }
+            }
+            SafeFile.Swap(tmp, path);
+        }
+
+        public void LoadFile(string path)
+        {
+            if (!System.IO.File.Exists(path)) return;
+            using var r = new System.IO.BinaryReader(System.IO.File.OpenRead(path));
+            if (r.ReadInt32() != 1) return;
+            int n = Math.Min(r.ReadInt32(), Most);
+            for (int i = 0; i < n; i++)
+            {
+                string item = r.ReadString(); int count = r.ReadInt32(), wear = r.ReadInt32();
+                float x = r.ReadSingle(), y = r.ReadSingle(), z = r.ReadSingle(), age = r.ReadSingle();
+                var d = Toss(item, count, wear, x, y, z, 0, 0, 0, 0);
+                if (d != null) d.Age = age;
+            }
+        }
+
         // What lies on a chute is drawn into it (take says how many it had room for).
         public void Feed(Func<int, int, int, string, int, int, int> take)
         {
