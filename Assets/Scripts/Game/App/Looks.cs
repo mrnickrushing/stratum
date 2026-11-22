@@ -19,11 +19,12 @@ namespace Stratum.Game
             new Look { Name = "Storybook", Desc = "Bold, bright colours with flat shading, like a picture book.", Bump = 0.7f },
             new Look { Name = "Pastel", Desc = "Soft, chalky colours. Everything looks like sweets.", Bump = 0.8f },
             new Look { Name = "Inked", Desc = "Dark pen lines round every stone and plank, like a comic.", Bump = 1.2f },
+            new Look { Name = "Classic", Desc = "Crisp pixel art: bold earthy colours, big square blocks.", Bump = 0.5f },
         };
 
         public static int Current
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt("look", 0), 0, All.Length - 1);
+            get => Mathf.Clamp(PlayerPrefs.GetInt("look", 5), 0, All.Length - 1);
             set { PlayerPrefs.SetInt("look", Mathf.Clamp(value, 0, All.Length - 1)); PlayerPrefs.Save(); }
         }
 
@@ -88,6 +89,37 @@ namespace Stratum.Game
                             var c = Sat(src[i], 1.15f);
                             float l = Mathf.Max(0.001f, Lum(c)), step = Mathf.Round(l * 8) / 8f, k = Mathf.Lerp(1, step / l, 0.5f) * (1 - edge * 0.78f);
                             px[i] = new Color(Mathf.Clamp01(c.r * k), Mathf.Clamp01(c.g * k), Mathf.Clamp01(c.b * k), src[i].a);
+                        }
+                    break;
+                }
+                case 5:
+                {
+                    // Classic: 4×4 pixel art blocks + heavy saturation boost + warm earthy contrast.
+                    const int B = 4;
+                    for (int by = 0; by < size; by += B)
+                        for (int bx = 0; bx < size; bx += B)
+                        {
+                            Color sum = Color.clear; float a = 0, amin = 1, amax = 0;
+                            for (int y = by; y < by + B; y++)
+                                for (int x = bx; x < bx + B; x++)
+                                {
+                                    var c = px[x + y * size];
+                                    if (c.a > 0.01f) sum += new Color(c.r, c.g, c.b, 0) * c.a;
+                                    a += c.a; amin = Mathf.Min(amin, c.a); amax = Mathf.Max(amax, c.a);
+                                }
+                            Color flat = a > 0 ? sum / a : px[bx + by * size];
+                            flat.a = amax - amin < 0.01f ? amin : (a / (B * B) > 0.28f ? amax : 0);
+                            if (flat.a == 0) { var keep = px[bx + by * size]; flat = new Color(keep.r, keep.g, keep.b, 0); }
+                            if (flat.a > 0.01f)
+                            {
+                                // Boost saturation, quantize lum to 8 steps, apply warm earthy tint (more r, less b).
+                                flat = Sat(flat, 1.9f);
+                                float l = Mathf.Max(0.001f, Lum(flat));
+                                float step = Mathf.Round(l * 8) / 8f;
+                                float k = Mathf.Lerp(1, step / l, 0.6f);
+                                flat = new Color(Mathf.Clamp01(flat.r * k * 1.06f), Mathf.Clamp01(flat.g * k), Mathf.Clamp01(flat.b * k * 0.84f), flat.a);
+                            }
+                            for (int y = by; y < by + B; y++) for (int x = bx; x < bx + B; x++) px[x + y * size] = flat;
                         }
                     break;
                 }
