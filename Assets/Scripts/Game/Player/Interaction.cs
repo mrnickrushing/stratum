@@ -46,7 +46,7 @@ namespace Stratum.Game
         Texture2D[] _cracks;
         ParticleSystem _dust;
         string _heldItem;
-        float _swing = 1, _repeat, _lightTimer;
+        float _swing = 1, _repeat, _lightTimer, _heldRight;
         Vector2 _sway;
         Vector4 _light = new Vector4(1, 0, 0, 1);
 
@@ -530,11 +530,14 @@ namespace Stratum.Game
             else { Progress = 0; _mining = new Vector3Int(int.MinValue, 0, 0); }
             if (!lmb) _repeat = Mathf.Min(_repeat, 0);
 
-            if (rmb && _repeat <= 0 && HasTarget)
+            // One click, one thing put down. Holding the button carries on, but only after a clear pause, so a
+            // slow click doesn't lay three boards.
+            if (rmb && HasTarget && (mouse.rightButton.wasPressedThisFrame || _repeat <= 0 && _heldRight > 0.45f))
             {
-                _repeat = 0.22f;
+                _repeat = 0.25f;
                 Use();
             }
+            _heldRight = rmb ? _heldRight + dt : 0;
             if (mouse.middleButton.wasPressedThisFrame && HasTarget) Pick();
         }
 

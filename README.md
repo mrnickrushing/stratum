@@ -324,4 +324,9 @@ just before a lost connection come out of the saved pack (`WorldHost.ItemFor`).
 0.16.7: a satchel for someone who fell in water lies on the bottom (`Containers.Room`; before, there was nowhere for
 it and the things quietly went back to their owner). Tried online: death 700 m from a bed returns the player to the bed.
 
+0.16.8 (from the family's first session): the slot in use is lit on the hotbar and in the backpack
+(`SlotView.SetChosen`; the old marker was an outline on a see-through panel, which draws nothing), and one click puts
+down one block (holding carries on after 0.45 s). A client-only release can go on the site without merging to main,
+which would restart the server under whoever is playing: upload, `wrangler deploy` from the branch, merge later.
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.
