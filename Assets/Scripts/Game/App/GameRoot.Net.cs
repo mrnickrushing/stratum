@@ -227,6 +227,7 @@ namespace Stratum.Game
             _player.Died = OnDied;
             _player.InputEnabled = false;
             _act = Interaction.Create(_player, _world, _blockMat);
+            Avatars.ArmColours(name, Extras.Outfit, Extras.Outfit == Extras.Custom ? CustomLook.Mine.Pack() : null, out _act.Sleeve, out _act.Skin);
             _act.Sky = _sky;
             _act.InputEnabled = false;
             _act.OpenStation = s => OpenInventory(s);

@@ -197,6 +197,7 @@ namespace Stratum.Game
             // Hotbar
             for (int i = 0; i < 9; i++) _hot[i].Show(P.Inv.Slots[i]);
             _select.anchoredPosition = new Vector2(3 + P.Inv.Selected * 90, 0);
+            for (int i = 0; i < _hot.Length; i++) _hot[i].SetChosen(i == P.Inv.Selected);
             var held = P.Inv.Held;
             if (P.Inv.Selected != _lastSel || held.Item != _lastHeld)
             {
@@ -721,7 +722,7 @@ namespace Stratum.Game
         {
             int k = 0;
             if (!P.Creative) for (int i = 9; i < 36; i++) _invSlots[k++].Show(P.Inv.Slots[i]);
-            for (int i = 0; i < 9; i++) _invSlots[k++].Show(P.Inv.Slots[i]);
+            for (int i = 0; i < 9; i++) { _invSlots[k].SetChosen(i == P.Inv.Selected); _invSlots[k++].Show(P.Inv.Slots[i]); }
             for (int i = 0; i < _armSlots.Count; i++) _armSlots[i].Show(P.Inv.Slots[Inventory.ArmourStart + i]);
             if (_armText != null) _armText.text = P.Inv.ArmourPoints > 0 ? $"Protection {P.Inv.ArmourPoints * 4}%" : "";
             if (_box != null) for (int i = 0; i < _boxSlots.Count; i++) _boxSlots[i].Show(_box[i]);

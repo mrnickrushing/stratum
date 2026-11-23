@@ -231,8 +231,20 @@ namespace Stratum.Game
         public Action<PointerEventData.InputButton> Click;
         public Action<bool> Hover;
         public void OnPointerClick(PointerEventData e) => Click?.Invoke(e.button);
-        public void OnPointerEnter(PointerEventData e) { Hover?.Invoke(true); if (Back) Back.color = new Color(0.26f, 0.27f, 0.31f, 0.95f); }
-        public void OnPointerExit(PointerEventData e) { Hover?.Invoke(false); if (Back) Back.color = UIKit.Slot; }
+        public void OnPointerEnter(PointerEventData e) { _over = true; Hover?.Invoke(true); if (Back) Back.color = _chosen ? new Color(0.52f, 0.42f, 0.20f) : new Color(0.26f, 0.27f, 0.31f, 0.95f); }
+        public void OnPointerExit(PointerEventData e) { _over = false; Hover?.Invoke(false); if (Back) Back.color = Rest; }
+
+        // The slot in use (the one the number keys or the wheel picked): a warm fill and a bright rim.
+        bool _over, _chosen; Outline _rim;
+        Color Rest => _chosen ? new Color(0.42f, 0.33f, 0.14f) : UIKit.Slot;
+        public void SetChosen(bool on)
+        {
+            if (on == _chosen && (_rim != null || !on)) return;
+            _chosen = on;
+            if (on && _rim == null && Back) { _rim = Back.gameObject.AddComponent<Outline>(); _rim.effectColor = UIKit.Accent; _rim.effectDistance = new Vector2(3, -3); }
+            if (_rim) _rim.enabled = on;
+            if (Back && !_over) Back.color = Rest;
+        }
 
         public static SlotView Make(Transform parent, float size)
         {
