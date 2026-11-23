@@ -332,4 +332,12 @@ which would restart the server under whoever is playing: upload, `wrangler deplo
 0.16.9: the player's own arm shows when nothing is held, in their outfit's sleeve and skin (`Avatars.ArmColours`,
 `Interaction._hand`); only putting things down repeats while the button is held, so a door answers each click once.
 
+0.16.10 (from an outside code audit, each claim checked first): a furnace whose result has nowhere to go keeps its
+progress; a piece of the world that keeps failing is tried again after 30 s and can be let go; a circuit past 6,000
+pieces says so (`Signal.TooBig`); a message cut short is refused; things lie on a slab or chest at its real height
+(`DropSim.Solid` asks `Body.TopAt`); water breaks a fall wherever it is met; a comparator's wire carries as far as
+the chest behind it is full (`Signal.Fill`, `Machines.Fill`). Measured and left alone: 49 springs flowing cost 4 of
+46 fps; 196 logs felled took 308 ms in all. Not bugs (Minecraft does the same): dry bare farmland going back to
+earth, a wire corner powering nothing beside it, torches put down where the player stands.
+
 If the game ever runs slowly on someone's computer, take an F4 report there before changing the mesher or the view distance.

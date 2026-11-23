@@ -100,6 +100,13 @@ namespace Stratum.Server
             }
             Water = new Water(Get, (x, y, z, id) => { SetRaw(x, y, z, id); Changed?.Invoke(x, y, z, id); }) { Loaded = IsLoaded };
             Signal = new Signal(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }) { Loaded = IsLoaded };
+            long toldBig = 0;
+            Signal.TooBig = (x, y, z) =>
+            {
+                if (Environment.TickCount64 - toldBig < 60000) return;
+                toldBig = Environment.TickCount64;
+                Notices.Enqueue($"The spark circuit near {x} {y} {z} has too many pieces to work all at once. Split it into smaller ones.");
+            };
             Growth = new Growth(Get, (x, y, z, id) => { if (SetRaw(x, y, z, id)) { Changed?.Invoke(x, y, z, id); Water.Wake(x, y, z); } }, (uint)Meta.seed ^ 0x5eed) { Loaded = IsLoaded };
 
             int n = Math.Clamp(Environment.ProcessorCount - 1, 1, 6);

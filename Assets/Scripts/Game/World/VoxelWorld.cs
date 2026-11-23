@@ -21,6 +21,7 @@ namespace Stratum.Game
             public bool GenQueued, MeshQueued, Dirty = true, HasMesh, Arrived;
             public float AskedAt;                       // multiplayer: when it was last asked for
             public int Fails;                           // jobs for it that broke (retried a few times)
+            public float RestUntil; public bool RestMesh;   // gave up for now: when to try again, and whether it was the drawing that broke
             public byte[] Light;                        // from its last meshing (pooled)
             public void DropLight() { if (Light != null) System.Buffers.ArrayPool<byte>.Shared.Return(Light); Light = null; }
         }
@@ -78,6 +79,13 @@ namespace Stratum.Game
             if (saveDir != null) Directory.CreateDirectory(Path.Combine(saveDir, "chunks"));
             w._waterSim = new Water(w.Get, w.SetWater) { Loaded = w.IsReady };
             w.Signal = new Signal(w.Get, (x, y, z, id) => w.Set(x, y, z, id)) { Loaded = w.IsReady };
+            float toldBig = -100;
+            w.Signal.TooBig = (x, y, z) =>
+            {
+                if (Time.unscaledTime - toldBig < 60) return;
+                toldBig = Time.unscaledTime;
+                w.Notices.Enqueue($"The spark circuit near {x} {y} {z} has too many pieces to work all at once. Split it into smaller ones.");
+            };
             w.Growth = new Growth(w.Get, (x, y, z, id) => w.Set(x, y, z, id), (uint)seed ^ 0x5eed) { Loaded = w.IsReady };
             w.StartWorkers();
             return w;
@@ -139,7 +147,13 @@ namespace Stratum.Game
             {
                 var s = job is GenJob g ? g.S : ((MeshJob)job).S;
                 if (!_slots.TryGetValue(Chunk.Key(s.Chunk.X, s.Chunk.Z), out var cur) || cur != s) continue;      // let go meanwhile
-                if (++s.Fails > 3) { Debug.LogWarning($"chunk {s.Chunk.X},{s.Chunk.Z} keeps failing; leaving it"); continue; }
+                if (++s.Fails > 3)
+                {
+                    // Left for now, not for ever: tried afresh in half a minute, and free to be let go meanwhile.
+                    Debug.LogWarning($"chunk {s.Chunk.X},{s.Chunk.Z} keeps failing; resting it");
+                    s.RestUntil = Time.unscaledTime + 30; s.RestMesh = job is MeshJob;
+                    continue;
+                }
                 if (job is MeshJob) { s.MeshQueued = false; s.Dirty = true; }
                 else if (Remote) { s.Arrived = false; s.AskedAt = 0; }             // ask the server for it again
                 else if (!s.Chunk.Ready) s.GenQueued = false;                      // make it again
@@ -314,6 +328,13 @@ namespace Stratum.Game
                     int x = _cx + dx, z = _cz + dz;
                     long k = Chunk.Key(x, z);
                     if (!_slots.TryGetValue(k, out var s)) { s = new Slot { Chunk = new Chunk(x, z) }; _slots[k] = s; }
+                    if (s.RestUntil > 0 && Time.unscaledTime > s.RestUntil)
+                    {
+                        s.RestUntil = 0; s.Fails = 0;
+                        if (s.RestMesh) { s.MeshQueued = false; s.Dirty = true; }
+                        else if (Remote) { s.Arrived = false; s.AskedAt = 0; }
+                        else if (!s.Chunk.Ready) s.GenQueued = false;
+                    }
                     if (s.GenQueued)
                     {
                         // A chunk asked for but not sent (the server thought we were somewhere else): ask again.
@@ -343,7 +364,7 @@ namespace Stratum.Game
             {
                 var c = kv.Value.Chunk;
                 int dx = c.X - _cx, dz = c.Z - _cz;
-                if (dx * dx + dz * dz > (R + 4) * (R + 4) && !kv.Value.MeshQueued && (c.Ready || !kv.Value.GenQueued))
+                if (dx * dx + dz * dz > (R + 4) * (R + 4) && (!kv.Value.MeshQueued && (c.Ready || !kv.Value.GenQueued) || kv.Value.RestUntil > 0))
                     (gone ??= new List<long>()).Add(kv.Key);
             }
             if (gone != null)

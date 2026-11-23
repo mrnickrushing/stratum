@@ -414,6 +414,11 @@ namespace Stratum.Game
                 if (Blocks.Get(crop).Grows == 1 && World.Set(at.x, at.y + 1, at.z, 0)) Trampled?.Invoke(at + Vector3Int.up, Blocks.Get(crop));
             }
             if (Has(Fx.Leap)) fall -= 2;
+            // Water breaks a fall wherever it is met: looked for here, at the feet and just above, since the note
+            // taken at the start of the frame is from before the last of the drop.
+            if (!InWater)
+                for (float up = 0; up <= 0.6f; up += 0.3f)
+                    if (Blocks.Get(World.Get(Mathf.FloorToInt(Feet.x), Mathf.FloorToInt(Feet.y + up), Mathf.FloorToInt(Feet.z))).Fluid == 1) { fall = 0; break; }
             if (!Creative && !InWater && fall > 3.6f && under != Blocks.HayBale) Damage(Mathf.Floor(fall - 3) * (1 - 0.12f * Inv.SoftLanding));
             else if (!Creative && !InWater && fall > 3.6f) Damage(Mathf.Floor((fall - 3) * 0.2f));
         }

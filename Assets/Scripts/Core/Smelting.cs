@@ -66,7 +66,9 @@ namespace Stratum.Core
             int burn0 = burn, cook0 = cook;
             bool can = CanWork(a, out var output, out int count, out int need);
             // Progress belongs to the thing it was made on: something else put in starts from nothing.
-            int tag = can ? Tag(a[In].Item) : 0, tag0 = a[Cook].Item == CookItem ? a[Cook].Wear : 0;
+            // (Something that can be smelted but has no room to come out is still the same thing: its progress waits.)
+            bool waiting = !can && !a[In].Empty && Result(a[In].Item, out _, out _, out int needs) && a[In].Count >= needs;
+            int tag = can || waiting ? Tag(a[In].Item) : 0, tag0 = a[Cook].Item == CookItem ? a[Cook].Wear : 0;
             if (cook > 0 && tag0 != tag) cook = 0;
             if (burn == 0 && can && !a[Fuel].Empty)
             {
@@ -91,9 +93,9 @@ namespace Stratum.Core
                         changed |= 1 << In | 1 << Out;
                     }
                 }
-                else cook = 0;
+                else if (!waiting) cook = 0;
             }
-            else cook = Math.Max(0, cook - 2);        // the fire is out: what was half done cools off
+            else if (!waiting) cook = Math.Max(0, cook - 2);        // the fire is out: what was half done cools off
             if (burn != burn0) { a[Burn] = burn > 0 ? new Stack(BurnItem, burn) { Wear = full } : Stack.None; changed |= 1 << Burn; }
             if (cook != cook0 || cook > 0 && tag0 != tag) { a[Cook] = cook > 0 ? new Stack(CookItem, cook) { Wear = tag } : Stack.None; changed |= 1 << Cook; }
             return changed;

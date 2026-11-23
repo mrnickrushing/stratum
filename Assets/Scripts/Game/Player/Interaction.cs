@@ -136,7 +136,8 @@ namespace Stratum.Game
             // Grid walk (Amanatides & Woo).
             int x = Mathf.FloorToInt(o.x), y = Mathf.FloorToInt(o.y), z = Mathf.FloorToInt(o.z);
             int sx = d.x > 0 ? 1 : -1, sy = d.y > 0 ? 1 : -1, sz = d.z > 0 ? 1 : -1;
-            float tdx = Mathf.Abs(1 / d.x), tdy = Mathf.Abs(1 / d.y), tdz = Mathf.Abs(1 / d.z);
+            // (Never infinite: looking dead along an axis from exactly on a block's edge would make 0 x infinity.)
+            float tdx = Mathf.Min(1e9f, Mathf.Abs(1 / d.x)), tdy = Mathf.Min(1e9f, Mathf.Abs(1 / d.y)), tdz = Mathf.Min(1e9f, Mathf.Abs(1 / d.z));
             float tx = (d.x > 0 ? x + 1 - o.x : o.x - x) * tdx, ty = (d.y > 0 ? y + 1 - o.y : o.y - y) * tdy, tz = (d.z > 0 ? z + 1 - o.z : o.z - z) * tdz;
             var n = Vector3Int.zero;
             float t = 0;
