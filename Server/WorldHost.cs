@@ -35,7 +35,6 @@ namespace Stratum.Server
             public readonly HashSet<long> Waiting = new HashSet<long>();
             public int Edits;                       // this second, to stop a flood
             public int Refused;
-            public bool Checking;                   // login being checked
             public int VoiceFrames;                 // this second
             public int Strikes, Shots;              // this second
             public bool HasBox; public int BX, BY, BZ;   // the chest they have open
@@ -88,7 +87,6 @@ namespace Stratum.Server
         readonly Dictionary<long, List<Player>> _waiters = new Dictionary<long, List<Player>>();
         Thread _loop;
         volatile bool _stop;
-        int _nextId;
         public int Online => _onlineCount;
         volatile string[] _keys = new string[0];                // accounts in this world (read by the front door)
         public int OnlineExcept(string key) => _keys.Count(k => k != key);
@@ -153,7 +151,7 @@ namespace Stratum.Server
             };
             _mobs.Burst += m => _blasts.Explode(m.X, m.Y + 0.6f, m.Z, 3);
             World.Signal.Fired = (x, y, z, dir) => Machines.Dispense(_boxes, _drops, _mobs, World.Get, World.Put, x, y, z, dir, _dice);
-            World.Signal.Holds = (x, y, z) => Machines.Holds(_boxes, x, y, z);
+            World.Signal.Holds = (x, y, z) => Machines.Holds(_boxes, x, y, z); World.Signal.Fill = (x, y, z) => Machines.Fill(_boxes, x, y, z);
             World.Signal.IsDay = () => _mobs.IsDay && _weather.State != 2;
             World.Signal.Played = (x, y, z, pitch) =>
             {

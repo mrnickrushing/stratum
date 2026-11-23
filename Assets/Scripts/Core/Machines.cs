@@ -29,6 +29,21 @@ namespace Stratum.Core
             else drops.Toss(one.Item, 1, one.Wear, fx, fy - 0.2f, fz, dx * 4.5f, dy * 4.5f + 1.5f, dz * 4.5f, 0.3f);
         }
 
+        // How full a container is, the way a comparator reads it: 0 when empty, 1 for anything at all, 15 when every
+        // slot holds a full stack.
+        public static int Fill(Containers boxes, int x, int y, int z)
+        {
+            if (!boxes.Has(x, y, z)) return 0;
+            var slots = boxes.At(x, y, z); if (slots.Length == 0) return 0;
+            float sum = 0; bool any = false;
+            foreach (var s in slots)
+            {
+                if (s.Empty || Smelting.Hidden(s.Item)) continue;
+                any = true; sum += s.Count / (float)Math.Max(1, Items.Get(s.Item)?.MaxStack ?? 64);
+            }
+            return any ? (int)Math.Floor(1 + 14 * Math.Min(1f, sum / Math.Max(Containers.ChestSlots, slots.Length))) : 0;
+        }
+
         public static bool Holds(Containers boxes, int x, int y, int z)
         {
             if (!boxes.Has(x, y, z)) return false;

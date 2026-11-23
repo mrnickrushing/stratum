@@ -557,7 +557,8 @@ namespace Stratum.Core
         {
             int k = (int)kind;
             if (_connect[k] == null) _connect[k] = new Box[16][];
-            var cached = _connect[k][mask & 15];
+            int asked = mask & 15;              // kept under the mask asked for (a wire's is widened below)
+            var cached = _connect[k][asked];
             if (cached != null) return cached;
             var list = new List<Box>();
             Box post, arm1, arm2 = default; bool two = false;
@@ -579,7 +580,7 @@ namespace Stratum.Core
                 list.Add(arm1.Turn(dir));
                 if (two) list.Add(arm2.Turn(dir));
             }
-            return _connect[k][mask & 15] = list.ToArray();
+            return _connect[k][asked] = list.ToArray();
         }
 
         static readonly int[] DX = { 0, 1, 0, -1 }, DZ = { 1, 0, -1, 0 };

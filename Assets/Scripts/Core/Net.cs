@@ -184,7 +184,12 @@ namespace Stratum.Core
         public int U16() => _r.ReadUInt16();
         public float F32() { float f = _r.ReadSingle(); return float.IsFinite(f) ? f : 0; }
         public double F64() { double d = _r.ReadDouble(); return double.IsFinite(d) ? d : 0; }
-        public string Str() { int n = _r.ReadUInt16(); return Encoding.UTF8.GetString(_r.ReadBytes(n)); }
+        public string Str()
+        {
+            int n = _r.ReadUInt16(); var b = _r.ReadBytes(n);
+            if (b.Length != n) throw new InvalidDataException("message cut short");       // not a shorter string and every field after it out of place
+            return Encoding.UTF8.GetString(b);
+        }
         public byte[] Blob()
         {
             int n = _r.ReadInt32();

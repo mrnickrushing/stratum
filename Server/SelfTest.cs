@@ -291,6 +291,21 @@ namespace Stratum.Server
                 Check(f[Smelting.Out].Count == 10 && f[Smelting.In].Empty && f[Smelting.Fuel].Empty, $"planks burn too, for less ({f[Smelting.Out].Count} ingots)");
                 var g = new Stack[Smelting.Slots]; g[Smelting.In] = new Stack("cobble", 3); g[Smelting.Fuel] = new Stack("coal", 1); g[Smelting.Out] = new Stack("glass", 5);
                 Check(!Smelting.Busy(g) && Smelting.Step(g) == 0 && g[Smelting.Fuel].Count == 1, "no fuel is lit when the result has nowhere to go");
+                {
+                    // Half done when the way out is blocked: the progress waits, and carries on once there is room.
+                    var w8 = new Stack[Smelting.Slots];
+                    w8[Smelting.In] = new Stack("iron_ore", 2); w8[Smelting.Fuel] = new Stack("coal", 4);
+                    for (int i = 0; i < 30; i++) Smelting.Step(w8);
+                    int half = w8[Smelting.Cook].Count;
+                    w8[Smelting.Out] = new Stack("cobble", 64);                      // something else is in the way
+                    for (int i = 0; i < 10; i++) Smelting.Step(w8);
+                    int waited = w8[Smelting.Cook].Count;
+                    w8[Smelting.Out] = Stack.None;
+                    Smelting.Step(w8);
+                    Check(half > 20 && waited == half && w8[Smelting.Cook].Count == half + 1, $"a furnace whose result has nowhere to go keeps its progress and carries on after ({half}, {waited}, {w8[Smelting.Cook].Count})");
+                    w8[Smelting.In] = Stack.None; Smelting.Step(w8);
+                    Check(w8[Smelting.Cook].Empty || w8[Smelting.Cook].Count == 0, "taking the ore out still starts it over");
+                }
                 var h = new Stack[Smelting.Slots]; h[Smelting.In] = new Stack("dirt", 3); h[Smelting.Fuel] = new Stack("coal", 1);
                 Check(!Smelting.Busy(h), "or when the thing can't be smelted");
                 var c = new Stack[Smelting.Slots]; c[Smelting.In] = new Stack("raw_beef", 1); c[Smelting.Fuel] = new Stack("stick", 2);
@@ -1371,6 +1386,19 @@ namespace Stratum.Server
                 Check(!Containers.SpotFor(Fire, 5, 30, 5, null, out _), "in lava there is nowhere for one (the things go back to their owner)");
             }
             {
+                // Things that fall on a slab lie on the slab, not half a block above it; on a whole block, on its top.
+                var sw = new Patch(); ushort slab = Blocks.Slabs[0];
+                sw.Set(3, 11, 3, slab);
+                var lie = new DropSim(sw.Get);
+                var onSlab = lie.Toss("cobble", 1, 0, 3.5f, 13f, 3.5f, 0, 0, 0, 0); var onStone = lie.Toss("cobble", 1, 0, 8.5f, 13f, 8.5f, 0, 0, 0, 0);
+                for (int i = 0; i < 200; i++) lie.Tick(0.05f);
+                Check(Math.Abs(onSlab.Y - 11.5f) < 0.05f && onSlab.Rest && Math.Abs(onStone.Y - 11f) < 0.05f && onStone.Rest, $"a thing dropped on a slab lies on it ({onSlab.Y:0.00}), one on stone on the stone ({onStone.Y:0.00})");
+                // A frame saying its text is eleven bytes long, with five in it.
+                bool threw = false;
+                try { new Reader(new byte[] { (byte)Net.Msg.Chat, 11, 0, (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o' }).Str(); } catch (System.IO.InvalidDataException) { threw = true; }
+                Check(threw, "a message cut short is refused, not read as a shorter one");
+            }
+            {
                 var ask = Items.Ask("Oak Planks 20", out int askN, out string askSay);
                 Check(ask != null && ask.Id == "oak_planks" && askN == 20, "/give understands a thing's name and a count");
                 Check(Items.Ask("torch", out askN, out askSay)?.Id == "torch" && askN == 1, "/give torch is the torch, though other things have torch in their names");
@@ -1564,6 +1592,23 @@ namespace Stratum.Server
                 Check(mw.Get(2, 11, 9) == Blocks.SparkLamp + 1, "with something in the chest it lights the lamp in front of it");
                 full = false; sig.Wake(0, 11, 9); Run(0.6f);
                 Check(mw.Get(2, 11, 9) == Blocks.SparkLamp, "and stops when the chest is emptied");
+                {
+                    // How full the chest is decides how far the comparator's wire carries: a lamp five along lights
+                    // for a chest filled to 8, not for one filled to 3.
+                    int fill = 3; bool holds = true;
+                    sig.Holds = (x, y, z) => holds && x == 0 && y == 11 && z == 20;
+                    sig.Fill = (x, y, z) => x == 0 && y == 11 && z == 20 ? fill : 0;
+                    Put(1, 11, 20, (ushort)(Blocks.Comparator + 1 * 2));
+                    for (int i = 2; i <= 6; i++) Put(i, 11, 20, Blocks.SparkWire);
+                    Put(7, 11, 20, Blocks.SparkLamp);
+                    sig.Wake(0, 11, 20); Run(0.6f);
+                    bool dimOff = mw.Get(7, 11, 20) == Blocks.SparkLamp;
+                    fill = 8; sig.Wake(0, 11, 20); Run(0.6f);
+                    Check(dimOff && mw.Get(7, 11, 20) == Blocks.SparkLamp + 1, "a comparator's wire carries as far as the chest is full: five wires on, dark at 3, lit at 8");
+                    sig.Fill = null; sig.Holds = (x, y, z) => full && x == 0 && y == 11 && z == 9;
+                    var chest = new Containers(); var slots = new Stack[Containers.ChestSlots];
+                    Check(Machines.Fill(chest, 0, 0, 0) == 0, "an empty chest reads 0");
+                }
                 Put(1, 11, 13, (ushort)(Blocks.Dispenser + 0)); Put(0, 11, 13, Blocks.Lever);
                 Run(0.3f);
                 Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f); Put(0, 11, 13, Blocks.Lever); Run(0.4f); Put(0, 11, 13, (ushort)(Blocks.Lever + 1)); Run(0.4f);

@@ -131,7 +131,7 @@ namespace Stratum.Game
             if (world.Signal != null)
             {
                 world.Signal.Fired = (x, y, z, dir) => { Machines.Dispense(Boxes, Ground, Sim, world.Get, (bx, by, bz, id) => world.Set(bx, by, bz, id), x, y, z, dir, _dice); MobSound?.Invoke(MobKind.Arrow, "shoot", new Vector3(x + 0.5f, y + 0.5f, z + 0.5f)); };
-                world.Signal.Holds = (x, y, z) => Machines.Holds(Boxes, x, y, z);
+                world.Signal.Holds = (x, y, z) => Machines.Holds(Boxes, x, y, z); world.Signal.Fill = (x, y, z) => Machines.Fill(Boxes, x, y, z);
                 world.Signal.IsDay = () => Sim.IsDay && Weather.State != 2;
                 world.Signal.Played = (x, y, z, pitch) => Noted?.Invoke(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), pitch);
                 if (world.Growth != null) world.Growth.FoundPart = (x, y, z) => world.Signal.Wake(x, y, z);

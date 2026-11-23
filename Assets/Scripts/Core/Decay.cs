@@ -22,15 +22,19 @@ namespace Stratum.Core
 
         float Rand() { _rng ^= _rng << 13; _rng ^= _rng >> 17; _rng ^= _rng << 5; return (_rng & 0xFFFFFF) / (float)0x1000000; }
 
+        byte[] _dist, _kind;
+
         // A log at (cx, cy, cz) has just gone.
         public void LogBroken(int cx, int cy, int cz)
         {
             int n = R * 2 + 1 + Hold * 2;                     // logs just outside the box still hold leaves inside it
             int o = R + Hold;
-            var dist = new byte[n * n * n];
+            if (_dist == null) { _dist = new byte[n * n * n]; _kind = new byte[n * n * n]; }       // kept between calls: a felled tree is several of these in a row
+            else { Array.Clear(_dist, 0, _dist.Length); Array.Clear(_kind, 0, _kind.Length); }
+            var dist = _dist;
             var q = new Queue<int>();
             int At(int x, int y, int z) => (x + o) + (z + o) * n + (y + o) * n * n;
-            var kind = new byte[n * n * n];                   // 1 leaf, 2 log
+            var kind = _kind;                                 // 1 leaf, 2 log
             for (int y = -o; y <= o; y++)
                 for (int z = -o; z <= o; z++)
                     for (int x = -o; x <= o; x++)

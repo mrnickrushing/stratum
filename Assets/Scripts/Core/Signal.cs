@@ -25,6 +25,10 @@ namespace Stratum.Core
         bool _applying;
         public const float Delay = 0.1f, ButtonFor = 1.0f, PlateFor = 0.6f;
         const int MaxCells = 6000;
+        // A circuit of more pieces than that is only worked out in part: whoever is listening is told where (once
+        // for each time it is worked out).
+        public Action<int, int, int> TooBig;
+        bool _tooBig;
 
         static readonly int[] DX = { 0, 1, 0, -1, 0, 0 }, DY = { 0, 0, 0, 0, 1, -1 }, DZ = { 1, 0, -1, 0, 0, 0 };
 
@@ -230,10 +234,11 @@ namespace Stratum.Core
         void Update(List<(int x, int y, int z)> seeds)
         {
             // 1. Everything connected to the change.
-            _cells.Clear(); _q.Clear();
+            _cells.Clear(); _q.Clear(); _tooBig = false;
             void Visit(int x, int y, int z)
             {
-                if (_cells.Count >= MaxCells || !_cells.Add((x, y, z))) return;
+                if (_cells.Count >= MaxCells) { if (!_tooBig) { _tooBig = true; TooBig?.Invoke(x, y, z); } return; }
+                if (!_cells.Add((x, y, z))) return;
                 if (Loaded != null && !Loaded(x, z)) return;
                 if (IsPart(_get(x, y, z)) || Conductor(_get(x, y, z))) _q.Enqueue((x, y, z));
             }
@@ -282,17 +287,23 @@ namespace Stratum.Core
             {
                 var (x, y, z) = c;
                 if (!IsWire(_get(x, y, z))) continue;
-                bool fed = false;
-                for (int d = 0; d < 6 && !fed; d++)
+                // How strongly it is fed: fully by most things; by a comparator, as strongly as the chest behind it
+                // is full (so how far its wire carries says how much is in there).
+                int fed = 0;
+                for (int d = 0; d < 6 && fed < 15; d++)
                 {
                     int nx = x + DX[d], ny = y + DY[d], nz = z + DZ[d];
                     ushort n = _get(nx, ny, nz);
-                    if ((IsLever(n) || IsButton(n) || IsPlate(n) || IsTorch(n)) && On(n)) fed = true;
-                    else if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) fed = true;
-                    else if (IsEmitter(n) && On(n) && (Blocks.Get(n).Sensor || OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z))) fed = true;
-                    else if (_strong.Contains((nx, ny, nz)) && Conductor(n)) fed = true;
+                    if ((IsLever(n) || IsButton(n) || IsPlate(n) || IsTorch(n)) && On(n)) fed = 15;
+                    else if (IsRepeater(n) && On(n) && d < 4 && Blocks.Get(n).Facing == ((d + 2) & 3)) fed = 15;
+                    else if (IsEmitter(n) && On(n) && (Blocks.Get(n).Sensor || OutOf(Blocks.Get(n), nx, ny, nz) == (x, y, z)))
+                    {
+                        var nd = Blocks.Get(n);
+                        fed = Math.Max(fed, nd.Gauge && Fill != null ? Math.Clamp(Fill(nx - DX[nd.Dir], ny, nz - DZ[nd.Dir]), 1, 15) : 15);
+                    }
+                    else if (_strong.Contains((nx, ny, nz)) && Conductor(n)) fed = 15;
                 }
-                if (fed) { _level[c] = 15; buckets[15].Add(c); }
+                if (fed > 0) { _level[c] = fed; buckets[fed].Add(c); }
             }
             for (int lv = 15; lv >= 1; lv--)
                 foreach (var c in buckets[lv])
@@ -433,6 +444,7 @@ namespace Stratum.Core
 
         public Action<int, int, int, int> Fired;              // a dispenser went off: where, and which way it faces
         public Func<int, int, int, bool> Holds;               // does the container here hold anything (for comparators)
+        public Func<int, int, int, int> Fill;                 // how full it is, 0 (empty) to 15 (every slot full)
         public const int PushMost = 12;
 
         static bool Movable(BlockDef d) =>

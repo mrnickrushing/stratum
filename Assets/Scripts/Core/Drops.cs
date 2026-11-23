@@ -115,8 +115,11 @@ namespace Stratum.Core
         bool Solid(float x, float y, float z)
         {
             if (y < 0 || y >= Chunk.Height) return false;
-            var b = Blocks.Get(_get((int)Math.Floor(x), (int)Math.Floor(y), (int)Math.Floor(z)));
-            return b.Solid;            // chests, chutes, slabs and the like hold things up too (they lie on top of the block's space)
+            ushort id = _get((int)Math.Floor(x), (int)Math.Floor(y), (int)Math.Floor(z));
+            if (!Blocks.Get(id).Solid) return false;
+            // Chests, chutes, slabs and the like hold things up too, as high as they really stand.
+            float top = Body.TopAt(id, x - (float)Math.Floor(x), z - (float)Math.Floor(z));
+            return top > 0 && y - (float)Math.Floor(y) < top;
         }
 
         public void Tick(float dt)
@@ -144,7 +147,10 @@ namespace Stratum.Core
                 if (Solid(nx, d.Y + 0.1f, nz)) { d.VZ = -d.VZ * 0.3f; nz = d.Z; }
                 if (d.VY <= 0 && Solid(nx, ny, nz))
                 {
-                    ny = (float)Math.Floor(ny) + 1.001f;
+                    // On top of what is really there: a slab is half a block high, a chest a little short of one.
+                    float top = Body.TopAt(_get((int)Math.Floor(nx), (int)Math.Floor(ny), (int)Math.Floor(nz)), nx - (float)Math.Floor(nx), nz - (float)Math.Floor(nz));
+                    if (top <= 0 || top > 1) top = 1;
+                    ny = (float)Math.Floor(ny) + top + 0.001f;
                     if (d.VY > -2.5f) { d.VY = 0; d.VX *= 0.5f; d.VZ *= 0.5f; if (Math.Abs(d.VX) + Math.Abs(d.VZ) < 0.15f) { d.VX = d.VZ = 0; d.Rest = true; } }
                     else d.VY = -d.VY * 0.25f;
                 }
