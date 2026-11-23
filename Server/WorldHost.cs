@@ -478,7 +478,7 @@ namespace Stratum.Server
                 // pack is settled, so nothing is lost and nothing is doubled.
                 var owed = new List<Stack>(); foreach (var o in p.Owed) owed.Add(o.s);
                 p.Rec.SetStacks(Settle(p.Rec.Stacks(), p.Transit, owed));
-                Log.Info($"{p.Name} left with {p.Owed.Count + p.Transit.Count} thing(s) between their pack and the world; settled");
+                Log.Info($"{p.Name}: {p.Owed.Count + p.Transit.Count} thing(s) between their pack and the world were settled in this save");
                 p.Owed.Clear(); p.Transit.Clear();
             }
             p.Rec.lastSeen = DateTime.UtcNow.Ticks;
