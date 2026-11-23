@@ -47,6 +47,9 @@ namespace Stratum.Game
         ParticleSystem _dust;
         string _heldItem;
         float _swing = 1, _repeat, _lightTimer, _heldRight;
+        bool _placing;                      // the last use put something down (so holding the button may carry on)
+        GameObject _hand; Material _sleeveMat, _skinMat, _cuffMat;
+        public Color Sleeve = new Color(0.25f, 0.45f, 0.55f), Skin = new Color(0.93f, 0.76f, 0.62f);     // the player's own arm, as others see it
         Vector2 _sway;
         Vector4 _light = new Vector4(1, 0, 0, 1);
 
@@ -83,6 +86,24 @@ namespace Stratum.Game
             _heldItemMat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
             _heldItemMat.SetFloat("_AlphaClip", 1); _heldItemMat.SetFloat("_Cutoff", 0.5f); _heldItemMat.EnableKeyword("_ALPHATEST_ON");
             _heldItemMat.SetFloat("_Cull", 0);
+
+            // The player's own arm, seen when nothing is held: a sleeve and a hand, low on the right.
+            _hand = new GameObject("Hand");
+            _hand.transform.SetParent(P.Cam.transform, false);
+            var unlit = Shader.Find("Universal Render Pipeline/Unlit");
+            _sleeveMat = new Material(unlit); _skinMat = new Material(unlit); _cuffMat = new Material(unlit);
+            void Part(string n, Vector3 at, Vector3 size, Material m)
+            {
+                var g = new GameObject(n); g.transform.SetParent(_hand.transform, false);
+                g.transform.localPosition = at; g.transform.localScale = size;
+                g.AddComponent<MeshFilter>().sharedMesh = UnitCube(1);
+                var r = g.AddComponent<MeshRenderer>(); r.sharedMaterial = m; r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
+            }
+            Part("Sleeve", new Vector3(0, 0, -0.10f), new Vector3(0.13f, 0.13f, 0.44f), _sleeveMat);
+            Part("Cuff", new Vector3(0, 0, 0.105f), new Vector3(0.14f, 0.14f, 0.035f), _cuffMat);
+            Part("Fist", new Vector3(0, 0, 0.17f), new Vector3(0.12f, 0.12f, 0.12f), _skinMat);
+            _hand.SetActive(false);
+            _held.SetActive(false);         // nothing in hand until SetHeld says so (or the bare hand never showed at the start)
 
             var dgo = new GameObject("Dust");
             _dust = dgo.AddComponent<ParticleSystem>();
@@ -532,9 +553,12 @@ namespace Stratum.Game
 
             // One click, one thing put down. Holding the button carries on, but only after a clear pause, so a
             // slow click doesn't lay three boards.
-            if (rmb && HasTarget && (mouse.rightButton.wasPressedThisFrame || _repeat <= 0 && _heldRight > 0.45f))
+            // (Only putting things down carries on: a door, a lever or a chest answers each click once, or a door held
+            // a moment too long would flap open and shut.)
+            if (rmb && HasTarget && (mouse.rightButton.wasPressedThisFrame || _repeat <= 0 && _heldRight > 0.45f && _placing))
             {
                 _repeat = 0.25f;
+                _placing = false;
                 Use();
             }
             _heldRight = rmb ? _heldRight + dt : 0;
@@ -943,6 +967,7 @@ namespace Stratum.Game
             Sfx.I?.Block("place", id, 0.8f);
             _swing = 0;
             Stat?.Invoke("placed");
+            _placing = true;
             if (!P.Creative) P.Inv.UseHeld();
         }
 
@@ -1040,12 +1065,26 @@ namespace Stratum.Game
                 float slit = Mathf.Max(Mathf.Pow(0.8f, (1 - _light.x) * 15) * sday, Mathf.Pow(0.8f, (1 - _light.y) * 15));
                 _shieldMat.SetColor("_BaseColor", new Color(slit, slit, slit, 1) * 1.1f);
             }
-            if (_held.activeSelf)
+            _swing = Mathf.Min(1, _swing + dt * 4.5f);
+            float s = Mathf.Sin(_swing * Mathf.PI);
             {
-                _swing = Mathf.Min(1, _swing + dt * 4.5f);
-                float s = Mathf.Sin(_swing * Mathf.PI);
                 var md = Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
                 _sway = Vector2.Lerp(_sway, md * 0.0008f, 1 - Mathf.Exp(-dt * 10));
+            }
+            bool bare = !_held.activeSelf && !HideHeld;
+            if (_hand.activeSelf != bare) _hand.SetActive(bare);
+            if (bare)
+            {
+                _hand.transform.localPosition = new Vector3(0.47f, -0.44f, 0.62f) + new Vector3(-_sway.x - s * 0.14f, -_sway.y - s * 0.10f, s * 0.12f);
+                _hand.transform.localRotation = Quaternion.Euler(-s * 40, 0, 0) * Quaternion.Euler(-48, -22, 8);
+                float hday = Sky != null ? Sky.DayFactor * 0.85f + 0.15f : 1;
+                float hlit = Mathf.Max(Mathf.Pow(0.8f, (1 - _light.x) * 15) * hday, Mathf.Pow(0.8f, (1 - _light.y) * 15)) * 1.05f;
+                _sleeveMat.SetColor("_BaseColor", new Color(Sleeve.r * hlit, Sleeve.g * hlit, Sleeve.b * hlit, 1));
+                _skinMat.SetColor("_BaseColor", new Color(Skin.r * hlit, Skin.g * hlit, Skin.b * hlit, 1));
+                _cuffMat.SetColor("_BaseColor", new Color(Sleeve.r * hlit * 0.72f, Sleeve.g * hlit * 0.72f, Sleeve.b * hlit * 0.72f, 1));
+            }
+            if (_held.activeSelf)
+            {
                 var it = Items.Get(_heldItem);
                 bool block = it != null && it.Block != 0 && !BlockMesh.IsFlat(it.Block);
                 var basePos = block ? new Vector3(0.46f, -0.33f, 0.88f) : new Vector3(0.44f, -0.36f, 0.70f);   // the block clears the hotbar

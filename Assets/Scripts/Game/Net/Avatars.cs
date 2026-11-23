@@ -200,6 +200,19 @@ namespace Stratum.Game
 
         // ------------------------------------------------------------------ building a figure
 
+        // The sleeve and skin of someone's arm, as their figure is drawn (for the hand a player sees of themselves).
+        public static void ArmColours(string name, int outfit, byte[] made, out Color sleeve, out Color skin)
+        {
+            uint h = 2166136261; foreach (char ch in name ?? "") h = (h ^ ch) * 16777619;
+            var tunic = Color.HSVToRGB((h % 360) / 360f, 0.55f, 0.62f);
+            Color[] skins = { new Color(0.93f, 0.76f, 0.62f), new Color(0.80f, 0.60f, 0.45f), new Color(0.62f, 0.44f, 0.30f), new Color(0.42f, 0.29f, 0.20f) };
+            skin = skins[(h >> 9) % skins.Length];
+            if (outfit > 0 && outfit < Extras.Outfits.Length) tunic = Extras.Outfits[outfit].Tunic;
+            var own = outfit == Extras.Custom ? CustomLook.Unpack(made) : null;
+            if (own != null) { tunic = own.Tunic; if (own.Skin > 0) skin = skins[(own.Skin - 1) % skins.Length]; }
+            sleeve = tunic * 0.9f; sleeve.a = 1;
+        }
+
         Avatar Build(int id, string name, int outfit = 0, byte[] made = null)
         {
             var a = new Avatar { Id = id, Name = name };
